@@ -1,0 +1,73 @@
+"""Configuration loading: config.yaml + .env."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+ProviderFeature = Literal["cache_control", "adaptive_thinking", "json_schema_output"]
+
+
+class ProviderConfig(BaseModel):
+    base_url: str | None = None
+    api_key_env: str
+    features: list[ProviderFeature] = Field(default_factory=list)
+
+    @property
+    def api_key(self) -> str | None:
+        return os.environ.get(self.api_key_env)
+
+    def has(self, feature: ProviderFeature) -> bool:
+        return feature in self.features
+
+
+class RoleConfig(BaseModel):
+    provider: str
+    model: str
+
+
+class AuditConfig(BaseModel):
+    max_price_divergence_pct: float = 2.0
+    max_quote_age_days: int = 5
+    max_fundamentals_age_days: int = 120
+
+
+class CitationConfig(BaseModel):
+    numeric_tolerance_pct: float = 1.0
+    max_rewrite_attempts: int = 2
+
+
+class DefaultsConfig(BaseModel):
+    sages: int = 10
+    debate_rounds: int = 1
+    max_tokens: int = 8192
+
+
+class Settings(BaseModel):
+    providers: dict[str, ProviderConfig]
+    roles: dict[str, RoleConfig]
+    audit: AuditConfig = AuditConfig()
+    citation: CitationConfig = CitationConfig()
+    defaults: DefaultsConfig = DefaultsConfig()
+
+    def role(self, name: str) -> tuple[RoleConfig, ProviderConfig]:
+        role = self.roles[name]
+        return role, self.providers[role.provider]
+
+
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def load_settings(config_path: Path | None = None) -> Settings:
+    load_dotenv(project_root() / ".env")
+    load_dotenv()  # also honor CWD .env
+    path = config_path or project_root() / "config.yaml"
+    with open(path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    return Settings.model_validate(raw)

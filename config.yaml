@@ -1,0 +1,41 @@
+# Cyber-Sages — provider profiles 與角色→model 對映
+# model 完全由使用者自選；改這裡即可，程式不硬編碼任何 model。
+
+providers:
+  anthropic:
+    base_url: null                  # null = Anthropic 官方 API
+    api_key_env: ANTHROPIC_API_KEY
+    # Anthropic 原生能力：prompt caching / adaptive thinking / json_schema 結構化輸出
+    features: [cache_control, adaptive_thinking, json_schema_output]
+  minimax:
+    base_url: "https://api.minimax.io/anthropic"
+    api_key_env: MINIMAX_API_KEY
+    # MiniMax Anthropic 相容層：不送 cache_control / thinking / output_config
+    features: []
+
+# 每個角色獨立指定 provider + model。
+# 範例：日常用 MiniMax，深度推理（辯論裁判、首席合議）用 Claude。
+roles:
+  data_auditor: { provider: minimax, model: MiniMax-M2.7 }
+  analyst:      { provider: minimax, model: MiniMax-M2.7 }
+  sage:         { provider: minimax, model: MiniMax-M2.7 }
+  debater:      { provider: minimax, model: MiniMax-M3 }
+  judge:        { provider: minimax, model: MiniMax-M3 }
+  chief:        { provider: minimax, model: MiniMax-M3 }
+  risk:         { provider: minimax, model: MiniMax-M3 }
+
+# 資料審核閘門參數
+audit:
+  max_price_divergence_pct: 2.0     # 跨來源價格容差（%）
+  max_quote_age_days: 5             # 報價最大允許天數（涵蓋連假）
+  max_fundamentals_age_days: 120    # 財報資料最大允許天數（一季 + 緩衝）
+
+# 引用驗證
+citation:
+  numeric_tolerance_pct: 1.0        # claim 數字 vs evidence 容差（四捨五入誤差）
+  max_rewrite_attempts: 2
+
+defaults:
+  sages: 10                         # 出席大師數
+  debate_rounds: 1
+  max_tokens: 8192
