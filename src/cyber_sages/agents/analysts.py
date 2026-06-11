@@ -20,14 +20,16 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
     ),
     (
         "technical", "Technical Analyst",
-        "Trend (price vs SMAs), momentum (RSI, MACD, returns), volatility, "
-        "distance from 52-week range.",
+        "Give SEPARATE reads for short (1-4週), mid (1-6月), long (6月+) horizons: "
+        "trend (price vs SMA20/50/200), momentum (RSI, MACD, returns), volatility, "
+        "distance from 52-week range. Identify concrete support/resistance levels "
+        "from the SMAs and 52w range.",
         ["history", "quote"],
     ),
     (
         "sentiment", "News & Sentiment Analyst",
-        "What recent headlines imply for the stock; separate signal from noise; "
-        "note catalysts and controversies.",
+        "Short-term market mood: what recent headlines imply for the next weeks; "
+        "separate signal from noise; note catalysts with dates and controversies.",
         ["news", "profile", "quote"],
     ),
     (

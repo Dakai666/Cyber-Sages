@@ -6,10 +6,13 @@ from pathlib import Path
 import pytest
 
 from cyber_sages.agents.schemas import (
+    ActionPlan,
     AnalystReport,
     DebateArgument,
     DebateVerdict,
     FinalVerdict,
+    HorizonView,
+    PriceLevel,
     RiskNote,
     SageSignal,
 )
@@ -17,7 +20,7 @@ from cyber_sages.config import load_settings
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.us_stocks import USStockProvider
 from cyber_sages.pipeline import run_pipeline
-from cyber_sages.report import render_markdown
+from cyber_sages.report import build_agent_payload, render_brief
 from cyber_sages.verify.citation_check import Claim
 
 FIXTURE = Path(__file__).parent / "fixtures" / "aapl_evidence.json"
@@ -55,6 +58,23 @@ class FakeGateway:
         if name == "FinalVerdict":
             return FinalVerdict(
                 stance="bullish", conviction=0.75, thesis="綜合判定看多。",
+                action_plan=ActionPlan(
+                    action="buy_dip", directive="回檔至 SMA50 附近分批買進。",
+                    entry_zone=[PriceLevel(price=282.9, label="第一批",
+                                           basis="SMA50", evidence_ids=["E001"])],
+                    stop_loss=PriceLevel(price=260.0, label="停損",
+                                         basis="SMA200 下方",
+                                         evidence_ids=["E999"]),  # 故意給無效錨點
+                    targets=[PriceLevel(price=315.0, label="第一目標",
+                                        basis="52w 高點", evidence_ids=["E001"])],
+                    position_hint="分3批，總倉位上限1/2",
+                    invalidation="跌破 SMA200 且 RSI 不止穩",
+                ),
+                horizons=[
+                    HorizonView(horizon="short", stance="neutral", summary="動能偏弱"),
+                    HorizonView(horizon="mid", stance="bullish", summary="趨勢完好"),
+                    HorizonView(horizon="long", stance="bullish", summary="護城河仍在"),
+                ],
                 supporting_points=["現金流強"], key_risks=["估值"],
                 what_would_change_my_mind="營收連兩季下滑",
                 dissent_summary="Taleb 提醒尾部風險。",
@@ -120,9 +140,22 @@ async def test_full_pipeline_dry_run():
     assert gateway.calls.count("sage") == 3
     assert "chief" in gateway.calls and "risk" in gateway.calls
 
-    # 報告渲染含證據附錄
-    md = render_markdown(result)
-    assert "證據附錄" in md and "[E001," in md or "E001" in md
+    # 無效錨點（E999）被標警示且 id 被清掉
+    stop = result.verdict.action_plan.stop_loss
+    assert "⚠ 無有效 evidence 錨點" in stop.basis
+    assert stop.evidence_ids == []
+    # 有效錨點保留
+    assert result.verdict.action_plan.entry_zone[0].evidence_ids == ["E001"]
+
+    # 決策簡報含行動計畫與時間軸
+    brief = render_brief(result)
+    assert "決策簡報" in brief and "回檔買進" in brief and "三時間軸" in brief
+
+    # agent payload 結構完整
+    payload = build_agent_payload(result)
+    assert payload["verdict"]["action_plan"]["action"] == "buy_dip"
+    assert payload["council"]["signals"][0]["sage"]
+    assert "note_to_judge" in payload
 
 
 async def test_pipeline_skip_debate():

@@ -81,6 +81,17 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                 severity="warning", check="freshness",
                 message=f"Newest financial statement is {(today - newest).days} days old",
             ))
+        # 逐欄位過期檢查：單一欄位嚴重過時（如公司換 XBRL 標籤導致撈到舊值）
+        # 不能被同類其他新鮮欄位掩護。年報自然落後 ~1 年，超過 ~16 個月即異常。
+        stale_field_days = 500
+        for e in fund:
+            if e.as_of and (today - e.as_of).days > stale_field_days:
+                findings.append(AuditFinding(
+                    severity="error", check="freshness",
+                    message=f"Field {e.field} is {(today - e.as_of).days} days stale "
+                            f"({e.as_of}) — likely wrong/legacy source tag, must not be used",
+                    evidence_ids=[e.id],
+                ))
 
     # 3. 跨來源價格一致性
     live = field_evs("quote", "last_price")

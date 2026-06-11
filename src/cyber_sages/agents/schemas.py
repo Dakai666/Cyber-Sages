@@ -61,9 +61,45 @@ class RiskNote(BaseModel):
     )
 
 
+class PriceLevel(BaseModel):
+    price: float
+    label: str = Field(description="e.g. 分批買進下緣 / 停損 / 第一目標")
+    basis: str = Field(description="Anchor in evidence, e.g. 'SMA200 265.48 [E017] 下方約3%'")
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class HorizonView(BaseModel):
+    horizon: Literal["short", "mid", "long"]  # 1-4週 / 1-6月 / 6月以上
+    stance: Stance
+    summary: str = Field(description="One sentence, Traditional Chinese")
+
+
+Action = Literal["buy_now", "buy_dip", "hold", "reduce", "avoid", "sell"]
+
+
+class ActionPlan(BaseModel):
+    action: Action
+    directive: str = Field(
+        description="One imperative sentence answering 現在該怎麼做, Traditional Chinese"
+    )
+    entry_zone: list[PriceLevel] = Field(default_factory=list)
+    stop_loss: PriceLevel | None = None
+    targets: list[PriceLevel] = Field(default_factory=list)
+    position_hint: str = Field(
+        default="", description="Sizing guidance tied to conviction, e.g. 試單1/4倉、分3批"
+    )
+    invalidation: str = Field(
+        default="", description="What makes this entire plan void (not just stop loss)"
+    )
+
+
 class FinalVerdict(BaseModel):
     stance: Stance
     conviction: float = Field(description="0 to 1 after risk adjustment")
+    action_plan: ActionPlan
+    horizons: list[HorizonView] = Field(
+        default_factory=list, description="Exactly three: short, mid, long"
+    )
     thesis: str = Field(description="Traditional Chinese, the synthesized view")
     supporting_points: list[str] = Field(default_factory=list)
     key_risks: list[str] = Field(default_factory=list)

@@ -59,6 +59,17 @@ def test_cross_source_divergence_is_error():
     assert any(f.check == "cross_source" for f in found)
 
 
+def test_severely_stale_single_field_is_error():
+    # NVDA 真實案例：換 XBRL 標籤後撈到 4 年前的營收，
+    # 其他欄位新鮮，整類檢查不會發現——逐欄位檢查必須抓到
+    store = healthy_store()
+    store.add(Evidence(category="fundamentals", field="revenue_annual",
+                       value=26.9e9, unit="USD", source="edgar",
+                       as_of=date.today() - timedelta(days=1500)))
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "freshness" and "stale" in f.message for f in found)
+
+
 def test_eps_inconsistency_is_warning():
     store = healthy_store()
     store.add(Evidence(category="fundamentals", field="eps_diluted_annual",

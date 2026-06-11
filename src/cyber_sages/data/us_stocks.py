@@ -173,28 +173,35 @@ class USStockProvider:
         filing_base = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}"
 
         for field, concepts, unit in GAAP_FIELDS:
+            # 公司會換 XBRL 標籤（如 NVDA 的營收概念）：
+            # 不能用「第一個有資料的概念」，要跨概念取 end 日期最新的一筆。
+            annual: dict | None = None
+            quarterly: dict | None = None
             for concept in concepts:
-                units = gaap.get(concept, {}).get("units", {})
-                entries = units.get(unit, [])
+                entries = gaap.get(concept, {}).get("units", {}).get(unit, [])
                 if not entries:
                     continue
-                annual = self._latest(entries, form_prefix="10-K", min_duration_days=300 if unit == "USD" and field != "eps_diluted" else None)
-                quarterly = self._latest(entries, form_prefix="10-Q")
-                if annual:
-                    evs.append(Evidence(
-                        category="fundamentals", field=f"{field}_annual",
-                        value=annual["val"], unit=unit, source="SEC EDGAR companyfacts (10-K)",
-                        url=filing_base, as_of=date.fromisoformat(annual["end"]),
-                        note=f"FY{annual.get('fy')} {concept}",
-                    ))
-                if quarterly and (not annual or quarterly["end"] > annual["end"]):
-                    evs.append(Evidence(
-                        category="fundamentals", field=f"{field}_latest_quarter",
-                        value=quarterly["val"], unit=unit, source="SEC EDGAR companyfacts (10-Q)",
-                        url=filing_base, as_of=date.fromisoformat(quarterly["end"]),
-                        note=f"{quarterly.get('fy')}{quarterly.get('fp', '')} {concept}",
-                    ))
-                break  # 第一個有資料的概念就用它
+                a = self._latest(entries, form_prefix="10-K",
+                                 min_duration_days=300 if unit == "USD" and field != "eps_diluted" else None)
+                q = self._latest(entries, form_prefix="10-Q")
+                if a and (annual is None or a["end"] > annual["end"]):
+                    annual = {**a, "_concept": concept}
+                if q and (quarterly is None or q["end"] > quarterly["end"]):
+                    quarterly = {**q, "_concept": concept}
+            if annual:
+                evs.append(Evidence(
+                    category="fundamentals", field=f"{field}_annual",
+                    value=annual["val"], unit=unit, source="SEC EDGAR companyfacts (10-K)",
+                    url=filing_base, as_of=date.fromisoformat(annual["end"]),
+                    note=f"FY{annual.get('fy')} {annual['_concept']}",
+                ))
+            if quarterly and (not annual or quarterly["end"] > annual["end"]):
+                evs.append(Evidence(
+                    category="fundamentals", field=f"{field}_latest_quarter",
+                    value=quarterly["val"], unit=unit, source="SEC EDGAR companyfacts (10-Q)",
+                    url=filing_base, as_of=date.fromisoformat(quarterly["end"]),
+                    note=f"{quarterly.get('fy')}{quarterly.get('fp', '')} {quarterly['_concept']}",
+                ))
         dei = facts.get("facts", {}).get("dei", {})
         shares = dei.get("EntityCommonStockSharesOutstanding", {}).get("units", {}).get("shares", [])
         latest_shares = self._latest(shares, form_prefix="10-")
