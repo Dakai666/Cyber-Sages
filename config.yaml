@@ -29,6 +29,7 @@ audit:
   max_price_divergence_pct: 2.0     # 跨來源價格容差（%）
   max_quote_age_days: 5             # 報價最大允許天數（涵蓋連假）
   max_fundamentals_age_days: 120    # 財報資料最大允許天數（一季 + 緩衝）
+  max_macro_age_days: 45            # 總經序列最大允許天數（月頻 + 緩衝）
 
 # 引用驗證
 citation:
@@ -39,3 +40,4 @@ defaults:
   sages: 10                         # 出席大師數
   debate_rounds: 1
   max_tokens: 8192
+  include_macro: true               # 帶入 FRED 總經背景（需 FRED_API_KEY；--no-macro 可關）

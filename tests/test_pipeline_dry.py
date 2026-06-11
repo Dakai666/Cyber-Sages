@@ -120,7 +120,7 @@ async def test_full_pipeline_dry_run():
 
     result = await run_pipeline(
         "AAPL", settings, gateway,  # type: ignore[arg-type]
-        n_sages=3,
+        n_sages=3, include_macro=False,  # dry-run 不打 FRED
         on_stage=lambda s, st, d: stages_seen.append((s, st)),
     )
 
@@ -162,7 +162,7 @@ async def test_pipeline_skip_debate():
     settings = load_settings()
     result = await run_pipeline(
         "AAPL", settings, FakeGateway(),  # type: ignore[arg-type]
-        n_sages=2, skip_debate=True,
+        n_sages=2, skip_debate=True, include_macro=False,
     )
     assert result.debate is None
     assert result.bull is None

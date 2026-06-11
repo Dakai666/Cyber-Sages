@@ -76,25 +76,44 @@ def _matches(claim_num: float, evidence_val: float, tol_pct: float) -> bool:
     return abs(claim_num - evidence_val) / abs(evidence_val) * 100 <= tol_pct
 
 
+# 單位含量級字 → 換算成基本單位的乘數（如 "thousands of persons" 172 → 172000）
+_UNIT_SCALE = {"thousand": 1e3, "million": 1e6, "billion": 1e9,
+               "兆": 1e12, "億": 1e8, "萬": 1e4}
+
+
 def _candidate_values(cited) -> list[float]:
     """可供比對的值：引用 evidence 的原值、字串證據（如新聞）內的數字，
-    以及任兩原值的簡單衍生（比率、百分比、變動率）——讓「ROE = 淨利/權益」
-    這類正確算術不會被誤判。"""
+    以及合理的衍生——比率、百分比、變動率、單純差值（均線乖離/距高低點價差），
+    加上單位量級換算值，讓「ROE=淨利/權益」「股價高於 SMA200 558 元」「172 thousands
+    寫成 172K」這類正確算術不被誤判。
+
+    符號無關：三大法人買賣超等流向證據帶正負號，中文以「買超/賣超」「距高點」用文字
+    表方向、數字多寫絕對值，故最後把全部候選值連同其絕對值一併納入比對。"""
     base: list[float] = []
+    extra: list[float] = []
     for e in cited:
         if isinstance(e.value, (int, float)):
-            base.append(float(e.value))
+            v = float(e.value)
+            base.append(v)
+            unit = (getattr(e, "unit", None) or "").lower()
+            for word, mult in _UNIT_SCALE.items():
+                if word in unit:
+                    extra.append(v * mult)
+                    break
         elif isinstance(e.value, str):
             base.extend(extract_meaningful_numbers(e.value))
     derived: list[float] = []
     for a in base:
         for b in base:
-            if b == 0 or a == b:
+            if a == b:
                 continue
-            derived.append(a / b)             # 比率（ROE、倍數）
-            derived.append(a / b * 100)       # 百分比（利潤率）
-            derived.append((a - b) / abs(b) * 100)  # 變動率／距離 %
-    return base + derived
+            derived.append(a - b)                       # 差值（乖離/價差）
+            if b != 0:
+                derived.append(a / b)                   # 比率（ROE、倍數）
+                derived.append(a / b * 100)             # 百分比（利潤率）
+                derived.append((a - b) / abs(b) * 100)  # 變動率／距離 %
+    allv = base + extra + derived
+    return allv + [abs(v) for v in allv]
 
 
 def check_claim(claim: Claim, store: EvidenceStore, cfg: CitationConfig) -> ClaimCheck:

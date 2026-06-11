@@ -53,18 +53,27 @@ roles:
 ## 使用
 
 ```bash
-uv run cyber-sages analyze NVDA                    # 完整：10 位大師 + 辯論
+uv run cyber-sages analyze NVDA                    # 美股完整：10 位大師 + 辯論
+uv run cyber-sages analyze 2330                    # 台股（FinMind + yfinance .TW，自動偵測）
 uv run cyber-sages analyze NVDA --sages 5 --depth quick   # 省 token
 uv run cyber-sages analyze NVDA --no-debate        # 跳過辯論
+uv run cyber-sages analyze NVDA --no-macro         # 不帶入 FRED 總經背景
 uv run cyber-sages analyze NVDA --json             # stdout 輸出 verdict.json（管線串接用）
 ```
+
+**市場自動偵測**：純數字代號（`2330`、`0050`）或 `.TW`/`.TWO` 字尾走台股管線——
+FinMind 為第一手來源（綜合損益表/資產負債表/月營收 + 三大法人買賣超 + 融資融券），
+yfinance `.TW` 報價當跨源比對的第二路徑；技術指標一樣在程式裡確定性計算。
+**總經**（FRED：聯邦資金利率、2y/10y、殖利率曲線、CPI 年增、失業率、非農）是獨立的
+`macro` 證據類別，不綁個股——總經分析師據此產報告，同一份證據也餵給陪審團做跨域視角；
+缺 `FRED_API_KEY` 時自動跳過總經分析師。
 
 終端機顯示 Rich 流式畫面（階段進度樹、agent 串流輸出、即時投票表），結束後印出決策簡報。
 
 ### 產出結構
 
 ```
-runs/NVDA-2026-06-11/
+runs/NVDA-2026-06-11_143052/   # 標的-日期_時間（同日重跑不互相覆蓋）
 ├── brief.md          ★ 一頁決策簡報：裁定/進場/停損/目標價位表（每個價位帶
 │                       evidence 錨點）、倉位建議、計畫作廢條件、短中長三時間軸、
 │                       陪審團票數、翻盤條件、少數派觀點
@@ -97,8 +106,8 @@ runs/NVDA-2026-06-11/
 
 ## Roadmap
 
-- [ ] **台股接入**：FinMind（基本面/三大法人/融資券）+ yfinance `.TW`，同一 `MarketDataProvider` 介面
-- [ ] **總經資料**：FRED（利率/通膨/就業），讓總經分析師歸隊、給大師跨域視角
+- [x] **台股接入**：FinMind（基本面/三大法人/融資券）+ yfinance `.TW`，同一 `MarketDataProvider` 介面
+- [x] **總經資料**：FRED（利率/通膨/殖利率曲線/就業），總經分析師歸隊、給大師跨域視角
 - [ ] Crypto（CoinGecko / 鏈上數據）
 - [ ] 回測器：歷史時點重放管線，驗證陪審團勝率
 - [ ] 更多大師 persona（`personas/*.yaml` 純資料檔，新增零程式碼）

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from cyber_sages.agents.analysts import run_all_analysts
 from cyber_sages.agents.council import run_council
@@ -21,8 +22,9 @@ from cyber_sages.agents.schemas import (
 )
 from cyber_sages.agents.synthesis import run_synthesis
 from cyber_sages.config import Settings
+from cyber_sages.data.base import detect_market, make_provider
 from cyber_sages.data.evidence import EvidenceStore
-from cyber_sages.data.us_stocks import USStockProvider
+from cyber_sages.data.macro import MacroProvider
 from cyber_sages.llm.gateway import LLMGateway
 from cyber_sages.verify.data_audit import AuditReport, run_audit
 
@@ -42,6 +44,8 @@ STAGES = [
 
 class AnalysisResult(BaseModel):
     ticker: str
+    # 一次性時間戳（本地時區）：資料夾名 / brief 標題 / payload 全部共用，避免各自 now() 漂移
+    generated_at: datetime = Field(default_factory=lambda: datetime.now().astimezone())
     store: EvidenceStore
     audit: AuditReport
     reports: list[AnalystReport]
@@ -68,20 +72,32 @@ async def run_pipeline(
     *,
     n_sages: int | None = None,
     skip_debate: bool = False,
+    include_macro: bool = True,
     on_stage: StageCallback | None = None,
     on_signal=None,
 ) -> AnalysisResult:
     ticker = ticker.upper()
-    provider = USStockProvider()
+    market = detect_market(ticker)
+    provider = make_provider(market)
 
-    # [1] Collect
-    await _emit(on_stage, "collect", "running", f"yfinance / SEC EDGAR / news for {ticker}")
-    store = EvidenceStore(ticker=ticker)
-    results = await asyncio.gather(
+    # [1] Collect — 個股四路 + 台股籌碼（若 provider 支援）+ 總經（全市場共用）
+    src_label = "FinMind / yfinance .TW" if market == "TW" else "yfinance / SEC EDGAR"
+    want_macro = include_macro and MacroProvider.available()
+    macro_note = " + FRED 總經" if want_macro else ""
+    await _emit(on_stage, "collect", "running",
+                f"[{market}] {src_label} for {ticker}{macro_note}")
+    store = EvidenceStore(ticker=ticker, market=market)
+
+    collectors = [
         provider.get_quote(ticker), provider.get_history(ticker),
         provider.get_fundamentals(ticker), provider.get_news(ticker),
-        return_exceptions=True,
-    )
+    ]
+    if hasattr(provider, "get_chips"):
+        collectors.append(provider.get_chips(ticker))
+    if want_macro:
+        collectors.append(MacroProvider().get_macro())
+
+    results = await asyncio.gather(*collectors, return_exceptions=True)
     fetch_errors = []
     for r in results:
         if isinstance(r, BaseException):

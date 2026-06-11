@@ -11,7 +11,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Category = Literal["quote", "fundamentals", "history", "news", "profile"]
+Category = Literal[
+    "quote", "fundamentals", "history", "news", "profile", "chips", "macro"
+]
+# chips = 台股籌碼面（三大法人買賣超 / 融資融券）
+# macro = 總經（利率/通膨/殖利率曲線/就業），全市場共用、非個股
 
 
 class Evidence(BaseModel):
@@ -36,6 +40,7 @@ class Evidence(BaseModel):
 
 class EvidenceStore(BaseModel):
     ticker: str
+    market: str = "US"  # "US" | "TW" …，審核與下游可據此調整口徑
     items: list[Evidence] = Field(default_factory=list)
 
     def add(self, ev: Evidence) -> Evidence:

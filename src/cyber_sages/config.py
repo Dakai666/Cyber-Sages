@@ -35,6 +35,7 @@ class AuditConfig(BaseModel):
     max_price_divergence_pct: float = 2.0
     max_quote_age_days: int = 5
     max_fundamentals_age_days: int = 120
+    max_macro_age_days: int = 45      # 總經多為月頻，一個月+緩衝
 
 
 class CitationConfig(BaseModel):
@@ -46,6 +47,7 @@ class DefaultsConfig(BaseModel):
     sages: int = 10
     debate_rounds: int = 1
     max_tokens: int = 8192
+    include_macro: bool = True        # 預設帶入 FRED 總經（有 key 才會真正抓）
 
 
 class Settings(BaseModel):

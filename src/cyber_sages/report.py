@@ -1,6 +1,6 @@
 """輸出層：
 
-runs/<TICKER>-<date>/
+runs/<TICKER>-<date>_<time>/
 ├── brief.md          一頁式決策簡報（主產出，回答「現在怎麼做」）
 ├── verdict.json      machine-readable 決策 payload（給呼叫端 AI agent 當法官用）
 ├── details/          深挖用子檔案
@@ -16,7 +16,6 @@ runs/<TICKER>-<date>/
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
 from pathlib import Path
 
 from cyber_sages.agents.schemas import PriceLevel
@@ -53,7 +52,8 @@ def render_brief(result: AnalysisResult) -> str:
     price_str = f"現價 **{price:g}** `[{price_id}]`" if price else "現價不可得"
 
     lines = [
-        f"# {result.ticker} 決策簡報 · {date.today().isoformat()}",
+        f"# {result.ticker}（{result.store.market}）決策簡報 · "
+        f"{result.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"{price_str} · 陪審團 {len(c.signals)} 席",
         "",
         f"## 裁定：{ACTION_ZH[plan.action]} · {STANCE_ZH[v.stance]} · 信心 {v.conviction:.2f}",
@@ -204,7 +204,8 @@ def build_agent_payload(result: AnalysisResult) -> dict:
     c = result.council
     return {
         "ticker": result.ticker,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "market": result.store.market,
+        "generated_at": result.generated_at.isoformat(),
         "current_price": {"value": price, "evidence_id": price_id},
         "verdict": result.verdict.model_dump(mode="json"),
         "council": {
@@ -238,7 +239,8 @@ def build_agent_payload(result: AnalysisResult) -> dict:
 # ---------- save ----------
 
 def save_run(result: AnalysisResult, base_dir: Path | None = None) -> Path:
-    out = (base_dir or Path.cwd() / "runs") / f"{result.ticker}-{date.today().isoformat()}"
+    stamp = result.generated_at.strftime("%Y-%m-%d_%H%M%S")
+    out = (base_dir or Path.cwd() / "runs") / f"{result.ticker}-{stamp}"
     details = out / "details"
     details.mkdir(parents=True, exist_ok=True)
 
