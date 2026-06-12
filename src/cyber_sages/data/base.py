@@ -36,9 +36,22 @@ def detect_market(ticker: str) -> str:
     if t.endswith(".TW") or t.endswith(".TWO"):
         return "TW"
     core = t.split(".")[0]
-    if core.isdigit() and 4 <= len(core) <= 6:
+    # 台股代號為 4-6 位數字，可帶單一字母尾碼（槓桿 ETF 00631L、特別股 2841A）
+    digits = core[:-1] if core[-1:].isalpha() else core
+    if digits.isdigit() and 4 <= len(digits) <= 6:
         return "TW"
     return "US"
+
+
+def is_tw_etf(ticker: str) -> bool:
+    """台股 ETF 代號以 00 開頭（0050 / 00878 / 00631L / 00403A）。
+    ETF 無個股損益表，財報相關要求需據此豁免。"""
+    core = ticker.upper().split(".")[0]
+    return detect_market(ticker) == "TW" and core.startswith("00")
+
+
+def detect_instrument(ticker: str) -> str:
+    return "etf" if is_tw_etf(ticker) else "stock"
 
 
 def make_provider(market: str) -> MarketDataProvider:

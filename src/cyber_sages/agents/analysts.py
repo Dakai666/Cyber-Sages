@@ -62,7 +62,11 @@ STRICT EVIDENCE RULES — violations get your report rejected:
 1. Use ONLY the evidence provided below. No outside knowledge for any number.
 2. Every claim must cite the evidence ids it relies on (e.g. ["E012", "E013"]).
 3. Quote numbers EXACTLY as they appear in evidence (you may convert units like
-   416161000000 USD -> $416.2B, but the value must match within 1%).
+   416161000000 USD -> $416.2B, but the value must match within 1%). When the evidence
+   line shows a scale hint (e.g. "≈1.13兆", "≈24.2B"), use THAT scale verbatim — do not
+   re-derive 億/兆/B yourself (a 10x slip like writing 兆-scale as 億 fails verification).
+   For signed flow values (籌碼 net buy/sell), keep the sign: a negative value is 賣超/
+   淨流出 — never cite its positive magnitude.
 4. If evidence is missing for something important, say so in your summary instead
    of guessing.
 

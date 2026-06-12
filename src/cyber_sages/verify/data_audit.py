@@ -55,10 +55,16 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
         fundamentals_fields = ["revenue_annual", "net_income_annual"]
     required = [
         ("quote", ["last_price", "latest_close"], "error", "no usable price"),
-        ("fundamentals", fundamentals_fields, "error", "no first-hand financials"),
         ("history", ["sma_20"], "warning", "no price history / indicators"),
         ("news", None, "warning", "no recent news"),
     ]
+    # ETF 無個股損益表，要求基本面是錯的口徑；個股才強制第一手財報。
+    if store.instrument == "etf":
+        required.append(("fundamentals", fundamentals_fields, "warning",
+                         "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"))
+    else:
+        required.append(("fundamentals", fundamentals_fields, "error",
+                         "no first-hand financials"))
     # 台股籌碼面：缺三大法人買賣超只是警示（個股當日可能無法人進出資料）
     if store.market == "TW":
         required.append(("chips", None, "warning", "no institutional/margin (籌碼) data"))

@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pandas as pd
 
 from cyber_sages.config import AuditConfig
-from cyber_sages.data.base import detect_market
+from cyber_sages.data.base import detect_instrument, detect_market, is_tw_etf
 from cyber_sages.data.evidence import Evidence, EvidenceStore
 from cyber_sages.data.indicators import compute_indicator_evidence
 from cyber_sages.data.tw_stocks import (
@@ -35,6 +35,26 @@ def test_to_stock_id():
     assert to_stock_id("2330") == "2330"
     assert to_stock_id("2330.TW") == "2330"
     assert to_stock_id("2330.two") == "2330"
+
+
+def test_etf_detection():
+    assert is_tw_etf("0050") and is_tw_etf("00878") and is_tw_etf("00631L")
+    assert not is_tw_etf("2330") and not is_tw_etf("AAPL")
+    assert detect_instrument("0050") == "etf"
+    assert detect_instrument("2330") == "stock"
+
+
+def test_digest_scale_hint():
+    # 大數值附可讀量級，台股用 億/兆、其餘用 B/T；讓 LLM 直接引用正確刻度
+    tw = Evidence(category="fundamentals", field="total_assets",
+                  value=8_660_949_685_000.0, unit="TWD", source="x")
+    assert "≈8.661兆" in tw.digest_line()
+    us = Evidence(category="fundamentals", field="shares_outstanding",
+                  value=24_200_000_000.0, unit="shares", source="x")
+    assert "≈24.2B" in us.digest_line()
+    small = Evidence(category="macro", field="nonfarm", value=172000, unit="persons",
+                     source="x")
+    assert "≈" not in small.digest_line()  # < 1e6 不加提示
 
 
 # ---------- 財報解析（綜合損益表 + 資產負債表）----------
@@ -198,6 +218,20 @@ def test_tw_audit_warns_when_chips_missing():
     findings = deterministic_checks(store, AuditConfig())
     assert any("籌碼" in f.message or "chips" in f.message.lower() for f in findings)
     assert all(f.severity != "error" for f in findings)  # 缺籌碼只是 warning
+
+
+def test_etf_audit_does_not_error_on_missing_fundamentals():
+    # 0050 等 ETF 無個股財報，缺基本面只能是 warning，不該降級封頂信心
+    store = EvidenceStore(ticker="0050", market="TW", instrument="etf")
+    store.add_all([
+        _ev("quote", "latest_close", 99.85, unit="TWD"),
+        _ev("history", "sma_20", 100.6, unit="TWD"),
+        _ev("news", "headline_1", "0050 成分股調整"),
+        _ev("chips", "institutional_net_buy_total", -167_737_947, unit="shares"),
+    ])
+    findings = deterministic_checks(store, AuditConfig())
+    assert all(f.severity != "error" for f in findings)
+    assert any(f.check == "completeness" and "ETF" in f.message for f in findings)
 
 
 def test_us_audit_still_requires_annual_fundamentals():

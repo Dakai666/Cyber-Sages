@@ -52,12 +52,13 @@ class MacroProvider:
                 yoy = (cpi[0][1] / cpi[12][1] - 1) * 100
                 evs.append(self._ev("cpi_yoy_pct", round(yoy, 2), "%",
                                     "CPIAUCSL", cpi[0][0], "CPI 年增率（通膨）"))
-            # 非農就業月增（千人）
+            # 非農就業月增。FRED PAYEMS 以「千人」計，這裡換算成實際人數輸出，
+            # 讓分析師直接引用（避免「172K vs 172」這種單位刻度落差被誤判）。
             pay = await self._latest_obs(client, "PAYEMS", key, limit=2)
             if len(pay) >= 2:
                 evs.append(self._ev("nonfarm_payrolls_mom_change",
-                                    round(pay[0][1] - pay[1][1], 1), "thousands of persons",
-                                    "PAYEMS", pay[0][0], "非農就業人數月增（千人）"))
+                                    round((pay[0][1] - pay[1][1]) * 1000), "persons",
+                                    "PAYEMS", pay[0][0], "非農就業人數月增"))
             return evs
 
     @staticmethod

@@ -42,11 +42,12 @@ class CitationReport(BaseModel):
 
 _SUFFIX = {"k": 1e3, "m": 1e6, "b": 1e9, "t": 1e12, "兆": 1e12, "億": 1e8, "萬": 1e4}
 
-# -$416.2B / 35.3x / -5.2% / 7.46 / 416,161,000,000 / 4.283兆
+# -$416.2B / 35.3x / -5.2% / 7.46 / 416,161,000,000 / 4.283兆 / 1,134.1B
+# 千分位群組後允許小數（1,134.1），否則「1,134.1B」會被拆成 1,134 與 1B 兩段錯誤值。
 _NUM_RE = re.compile(
     r"(?P<sign>-)?"
     r"(?P<currency>[$])?"
-    r"(?P<num>\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+)"
+    r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d+)"
     r"\s*(?P<suffix>[kKmMbBtT](?![a-zA-Z])|[兆億萬]|%|x(?![a-zA-Z]))?"
 )
 
@@ -76,30 +77,17 @@ def _matches(claim_num: float, evidence_val: float, tol_pct: float) -> bool:
     return abs(claim_num - evidence_val) / abs(evidence_val) * 100 <= tol_pct
 
 
-# 單位含量級字 → 換算成基本單位的乘數（如 "thousands of persons" 172 → 172000）
-_UNIT_SCALE = {"thousand": 1e3, "million": 1e6, "billion": 1e9,
-               "兆": 1e12, "億": 1e8, "萬": 1e4}
-
-
 def _candidate_values(cited) -> list[float]:
-    """可供比對的值：引用 evidence 的原值、字串證據（如新聞）內的數字，
-    以及合理的衍生——比率、百分比、變動率、單純差值（均線乖離/距高低點價差），
-    加上單位量級換算值，讓「ROE=淨利/權益」「股價高於 SMA200 558 元」「172 thousands
-    寫成 172K」這類正確算術不被誤判。
+    """可供比對的值：引用 evidence 的原值、字串證據（如新聞）內的數字，以及任兩原值
+    的正確算術衍生——比率、百分比、變動率，以及單純差值（均線乖離/距高低點價差）。
 
-    符號無關：三大法人買賣超等流向證據帶正負號，中文以「買超/賣超」「距高點」用文字
-    表方向、數字多寫絕對值，故最後把全部候選值連同其絕對值一併納入比對。"""
+    刻意只納入「明確正確」的衍生，不做量級容忍或符號無關比對——那會把源頭的單位/
+    方向錯誤一起放行。源頭該做的是把數字以可讀量級呈現（見 Evidence.digest_line），
+    讓分析師直接引用正確值，而非靠驗證層事後猜測。"""
     base: list[float] = []
-    extra: list[float] = []
     for e in cited:
         if isinstance(e.value, (int, float)):
-            v = float(e.value)
-            base.append(v)
-            unit = (getattr(e, "unit", None) or "").lower()
-            for word, mult in _UNIT_SCALE.items():
-                if word in unit:
-                    extra.append(v * mult)
-                    break
+            base.append(float(e.value))
         elif isinstance(e.value, str):
             base.extend(extract_meaningful_numbers(e.value))
     derived: list[float] = []
@@ -112,8 +100,7 @@ def _candidate_values(cited) -> list[float]:
                 derived.append(a / b)                   # 比率（ROE、倍數）
                 derived.append(a / b * 100)             # 百分比（利潤率）
                 derived.append((a - b) / abs(b) * 100)  # 變動率／距離 %
-    allv = base + extra + derived
-    return allv + [abs(v) for v in allv]
+    return base + derived
 
 
 def check_claim(claim: Claim, store: EvidenceStore, cfg: CitationConfig) -> ClaimCheck:

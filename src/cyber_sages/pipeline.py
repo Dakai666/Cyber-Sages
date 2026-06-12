@@ -22,7 +22,7 @@ from cyber_sages.agents.schemas import (
 )
 from cyber_sages.agents.synthesis import run_synthesis
 from cyber_sages.config import Settings
-from cyber_sages.data.base import detect_market, make_provider
+from cyber_sages.data.base import detect_instrument, detect_market, make_provider
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.data.macro import MacroProvider
 from cyber_sages.llm.gateway import LLMGateway
@@ -86,7 +86,8 @@ async def run_pipeline(
     macro_note = " + FRED 總經" if want_macro else ""
     await _emit(on_stage, "collect", "running",
                 f"[{market}] {src_label} for {ticker}{macro_note}")
-    store = EvidenceStore(ticker=ticker, market=market)
+    store = EvidenceStore(ticker=ticker, market=market,
+                          instrument=detect_instrument(ticker))
 
     collectors = [
         provider.get_quote(ticker), provider.get_history(ticker),

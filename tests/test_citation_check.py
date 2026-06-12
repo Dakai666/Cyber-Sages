@@ -109,26 +109,29 @@ def test_price_gap_difference_verified():
     assert check_claim(claim, store, CFG).verified
 
 
-def test_signed_chip_flow_magnitude_verified():
-    # 三大法人買賣超證據帶負號（賣超），中文以「賣超」表方向、數字寫絕對值
+def test_mixed_comma_decimal_suffix_parsed_as_one_number():
+    # 「1,134.1B」千分位+小數+量級字尾，曾被拆成 [1134.0, 1e9] 造成正確 claim 誤殺
+    assert extract_meaningful_numbers("營收 1,134.1B TWD") == [1_134_100_000_000.0]
+    # 對應的引用驗證：1,134.1B == evidence 1.1341兆（容差內）
     store = EvidenceStore(ticker="2330", market="TW")
-    store.add(Evidence(category="chips", field="foreign_net_buy", value=-4_904_284,
-                       unit="shares", source="FinMind"))
-    claim = Claim(text="外資賣超約 490 萬股", evidence_ids=["E001"])
+    store.add(Evidence(category="fundamentals", field="revenue_latest_quarter",
+                       value=1_134_103_440_000.0, unit="TWD", source="FinMind"))
+    claim = Claim(text="最新季度營收 1,134.1B TWD", evidence_ids=["E001"])
     assert check_claim(claim, store, CFG).verified
 
 
-def test_macro_unit_scale_thousands_verified():
-    # 總經 nonfarm 以「千人」為單位存 172，分析師展開成 172K（172000 人）
-    store = EvidenceStore(ticker="AAPL")
-    store.add(Evidence(category="macro", field="nonfarm_payrolls_mom_change",
-                       value=172.0, unit="thousands of persons", source="FRED PAYEMS"))
-    claim = Claim(text="非農就業月增 172K", evidence_ids=["E001"])
-    assert check_claim(claim, store, CFG).verified
+def test_magnitude_slip_still_caught():
+    # 源頭該修的是呈現（digest 量級提示），而非放行量級錯誤：
+    # evidence 為 8.66兆，claim 誤寫成「8660.95億」(差 10x) 必須 fail
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="fundamentals", field="total_assets",
+                       value=8_660_949_685_000.0, unit="TWD", source="FinMind"))
+    claim = Claim(text="總資產 8660.95億元", evidence_ids=["E001"])
+    assert not check_claim(claim, store, CFG).verified
 
 
-def test_tampered_number_still_caught_with_richer_candidates():
-    # 放寬候選值後，仍須擋下無法由任一引用值推導的捏造數字
+def test_tampered_number_still_caught():
+    # 仍須擋下無法由任一引用值推導的捏造數字
     store = make_store()
     claim = Claim(text="FY revenue was $520.0B", evidence_ids=["E001"])
     assert not check_claim(claim, store, CFG).verified
