@@ -35,6 +35,10 @@ class AuditConfig(BaseModel):
     max_price_divergence_pct: float = 2.0
     max_quote_age_days: int = 5
     max_fundamentals_age_days: int = 120
+    max_macro_age_days: int = 45      # 總經多為月頻，一個月+緩衝
+    # 單一財報欄位嚴重過時（如換 XBRL 標籤撈到舊值）即 error；年報自然落後 ~1 年，
+    # 超過 ~16 個月視為異常。與 max_fundamentals_age_days（整類新鮮度）分開。
+    max_fundamentals_stale_field_days: int = 500
 
 
 class CitationConfig(BaseModel):
@@ -46,6 +50,7 @@ class DefaultsConfig(BaseModel):
     sages: int = 10
     debate_rounds: int = 1
     max_tokens: int = 8192
+    include_macro: bool = True        # 預設帶入 FRED 總經（有 key 才會真正抓）
 
 
 class Settings(BaseModel):

@@ -112,10 +112,11 @@ class Dashboard:
 
 @app.command()
 def analyze(
-    ticker: str = typer.Argument(..., help="股票代號，例如 AAPL"),
+    ticker: str = typer.Argument(..., help="股票代號：AAPL（美股）/ 2330（台股）"),
     sages: int = typer.Option(None, "--sages", help="出席大師數（預設 config）"),
     depth: str = typer.Option("full", "--depth", help="full | quick（較省 token）"),
     no_debate: bool = typer.Option(False, "--no-debate", help="跳過多空辯論"),
+    no_macro: bool = typer.Option(False, "--no-macro", help="不帶入 FRED 總經背景"),
     as_json: bool = typer.Option(False, "--json",
                                  help="agent 模式：stdout 輸出 verdict.json，進度走 stderr"),
     config: Path = typer.Option(None, "--config", help="自訂 config.yaml 路徑"),
@@ -126,9 +127,10 @@ def analyze(
         settings.defaults.max_tokens = min(settings.defaults.max_tokens, 4096)
         if sages is None:
             sages = min(settings.defaults.sages, 5)
+    include_macro = settings.defaults.include_macro and not no_macro
 
     if as_json:
-        result = _run_plain(ticker, settings, sages, no_debate)
+        result = _run_plain(ticker, settings, sages, no_debate, include_macro)
         out_dir = save_run(result)
         print(json.dumps(build_agent_payload(result), ensure_ascii=False, indent=2))
         Console(stderr=True).print(f"[dim]saved: {out_dir}[/]")
@@ -142,7 +144,7 @@ def analyze(
                   vertical_overflow="crop") as live:
             ticker_task = asyncio.create_task(run_pipeline(
                 ticker, settings, gateway,
-                n_sages=sages, skip_debate=no_debate,
+                n_sages=sages, skip_debate=no_debate, include_macro=include_macro,
                 on_stage=dash.on_stage, on_signal=dash.on_signal,
             ))
             while not ticker_task.done():
@@ -164,7 +166,8 @@ def analyze(
     console.print(f"\n[dim]已儲存：{out_dir}/ → brief.md · verdict.json · details/ · evidence.json[/]")
 
 
-def _run_plain(ticker: str, settings, sages: int | None, no_debate: bool):
+def _run_plain(ticker: str, settings, sages: int | None, no_debate: bool,
+               include_macro: bool = True):
     """agent 模式：無 Live 畫面，stage 進度印到 stderr。"""
     err = Console(stderr=True)
     gateway = LLMGateway(settings)  # 不串流文字，省 stderr 噪音
@@ -175,7 +178,8 @@ def _run_plain(ticker: str, settings, sages: int | None, no_debate: bool):
     try:
         return asyncio.run(run_pipeline(
             ticker, settings, gateway,
-            n_sages=sages, skip_debate=no_debate, on_stage=on_stage,
+            n_sages=sages, skip_debate=no_debate, include_macro=include_macro,
+            on_stage=on_stage,
         ))
     except RuntimeError as e:
         err.print(f"[red]分析失敗：{e}[/]")
@@ -201,6 +205,41 @@ def doctor(config: Path = typer.Option(None, "--config")):
             console.print(f"[green]✓[/] {provider:10s} role={role:12s} model={model} → {text!r}")
         except Exception as e:
             console.print(f"[red]✗[/] {provider:10s} role={role:12s} → {e}")
+
+    # 資料源連線檢查
+    console.rule("[dim]data sources")
+    _check_data_sources()
+
+
+def _check_data_sources() -> None:
+    import os
+
+    import httpx
+
+    from cyber_sages.data.finmind import finmind_get
+    from cyber_sages.data.macro import MacroProvider
+
+    async def finmind_probe() -> int:
+        async with httpx.AsyncClient(timeout=30) as client:
+            rows = await finmind_get(client, "TaiwanStockPrice", "2330",
+                                     start_date="2026-01-01")
+            return len(rows)
+
+    tok = "set" if os.environ.get("FINMIND_TOKEN") else "missing"
+    try:
+        n = asyncio.run(finmind_probe())
+        console.print(f"[green]✓[/] FinMind   token={tok:7s} → TaiwanStockPrice 2330 {n} rows")
+    except Exception as e:
+        console.print(f"[red]✗[/] FinMind   token={tok:7s} → {e}")
+
+    if MacroProvider.available():
+        try:
+            evs = asyncio.run(MacroProvider().get_macro())
+            console.print(f"[green]✓[/] FRED      key=set     → {len(evs)} macro series")
+        except Exception as e:
+            console.print(f"[red]✗[/] FRED      key=set     → {e}")
+    else:
+        console.print("[yellow]○[/] FRED      key=missing → 總經停用（analyze 會自動跳過總經分析師）")
 
 
 if __name__ == "__main__":

@@ -23,8 +23,10 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "Give SEPARATE reads for short (1-4週), mid (1-6月), long (6月+) horizons: "
         "trend (price vs SMA20/50/200), momentum (RSI, MACD, returns), volatility, "
         "distance from 52-week range. Identify concrete support/resistance levels "
-        "from the SMAs and 52w range.",
-        ["history", "quote"],
+        "from the SMAs and 52w range. If 籌碼 (chips) evidence is present — 台股三大法人"
+        "買賣超 (foreign/trust/dealer net) and 融資融券餘額 (margin/short balances) — "
+        "read it as an institutional-flow and leverage signal alongside the technicals.",
+        ["history", "quote", "chips"],
     ),
     (
         "sentiment", "News & Sentiment Analyst",
@@ -35,8 +37,20 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
     (
         "valuation", "Valuation Analyst",
         "Whether the current price is justified: P/E vs growth, market cap vs revenue "
-        "and cash flow, implied expectations. First-hand SEC figures take priority.",
+        "and cash flow, implied expectations. First-hand SEC figures take priority. "
+        "When computing P/E, anchor on TRAILING-TWELVE-MONTH earnings: use eps_ttm / "
+        "revenue_ttm if present (台股 FinMind 財報為單季值，切勿用單季 EPS×4 或單季 EPS "
+        "直接除股價，否則本益比會偏離數倍).",
         ["fundamentals", "quote", "profile"],
+    ),
+    (
+        "macro", "Macro Analyst",
+        "The macro regime and what it implies for risk assets and THIS stock's sector: "
+        "rate level and direction (fed funds, 2y/10y), the 10y-2y curve (inversion = "
+        "recession signal), inflation trend (CPI YoY), and labor market (unemployment, "
+        "nonfarm payrolls). Translate the macro backdrop into a tailwind/headwind for "
+        "the name — do NOT restate raw numbers without an investment implication.",
+        ["macro"],
     ),
 ]
 
@@ -48,7 +62,11 @@ STRICT EVIDENCE RULES — violations get your report rejected:
 1. Use ONLY the evidence provided below. No outside knowledge for any number.
 2. Every claim must cite the evidence ids it relies on (e.g. ["E012", "E013"]).
 3. Quote numbers EXACTLY as they appear in evidence (you may convert units like
-   416161000000 USD -> $416.2B, but the value must match within 1%).
+   416161000000 USD -> $416.2B, but the value must match within 1%). When the evidence
+   line shows a scale hint (e.g. "≈1.13兆", "≈24.2B"), use THAT scale verbatim — do not
+   re-derive 億/兆/B yourself (a 10x slip like writing 兆-scale as 億 fails verification).
+   For signed flow values (籌碼 net buy/sell), keep the sign: a negative value is 賣超/
+   淨流出 — never cite its positive magnitude.
 4. If evidence is missing for something important, say so in your summary instead
    of guessing.
 
@@ -93,7 +111,13 @@ async def run_analyst(
 async def run_all_analysts(
     store: EvidenceStore, settings: Settings, gateway: LLMGateway,
 ) -> list[AnalystReport]:
+    # 只跑「至少有一類可見證據」的分析師：總經分析師在沒有 macro 證據時自動缺席，
+    # 不會憑空產出（反幻覺）。
+    active = [
+        (key, title, focus, cats) for key, title, focus, cats in ANALYSTS
+        if any(store.by_category(c) for c in cats)
+    ]
     return list(await asyncio.gather(*[
         run_analyst(key, title, focus, cats, store, settings, gateway)
-        for key, title, focus, cats in ANALYSTS
+        for key, title, focus, cats in active
     ]))

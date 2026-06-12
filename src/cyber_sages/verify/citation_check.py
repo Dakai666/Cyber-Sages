@@ -42,11 +42,12 @@ class CitationReport(BaseModel):
 
 _SUFFIX = {"k": 1e3, "m": 1e6, "b": 1e9, "t": 1e12, "兆": 1e12, "億": 1e8, "萬": 1e4}
 
-# -$416.2B / 35.3x / -5.2% / 7.46 / 416,161,000,000 / 4.283兆
+# -$416.2B / 35.3x / -5.2% / 7.46 / 416,161,000,000 / 4.283兆 / 1,134.1B
+# 千分位群組後允許小數（1,134.1），否則「1,134.1B」會被拆成 1,134 與 1B 兩段錯誤值。
 _NUM_RE = re.compile(
     r"(?P<sign>-)?"
     r"(?P<currency>[$])?"
-    r"(?P<num>\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+)"
+    r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d+)"
     r"\s*(?P<suffix>[kKmMbBtT](?![a-zA-Z])|[兆億萬]|%|x(?![a-zA-Z]))?"
 )
 
@@ -77,9 +78,12 @@ def _matches(claim_num: float, evidence_val: float, tol_pct: float) -> bool:
 
 
 def _candidate_values(cited) -> list[float]:
-    """可供比對的值：引用 evidence 的原值、字串證據（如新聞）內的數字，
-    以及任兩原值的簡單衍生（比率、百分比、變動率）——讓「ROE = 淨利/權益」
-    這類正確算術不會被誤判。"""
+    """可供比對的值：引用 evidence 的原值、字串證據（如新聞）內的數字，以及任兩原值
+    的正確算術衍生——比率、百分比、變動率，以及單純差值（均線乖離/距高低點價差）。
+
+    刻意只納入「明確正確」的衍生，不做量級容忍或符號無關比對——那會把源頭的單位/
+    方向錯誤一起放行。源頭該做的是把數字以可讀量級呈現（見 Evidence.digest_line），
+    讓分析師直接引用正確值，而非靠驗證層事後猜測。"""
     base: list[float] = []
     for e in cited:
         if isinstance(e.value, (int, float)):
@@ -89,11 +93,13 @@ def _candidate_values(cited) -> list[float]:
     derived: list[float] = []
     for a in base:
         for b in base:
-            if b == 0 or a == b:
+            if a == b:
                 continue
-            derived.append(a / b)             # 比率（ROE、倍數）
-            derived.append(a / b * 100)       # 百分比（利潤率）
-            derived.append((a - b) / abs(b) * 100)  # 變動率／距離 %
+            derived.append(a - b)                       # 差值（乖離/價差）
+            if b != 0:
+                derived.append(a / b)                   # 比率（ROE、倍數）
+                derived.append(a / b * 100)             # 百分比（利潤率）
+                derived.append((a - b) / abs(b) * 100)  # 變動率／距離 %
     return base + derived
 
 

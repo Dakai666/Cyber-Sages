@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 import httpx
 
 from cyber_sages.data.evidence import Evidence
+from cyber_sages.data.indicators import compute_indicator_evidence
 
 EDGAR_TICKER_MAP = "https://www.sec.gov/files/company_tickers.json"
 EDGAR_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
@@ -115,46 +116,11 @@ class USStockProvider:
         hist = t.history(period="1y", auto_adjust=True).dropna(subset=["Close"])
         if len(hist) < 30:
             return []
-        close = hist["Close"]
-        as_of = hist.index[-1].date()
-        url = f"https://finance.yahoo.com/quote/{ticker}/history"
-
-        def ev(field: str, value: float, unit: str | None = None, note: str | None = None) -> Evidence:
-            return Evidence(
-                category="history", field=field, value=round(float(value), 2),
-                unit=unit, source="computed from yfinance 1y daily closes",
-                url=url, as_of=as_of, note=note,
-            )
-
-        evs = [
-            ev("sma_20", close.rolling(20).mean().iloc[-1], "USD"),
-            ev("sma_50", close.rolling(50).mean().iloc[-1], "USD"),
-            ev("return_1m_pct", (close.iloc[-1] / close.iloc[-21] - 1) * 100, "%"),
-            ev("return_3m_pct", (close.iloc[-1] / close.iloc[-63] - 1) * 100, "%"),
-            ev("high_52w", close.max(), "USD"),
-            ev("low_52w", close.min(), "USD"),
-            ev("volatility_30d_annualized_pct",
-               close.pct_change().tail(30).std() * (252 ** 0.5) * 100, "%"),
-        ]
-        if len(close) >= 200:
-            evs.append(ev("sma_200", close.rolling(200).mean().iloc[-1], "USD"))
-            evs.append(ev("return_1y_pct", (close.iloc[-1] / close.iloc[0] - 1) * 100, "%"))
-
-        # RSI(14)
-        delta = close.diff()
-        gain = delta.clip(lower=0).rolling(14).mean().iloc[-1]
-        loss = (-delta.clip(upper=0)).rolling(14).mean().iloc[-1]
-        if loss > 0:
-            evs.append(ev("rsi_14", 100 - 100 / (1 + gain / loss)))
-
-        # MACD(12,26,9) histogram
-        ema12 = close.ewm(span=12, adjust=False).mean()
-        ema26 = close.ewm(span=26, adjust=False).mean()
-        macd = ema12 - ema26
-        signal = macd.ewm(span=9, adjust=False).mean()
-        evs.append(ev("macd_histogram", (macd - signal).iloc[-1],
-                      note="positive = bullish momentum"))
-        return evs
+        return compute_indicator_evidence(
+            hist["Close"], as_of=hist.index[-1].date(),
+            url=f"https://finance.yahoo.com/quote/{ticker}/history",
+            source="computed from yfinance 1y daily closes", price_unit="USD",
+        )
 
     # ---------- fundamentals (SEC EDGAR 第一手) ----------
 

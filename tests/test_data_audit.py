@@ -1,8 +1,13 @@
 from datetime import date, timedelta
 
-from cyber_sages.config import AuditConfig
+from cyber_sages.config import AuditConfig, Settings
 from cyber_sages.data.evidence import Evidence, EvidenceStore
-from cyber_sages.verify.data_audit import deterministic_checks
+from cyber_sages.verify.data_audit import (
+    AuditFinding,
+    _AuditorOutput,
+    deterministic_checks,
+    run_audit,
+)
 
 CFG = AuditConfig(max_price_divergence_pct=2.0, max_quote_age_days=5,
                   max_fundamentals_age_days=120)
@@ -70,6 +75,20 @@ def test_severely_stale_single_field_is_error():
     assert any(f.check == "freshness" and "stale" in f.message for f in found)
 
 
+def test_stale_field_threshold_is_configurable():
+    # 逐欄位過期門檻改由 config 驅動（不再 hardcode 500）
+    store = healthy_store()
+    store.add(Evidence(category="fundamentals", field="revenue_annual",
+                       value=1e9, unit="USD", source="edgar",
+                       as_of=date.today() - timedelta(days=300)))
+    loose = AuditConfig(max_fundamentals_stale_field_days=400)
+    strict = AuditConfig(max_fundamentals_stale_field_days=200)
+    assert not any(f.check == "freshness" and "stale" in f.message
+                   for f in errors(deterministic_checks(store, loose)))
+    assert any(f.check == "freshness" and "stale" in f.message
+               for f in errors(deterministic_checks(store, strict)))
+
+
 def test_eps_inconsistency_is_warning():
     store = healthy_store()
     store.add(Evidence(category="fundamentals", field="eps_diluted_annual",
@@ -80,3 +99,27 @@ def test_eps_inconsistency_is_warning():
     findings = deterministic_checks(store, CFG)
     assert any(f.check == "internal_consistency" and f.severity == "warning"
                for f in findings)
+
+
+class _FakeGateway:
+    def __init__(self, output):
+        self._output = output
+
+    async def structured(self, role, *, system, prompt, schema, **kw):
+        return self._output
+
+
+async def test_llm_auditor_error_is_clamped_to_warning():
+    # 稽核員幻覺把現實資料判成 error（曾因「未來日期」誤判全表）不該獨自觸發降級；
+    # 降級只保留給可信的確定性閘門。
+    store = healthy_store()
+    settings = Settings.model_construct(audit=CFG)
+    fake = _FakeGateway(_AuditorOutput(
+        findings=[AuditFinding(severity="error", check="data_freshness",
+                               message="dates are in the future → fake data")],
+        summary="bogus",
+    ))
+    report = await run_audit(store, settings, fake)  # type: ignore[arg-type]
+    assert not report.degraded                      # 不再被稽核員的 error 拉降級
+    assert any(f.check == "data_freshness" and f.severity == "warning"
+               for f in report.findings)            # 保留為 warning 供揭露

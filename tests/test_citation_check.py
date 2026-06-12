@@ -97,6 +97,46 @@ def test_derived_margin_pct_verified():
     assert check_claim(claim, store, CFG).verified
 
 
+def test_price_gap_difference_verified():
+    # 台股案例：股價在 SMA200 之上的「價差（元）」是兩引用值的單純差，不該被誤判
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="quote", field="latest_close", value=2250.0,
+                       unit="TWD", source="FinMind"))
+    store.add(Evidence(category="history", field="sma_200", value=1691.35,
+                       unit="TWD", source="computed"))
+    claim = Claim(text="股價 2250 高於 SMA200 1691.35，乖離 558.65 TWD（溢價 33.0%）",
+                  evidence_ids=["E001", "E002"])
+    assert check_claim(claim, store, CFG).verified
+
+
+def test_mixed_comma_decimal_suffix_parsed_as_one_number():
+    # 「1,134.1B」千分位+小數+量級字尾，曾被拆成 [1134.0, 1e9] 造成正確 claim 誤殺
+    assert extract_meaningful_numbers("營收 1,134.1B TWD") == [1_134_100_000_000.0]
+    # 對應的引用驗證：1,134.1B == evidence 1.1341兆（容差內）
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="fundamentals", field="revenue_latest_quarter",
+                       value=1_134_103_440_000.0, unit="TWD", source="FinMind"))
+    claim = Claim(text="最新季度營收 1,134.1B TWD", evidence_ids=["E001"])
+    assert check_claim(claim, store, CFG).verified
+
+
+def test_magnitude_slip_still_caught():
+    # 源頭該修的是呈現（digest 量級提示），而非放行量級錯誤：
+    # evidence 為 8.66兆，claim 誤寫成「8660.95億」(差 10x) 必須 fail
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="fundamentals", field="total_assets",
+                       value=8_660_949_685_000.0, unit="TWD", source="FinMind"))
+    claim = Claim(text="總資產 8660.95億元", evidence_ids=["E001"])
+    assert not check_claim(claim, store, CFG).verified
+
+
+def test_tampered_number_still_caught():
+    # 仍須擋下無法由任一引用值推導的捏造數字
+    store = make_store()
+    claim = Claim(text="FY revenue was $520.0B", evidence_ids=["E001"])
+    assert not check_claim(claim, store, CFG).verified
+
+
 def test_number_inside_string_evidence_verified():
     # 新聞類 evidence 的 value 是字串，claim 引用其中的數字也要能驗
     store = EvidenceStore(ticker="TEST")
