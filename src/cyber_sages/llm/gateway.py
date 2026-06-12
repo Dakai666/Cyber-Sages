@@ -30,6 +30,11 @@ class LLMResult:
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
+    stop_reason: str | None = None  # "max_tokens" = 輸出被截斷（thinking 吃光預算）
+
+
+# 輸出被截斷時逐次加大的 max_tokens 上限——避免無限制吃 rate limit / 成本。
+_MAX_TOKENS_CEILING = 65536
 
 
 class LLMGateway:
@@ -75,7 +80,8 @@ class LLMGateway:
         role_cfg = self.settings.roles[role]
         provider = self.settings.providers[role_cfg.provider]
         client = self._client(role_cfg.provider, provider)
-        max_tokens = max_tokens or self.settings.defaults.max_tokens
+        # 解析優先序：呼叫端明指 > 角色設定 > 全域預設
+        max_tokens = max_tokens or role_cfg.max_tokens or self.settings.defaults.max_tokens
 
         kwargs: dict = {
             "model": role_cfg.model,
@@ -107,6 +113,7 @@ class LLMGateway:
         # 事件序列會讓 accumulate_event 出現 IndexError。
         text_parts: list[str] = []
         model = role_cfg.model
+        stop_reason: str | None = None
         input_tokens = output_tokens = cache_read = 0
         async with self._sem:
             stream = await client.messages.create(**kwargs, stream=True)
@@ -128,6 +135,9 @@ class LLMGateway:
                     usage = getattr(event, "usage", None)
                     if usage is not None and getattr(usage, "output_tokens", None):
                         output_tokens = usage.output_tokens
+                    delta = getattr(event, "delta", None)
+                    if delta is not None:
+                        stop_reason = getattr(delta, "stop_reason", None) or stop_reason
 
         return LLMResult(
             text="".join(text_parts),
@@ -135,6 +145,7 @@ class LLMGateway:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read,
+            stop_reason=stop_reason,
         )
 
     async def structured(
@@ -147,7 +158,14 @@ class LLMGateway:
         max_tokens: int | None = None,
         cache_system: bool = False,
     ) -> T:
-        """結構化輸出：解析失敗時帶著錯誤訊息重試。"""
+        """結構化輸出：解析失敗時重試。
+
+        兩種失敗有別：(1) 輸出被截斷（thinking 模型吃光 token 預算，stop_reason=
+        max_tokens）——不是模型講錯，是沒講完，下一輪「加大預算、原 prompt 不變」讓它把
+        話講完；(2) 真正的 schema 不符——把錯誤回饋進 prompt 要求重答。混為一談會讓大師的
+        推理被無謂丟棄。"""
+        role_cfg = self.settings.roles[role]
+        budget = max_tokens or role_cfg.max_tokens or self.settings.defaults.max_tokens
         attempts = self.settings.citation.max_rewrite_attempts + 1
         last_err: Exception | None = None
         current_prompt = prompt
@@ -157,15 +175,20 @@ class LLMGateway:
                 system=system,
                 prompt=current_prompt,
                 schema=schema,
-                max_tokens=max_tokens,
+                max_tokens=budget,
                 cache_system=cache_system,
             )
             try:
                 return parse_into(schema, result.text)
             except (ValidationError, ValueError) as e:
                 last_err = e
-                current_prompt = (
-                    f"{prompt}\n\nYour previous reply failed validation:\n{e}\n"
-                    "Reply again with ONLY a valid JSON object matching the schema."
-                )
+                if result.stop_reason == "max_tokens" and budget < _MAX_TOKENS_CEILING:
+                    # 截斷：保留原 prompt，加倍預算讓它把 JSON 寫完
+                    budget = min(budget * 2, _MAX_TOKENS_CEILING)
+                    current_prompt = prompt
+                else:
+                    current_prompt = (
+                        f"{prompt}\n\nYour previous reply failed validation:\n{e}\n"
+                        "Reply again with ONLY a valid JSON object matching the schema."
+                    )
         raise RuntimeError(f"Structured output failed after {attempts} attempts: {last_err}")

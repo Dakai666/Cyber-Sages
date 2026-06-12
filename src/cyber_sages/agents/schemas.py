@@ -59,6 +59,9 @@ class CouncilVerdict(BaseModel):
     weighted_score: float = 0.0  # -1(全空) .. +1(全多)
     consensus: Stance = "neutral"
     outliers: list[str] = Field(default_factory=list)  # 與多數不同調的 sage 名單
+    # fail-loud：被席但即便加大預算重試後 structured output 仍失敗而缺席的大師。
+    # 正常情況應為空——gateway 偵測截斷會自動加大 token 重試；非空代表硬錯誤，須揭露。
+    absent: list[str] = Field(default_factory=list)
 
 
 class DebateArgument(BaseModel):

@@ -13,16 +13,18 @@ providers:
     # MiniMax Anthropic 相容層：不送 cache_control / thinking / output_config
     features: []
 
-# 每個角色獨立指定 provider + model。
+# 每個角色獨立指定 provider + model（+ 可選 max_tokens）。
 # 範例：日常用 MiniMax，深度推理（辯論裁判、首席合議）用 Claude。
+# max_tokens：MiniMax M2.x 強制 thinking，會先吃掉預算才吐 JSON——推理重的角色給足
+# 空間，否則輸出被腰斬導致結構化解析失敗（gateway 會偵測截斷並加大重試，但設對更省）。
 roles:
-  data_auditor: { provider: minimax, model: MiniMax-M2.7 }
-  analyst:      { provider: minimax, model: MiniMax-M2.7 }
-  sage:         { provider: minimax, model: MiniMax-M2.7 }
-  debater:      { provider: minimax, model: MiniMax-M3 }
-  judge:        { provider: minimax, model: MiniMax-M3 }
-  chief:        { provider: minimax, model: MiniMax-M3 }
-  risk:         { provider: minimax, model: MiniMax-M3 }
+  data_auditor: { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
+  analyst:      { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
+  sage:         { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
+  debater:      { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
+  judge:        { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
+  chief:        { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
+  risk:         { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
 
 # 資料審核閘門參數
 audit:
