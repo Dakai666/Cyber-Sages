@@ -157,6 +157,19 @@ def test_institutional_net_buy_groups():
     assert all(e.category == "chips" for e in evs)
 
 
+def test_institutional_total_robust_to_unmapped_name():
+    # FinMind 若新增/改名類別，合計仍涵蓋（= 所有 name 加總），且 note 標出未分群者
+    rows = [
+        {"date": "2026-06-11", "name": "Foreign_Investor", "buy": 1000, "sell": 400},
+        {"date": "2026-06-11", "name": "Investment_Trust", "buy": 900, "sell": 300},
+        {"date": "2026-06-11", "name": "Brand_New_Category", "buy": 500, "sell": 100},
+    ]
+    evs = TWStockProvider._institutional_evidence(rows, "2330")
+    total = next(e for e in evs if e.field == "institutional_net_buy_total")
+    assert total.value == 1600  # 600 + 600 + 400，新類別仍計入
+    assert "Brand_New_Category" in total.note and "未分群" in total.note
+
+
 def test_margin_evidence():
     rows = [{"date": "2026-06-11", "MarginPurchaseTodayBalance": 27470,
              "ShortSaleTodayBalance": 11}]

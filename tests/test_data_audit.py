@@ -75,6 +75,20 @@ def test_severely_stale_single_field_is_error():
     assert any(f.check == "freshness" and "stale" in f.message for f in found)
 
 
+def test_stale_field_threshold_is_configurable():
+    # 逐欄位過期門檻改由 config 驅動（不再 hardcode 500）
+    store = healthy_store()
+    store.add(Evidence(category="fundamentals", field="revenue_annual",
+                       value=1e9, unit="USD", source="edgar",
+                       as_of=date.today() - timedelta(days=300)))
+    loose = AuditConfig(max_fundamentals_stale_field_days=400)
+    strict = AuditConfig(max_fundamentals_stale_field_days=200)
+    assert not any(f.check == "freshness" and "stale" in f.message
+                   for f in errors(deterministic_checks(store, loose)))
+    assert any(f.check == "freshness" and "stale" in f.message
+               for f in errors(deterministic_checks(store, strict)))
+
+
 def test_eps_inconsistency_is_warning():
     store = healthy_store()
     store.add(Evidence(category="fundamentals", field="eps_diluted_annual",

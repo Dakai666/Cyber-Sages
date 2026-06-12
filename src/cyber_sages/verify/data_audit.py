@@ -95,10 +95,9 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                 message=f"Newest financial statement is {(today - newest).days} days old",
             ))
         # 逐欄位過期檢查：單一欄位嚴重過時（如公司換 XBRL 標籤導致撈到舊值）
-        # 不能被同類其他新鮮欄位掩護。年報自然落後 ~1 年，超過 ~16 個月即異常。
-        stale_field_days = 500
+        # 不能被同類其他新鮮欄位掩護。
         for e in fund:
-            if e.as_of and (today - e.as_of).days > stale_field_days:
+            if e.as_of and (today - e.as_of).days > cfg.max_fundamentals_stale_field_days:
                 findings.append(AuditFinding(
                     severity="error", check="freshness",
                     message=f"Field {e.field} is {(today - e.as_of).days} days stale "
@@ -193,7 +192,8 @@ async def run_audit(
     try:
         out = await gateway.structured(
             "data_auditor",
-            system=AUDITOR_SYSTEM.format(today=date.today().isoformat()),
+            # .replace 而非 .format：prompt 未來若含 JSON 範例的字面 {}，.format 會炸
+            system=AUDITOR_SYSTEM.replace("{today}", date.today().isoformat()),
             prompt=f"Ticker: {store.ticker}\n\nEvidence dump:\n{store.digest()}",
             schema=_AuditorOutput,
         )

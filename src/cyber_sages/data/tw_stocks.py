@@ -279,20 +279,26 @@ class TWStockProvider:
             "dealer_net_buy": ["Dealer_self", "Dealer_Hedging"],
         }
         evs: list[Evidence] = []
-        total = 0.0
         zh = {"foreign_net_buy": "外資", "trust_net_buy": "投信", "dealer_net_buy": "自營商"}
         for field, names in groups.items():
             val = sum(net.get(n, 0.0) for n in names)
-            total += val
             evs.append(Evidence(
                 category="chips", field=field, value=round(val, 0), unit="shares",
                 source="FinMind TaiwanStockInstitutionalInvestorsBuySell", url=url, as_of=as_of,
                 note=f"{zh[field]}單日買賣超（正=買超）",
             ))
+        # 合計直接由所有 name 加總（= 三大法人合計），對 FinMind 改 schema 健壯；
+        # 若出現未納入分群的新 name，於 note 標出以免靜默漏算。
+        known = {n for names in groups.values() for n in names}
+        unmapped = sorted(set(net) - known)
+        total = sum(net.values())
+        note = "三大法人合計單日買賣超（正=買超）"
+        if unmapped:
+            note += f"；⚠ FinMind 出現未分群類別 {unmapped}，已計入合計但未獨立呈現"
         evs.append(Evidence(
             category="chips", field="institutional_net_buy_total", value=round(total, 0),
             unit="shares", source="FinMind TaiwanStockInstitutionalInvestorsBuySell",
-            url=url, as_of=as_of, note="三大法人合計單日買賣超（正=買超）",
+            url=url, as_of=as_of, note=note,
         ))
         return evs
 
