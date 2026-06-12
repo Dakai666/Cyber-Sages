@@ -11,6 +11,25 @@ from cyber_sages.verify.citation_check import Claim
 Stance = Literal["bullish", "bearish", "neutral"]
 
 
+class UnverifiedClaim(BaseModel):
+    """cite-check 後仍未通過的 claim，保留 evidence id 與原因供 brief 直接呈現。"""
+    text: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    reason: str = ""
+
+    @property
+    def tag(self) -> str:
+        # 讓讀者一眼分辨：壞引用 / 無引用 / 數字對不上
+        if "nonexistent" in self.reason:
+            return "BAD_REF"
+        if "no evidence" in self.reason:
+            return "NO_CITE"
+        return "NUM_MISMATCH"
+
+    def as_line(self) -> str:
+        return f"{self.text} ({self.reason})"
+
+
 class AnalystReport(BaseModel):
     analyst: str = ""
     summary: str = Field(description="2-4 sentence summary in Traditional Chinese")
@@ -18,7 +37,7 @@ class AnalystReport(BaseModel):
     claims: list[Claim] = Field(
         description="Each key finding as a claim citing evidence ids"
     )
-    unverified_claims: list[str] = Field(default_factory=list)  # cite-check 後標記
+    unverified: list[UnverifiedClaim] = Field(default_factory=list)  # cite-check 後標記
 
 
 class SageSignal(BaseModel):
@@ -45,12 +64,26 @@ class DebateArgument(BaseModel):
     argument: str = Field(description="Traditional Chinese, cite evidence ids inline")
 
 
+class OutlierRebuttal(BaseModel):
+    """裁判對敗方離群大師「核心論點」的具體反駁——避免少數派被名義上擊敗卻論點還活著。"""
+    sage: str
+    thesis_point: str = Field(description="The outlier sage's core claim being rebutted")
+    rebuttal: str = Field(
+        description="Specific point-level counter in Traditional Chinese, cite evidence ids"
+    )
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class DebateVerdict(BaseModel):
     winner: Literal["bull", "bear", "draw"]
     rationale: str
     strongest_bull_point: str
     strongest_bear_point: str
     unresolved_risks: list[str] = Field(default_factory=list)
+    outlier_rebuttals: list[OutlierRebuttal] = Field(
+        default_factory=list,
+        description="One point-level rebuttal per outlier sage on the LOSING side",
+    )
 
 
 class RiskNote(BaseModel):

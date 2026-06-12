@@ -62,7 +62,7 @@ async def run_synthesis(
         or "clean"
     )
     unverified = [
-        f"- {r.analyst}: {u}" for r in reports for u in r.unverified_claims
+        f"- {r.analyst}: {u.as_line()}" for r in reports for u in r.unverified
     ]
     debate_text = (
         f"winner: {debate.winner}\nrationale: {debate.rationale}\n"

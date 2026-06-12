@@ -23,7 +23,30 @@ JUDGE_SYSTEM = """\
 You are a coolly impartial investment judge. You watched a bull-vs-bear debate.
 Decide which side argued better ON THE EVIDENCE (not which side is more popular),
 identify the single strongest point on each side, and list risks neither side
-resolved. A draw is allowed. Write text fields in Traditional Chinese."""
+resolved. A draw is allowed. Write text fields in Traditional Chinese.
+
+When you rule a side lost, you MUST NOT defeat its dissenting sages only in the
+aggregate. For EACH listed outlier sage on the losing side, add one entry to
+outlier_rebuttals that names their CORE thesis (thesis_point) and rebuts THAT
+specific point with evidence ids — not a generic counter. A nominal defeat that
+leaves the outlier's central argument untouched is unacceptable."""
+
+
+def _outliers_needing_rebuttal(council: CouncilVerdict, winner: str) -> list[str]:
+    """敗方的離群大師——其核心論點需被逐一反駁。draw 時不強制。"""
+    if winner == "draw":
+        return []
+    losing_stance = "bearish" if winner == "bull" else "bullish"
+    stance_by_sage = {s.sage: s.stance for s in council.signals}
+    return [name for name in council.outliers
+            if stance_by_sage.get(name) == losing_stance]
+
+
+def _outlier_theses_text(council: CouncilVerdict, names: list[str]) -> str:
+    by_name = {s.sage: s for s in council.signals}
+    lines = [f"- {n}（{by_name[n].stance}）: {by_name[n].thesis}"
+             for n in names if n in by_name]
+    return "\n".join(lines)
 
 
 def _council_text(council: CouncilVerdict) -> str:
@@ -84,15 +107,37 @@ async def run_debate(
     )
     bear.side = "bear"
 
-    verdict = await gateway.structured(
-        "judge",
-        system=JUDGE_SYSTEM,
-        prompt=(
-            f"Stock: {store.ticker}\n\n# Bull argument\n{bull.argument}\n\n"
-            f"# Bear argument\n{bear.argument}\n\n"
-            f"# Evidence digest (for fact-checking both sides)\n{store.digest()}\n\n"
-            "Deliver your verdict."
-        ),
-        schema=DebateVerdict,
+    outliers_text = (
+        f"\n\n# Outlier sages (dissented from consensus) — their core theses:\n"
+        f"{_outlier_theses_text(council, council.outliers)}"
+        if council.outliers else ""
     )
+    judge_prompt = (
+        f"Stock: {store.ticker}\n\n# Bull argument\n{bull.argument}\n\n"
+        f"# Bear argument\n{bear.argument}\n\n"
+        f"# Evidence digest (for fact-checking both sides)\n{store.digest()}"
+        f"{outliers_text}\n\nDeliver your verdict."
+    )
+    verdict = await gateway.structured("judge", system=JUDGE_SYSTEM,
+                                       prompt=judge_prompt, schema=DebateVerdict)
+
+    # 強制論點級反駁：敗方的離群者若有人未被逐點反駁，補打一次
+    needed = _outliers_needing_rebuttal(council, verdict.winner)
+    covered = {r.sage for r in verdict.outlier_rebuttals}
+    missing = [n for n in needed if n not in covered]
+    if missing:
+        retry = await gateway.structured(
+            "judge", system=JUDGE_SYSTEM,
+            prompt=(
+                judge_prompt
+                + f"\n\nYour verdict ruled '{verdict.winner}' won but did not rebut the "
+                  f"core thesis of these losing-side outlier sages: {', '.join(missing)}. "
+                  "Re-issue the full verdict with one concrete, evidence-cited "
+                  "outlier_rebuttals entry per missing sage."
+            ),
+            schema=DebateVerdict,
+        )
+        # 只要重試補上的更完整就採用，避免回退
+        if {r.sage for r in retry.outlier_rebuttals} >= covered:
+            verdict = retry
     return bull, bear, verdict
