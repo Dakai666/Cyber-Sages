@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,10 +44,39 @@ STAGES = [
 ]
 
 
+def _git_commit() -> str | None:
+    """產出本次 run 的程式版本標記：短 hash（+dirty）+ 分支，如 `5a38ec9 (main)`。
+
+    以套件原始碼目錄（而非使用者 cwd）為基準——pip 安裝在 site-packages 或
+    release tarball 等非 git 環境下回 None，呼叫端略過此欄即可。
+    """
+    src_dir = Path(__file__).resolve().parent
+    try:
+        def run(*args: str) -> str | None:
+            r = subprocess.run(["git", *args], capture_output=True, text=True,
+                               cwd=src_dir, timeout=5)
+            return r.stdout.strip() if r.returncode == 0 else None
+
+        commit = run("rev-parse", "--short", "HEAD")
+        if not commit:
+            return None
+        # 帶未 commit 改動的 run 標 +dirty——issue #7 的誤判場景正是「程式碼
+        # 與產出對不上」，dirty run 必須能被一眼識別
+        if run("status", "--porcelain", "--untracked-files=no"):
+            commit += "+dirty"
+        branch = run("rev-parse", "--abbrev-ref", "HEAD")
+        return f"{commit} ({branch})" if branch and branch != "HEAD" else commit
+    except Exception:
+        return None
+
+
 class AnalysisResult(BaseModel):
     ticker: str
     # 一次性時間戳（本地時區）：資料夾名 / brief 標題 / payload 全部共用，避免各自 now() 漂移
     generated_at: datetime = Field(default_factory=lambda: datetime.now().astimezone())
+    # 程式版本標記（短 hash + 分支；非 git 環境為 None）：brief / data_quality /
+    # verdict.json 都會帶，review 舊 run 時不再誤判「修補沒生效」
+    git_commit: str | None = Field(default_factory=_git_commit)
     store: EvidenceStore
     audit: AuditReport
     reports: list[AnalystReport]
