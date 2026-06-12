@@ -104,11 +104,31 @@ async def run_council(
                 await result
         return signal
 
-    signals = list(await asyncio.gather(*[one(p) for p in personas]))
-    return tally(signals, personas)
+    # 大師推理是陪審團的本體，不輕易丟棄：gateway 已會在 thinking 截斷 JSON 時自動加大
+    # 預算重試，讓大師把話講完。這裡只是最後防線——加大重試後仍硬失敗者才記為缺席、不拖垮
+    # 全場；且唯有過半失敗才視為合議失效而報錯。正常一場 absent 應為空。
+    results = await asyncio.gather(*[one(p) for p in personas], return_exceptions=True)
+    signals: list[SageSignal] = []
+    absent: list[str] = []
+    for p, r in zip(personas, results):
+        if isinstance(r, BaseException):
+            absent.append(p.name)
+        else:
+            signals.append(r)
+    if len(signals) * 2 < len(personas):
+        raise RuntimeError(
+            f"Council failed: only {len(signals)}/{len(personas)} sages returned a "
+            f"valid signal (absent: {', '.join(absent)})"
+        )
+    return tally(signals, personas, absent=absent)
 
 
-def tally(signals: list[SageSignal], personas: list[Persona]) -> CouncilVerdict:
+def tally(
+    signals: list[SageSignal],
+    personas: list[Persona],
+    absent: list[str] | None = None,
+) -> CouncilVerdict:
+    absent = absent or []
     weights = {p.name: p.weight for p in personas}
     counts = {"bullish": 0, "bearish": 0, "neutral": 0}
     score_num = score_den = 0.0
@@ -130,5 +150,5 @@ def tally(signals: list[SageSignal], personas: list[Persona]) -> CouncilVerdict:
     return CouncilVerdict(
         signals=signals, bullish=counts["bullish"], bearish=counts["bearish"],
         neutral=counts["neutral"], weighted_score=round(weighted, 3),
-        consensus=consensus, outliers=outliers,
+        consensus=consensus, outliers=outliers, absent=absent,
     )

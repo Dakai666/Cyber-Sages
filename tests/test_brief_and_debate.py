@@ -2,6 +2,9 @@
 
 from types import SimpleNamespace
 
+import pytest
+
+from cyber_sages.agents.council import load_personas, run_council
 from cyber_sages.agents.debate import (
     _merge_rebuttals,
     _outlier_theses_text,
@@ -196,3 +199,41 @@ def test_render_debate_warns_on_unrebutted_outliers():
         bear=DebateArgument(side="bear", argument="空"))
     out = render_debate(result)
     assert "未對" in out and "Druckenmiller" in out  # fail-loud 警告有呈現
+
+
+# ---------- Council 韌性：單一大師失敗不該拖垮全場 ----------
+
+
+def _fake_gateway(fail_names: set[str]):
+    """structured() 對 fail_names 內的 persona 拋錯（模擬 3 次仍截斷），其餘回傳合法訊號。"""
+    class G:
+        async def structured(self, role, *, system, prompt, schema, **kw):
+            name = system.split(",", 1)[0].replace("You are ", "").strip()
+            if name in fail_names:
+                raise RuntimeError("Structured output failed after 3 attempts")
+            return schema(stance="neutral", confidence=0.5, thesis="t",
+                          what_would_change_my_mind="w")
+    return G()
+
+
+async def test_run_council_drops_failed_sage_records_absent():
+    store = EvidenceStore(ticker="0050", market="TW")
+    settings = SimpleNamespace(defaults=SimpleNamespace(sages=10))
+    doomed = load_personas(4)[0].name  # 取一個確實被席的大師讓它失敗
+    council = await run_council(
+        store, [], settings, _fake_gateway({doomed}), n_sages=4
+    )
+    assert doomed in council.absent
+    assert doomed not in [s.sage for s in council.signals]
+    assert len(council.signals) == 3  # 4 席 - 1 缺席
+
+
+async def test_run_council_raises_when_quorum_lost():
+    store = EvidenceStore(ticker="0050", market="TW")
+    settings = SimpleNamespace(defaults=SimpleNamespace(sages=10))
+    # 4 席中 3 席失敗 → 未過半 → fail-loud 報錯
+    seated = [p.name for p in load_personas(4)]
+    with pytest.raises(RuntimeError, match="Council failed"):
+        await run_council(
+            store, [], settings, _fake_gateway(set(seated[:3])), n_sages=4
+        )

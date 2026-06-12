@@ -54,7 +54,8 @@ def render_brief(result: AnalysisResult) -> str:
     lines = [
         f"# {result.ticker}（{result.store.market}）決策簡報 · "
         f"{result.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z')}",
-        f"{price_str} · 陪審團 {len(c.signals)} 席",
+        f"{price_str} · 陪審團 {len(c.signals)} 席"
+        + (f" ⚠️ {len(c.absent)} 席缺席（{', '.join(c.absent)}）" if c.absent else ""),
         "",
         f"## 裁定：{ACTION_ZH[plan.action]} · {STANCE_ZH[v.stance]} · 信心 {v.conviction:.2f}",
         f"**{plan.directive}**",

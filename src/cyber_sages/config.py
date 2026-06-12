@@ -29,6 +29,9 @@ class ProviderConfig(BaseModel):
 class RoleConfig(BaseModel):
     provider: str
     model: str
+    # 強制 thinking 的模型（如 MiniMax M2.x）會先吃掉 token 預算才吐 JSON，
+    # 推理重的角色需更大上限避免輸出被腰斬。None = 用 defaults.max_tokens。
+    max_tokens: int | None = None
 
 
 class AuditConfig(BaseModel):
