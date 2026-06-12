@@ -55,7 +55,8 @@ def render_brief(result: AnalysisResult) -> str:
         f"# {result.ticker}（{result.store.market}）決策簡報 · "
         f"{result.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"{price_str} · 陪審團 {len(c.signals)} 席"
-        + (f" ⚠️ {len(c.absent)} 席缺席（{', '.join(c.absent)}）" if c.absent else ""),
+        + (f" ⚠️ {len(c.absent)} 席缺席（{', '.join(c.absent)}）" if c.absent else "")
+        + (f" · commit `{result.git_commit}`" if result.git_commit else ""),
         "",
         f"## 裁定：{ACTION_ZH[plan.action]} · {STANCE_ZH[v.stance]} · 信心 {v.conviction:.2f}",
         f"**{plan.directive}**",
@@ -188,7 +189,10 @@ def render_debate(result: AnalysisResult) -> str:
 
 
 def render_data_quality(result: AnalysisResult) -> str:
-    lines = [f"# 資料品質 · {result.ticker}"]
+    # 產出時間 + commit 直接進檔頭：review 開到舊 run 時一眼可判斷是基於哪版程式
+    stamp = result.generated_at.strftime("%Y-%m-%d %H:%M:%S %Z")
+    commit = f" · commit `{result.git_commit}`" if result.git_commit else ""
+    lines = [f"# 資料品質 · {result.ticker}", f"產出於 {stamp}{commit}"]
     if result.audit.degraded:
         lines.append("\n**⚠️ 降級模式**：審核有 error，最終信心已封頂 0.5。")
     if result.audit.findings:
@@ -230,6 +234,7 @@ def build_agent_payload(result: AnalysisResult) -> dict:
         "ticker": result.ticker,
         "market": result.store.market,
         "generated_at": result.generated_at.isoformat(),
+        "commit": result.git_commit,
         "current_price": {"value": price, "evidence_id": price_id},
         "verdict": result.verdict.model_dump(mode="json"),
         "council": {
