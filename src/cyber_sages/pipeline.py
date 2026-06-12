@@ -75,7 +75,9 @@ class AnalysisResult(BaseModel):
     # 一次性時間戳（本地時區）：資料夾名 / brief 標題 / payload 全部共用，避免各自 now() 漂移
     generated_at: datetime = Field(default_factory=lambda: datetime.now().astimezone())
     # 程式版本標記（短 hash + 分支；非 git 環境為 None）：brief / data_quality /
-    # verdict.json 都會帶，review 舊 run 時不再誤判「修補沒生效」
+    # verdict.json 都會帶，review 舊 run 時不再誤判「修補沒生效」。
+    # default_factory 於 run 結尾建構本物件時求值；秒級 run 下與開始時等價，
+    # 若未來 run 長到中途可能出現新 commit，改為 run_pipeline 開頭快照
     git_commit: str | None = Field(default_factory=_git_commit)
     store: EvidenceStore
     audit: AuditReport
