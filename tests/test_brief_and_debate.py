@@ -2,6 +2,9 @@
 
 from types import SimpleNamespace
 
+import pytest
+
+from cyber_sages.agents.council import load_personas, run_council
 from cyber_sages.agents.debate import (
     _merge_rebuttals,
     _outlier_theses_text,
@@ -200,11 +203,6 @@ def test_render_debate_warns_on_unrebutted_outliers():
 
 # ---------- Council 韌性：單一大師失敗不該拖垮全場 ----------
 
-import pytest
-
-from cyber_sages.agents.council import run_council
-from cyber_sages.data.evidence import EvidenceStore
-
 
 def _fake_gateway(fail_names: set[str]):
     """structured() 對 fail_names 內的 persona 拋錯（模擬 3 次仍截斷），其餘回傳合法訊號。"""
@@ -219,7 +217,6 @@ def _fake_gateway(fail_names: set[str]):
 
 
 async def test_run_council_drops_failed_sage_records_absent():
-    from cyber_sages.agents.council import load_personas
     store = EvidenceStore(ticker="0050", market="TW")
     settings = SimpleNamespace(defaults=SimpleNamespace(sages=10))
     doomed = load_personas(4)[0].name  # 取一個確實被席的大師讓它失敗
@@ -235,7 +232,6 @@ async def test_run_council_raises_when_quorum_lost():
     store = EvidenceStore(ticker="0050", market="TW")
     settings = SimpleNamespace(defaults=SimpleNamespace(sages=10))
     # 4 席中 3 席失敗 → 未過半 → fail-loud 報錯
-    from cyber_sages.agents.council import load_personas
     seated = [p.name for p in load_personas(4)]
     with pytest.raises(RuntimeError, match="Council failed"):
         await run_council(

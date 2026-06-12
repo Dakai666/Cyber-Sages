@@ -128,6 +128,7 @@ def tally(
     personas: list[Persona],
     absent: list[str] | None = None,
 ) -> CouncilVerdict:
+    absent = absent or []
     weights = {p.name: p.weight for p in personas}
     counts = {"bullish": 0, "bearish": 0, "neutral": 0}
     score_num = score_den = 0.0
@@ -149,5 +150,5 @@ def tally(
     return CouncilVerdict(
         signals=signals, bullish=counts["bullish"], bearish=counts["bearish"],
         neutral=counts["neutral"], weighted_score=round(weighted, 3),
-        consensus=consensus, outliers=outliers, absent=absent or [],
+        consensus=consensus, outliers=outliers, absent=absent,
     )

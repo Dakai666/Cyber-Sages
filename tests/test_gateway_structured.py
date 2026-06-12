@@ -77,3 +77,22 @@ async def test_budget_caps_at_ceiling():
     with pytest.raises(RuntimeError, match="failed after"):
         await g.structured("sage", system="s", prompt="P", schema=SageSignal)
     assert seen == [40000, 65536, 65536]  # 夾頂後不再成長
+
+
+async def test_truncation_at_ceiling_keeps_original_prompt():
+    # 角色預算已超過 ceiling（=65536），預算不再成長；且模型每次都該收到原 prompt——
+    # 它沒講錯，餵「your previous reply failed validation」只會誤導它以為自己講錯了。
+    g = _gateway(role_max=70000)
+    seen: list[tuple[int, str]] = []
+
+    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system):
+        seen.append((max_tokens, prompt))
+        return LLMResult(text="not json", model="m", input_tokens=0, output_tokens=0,
+                         cache_read_tokens=0, stop_reason="max_tokens")
+
+    g.complete = fake_complete  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="failed after"):
+        await g.structured("sage", system="s", prompt="P", schema=SageSignal)
+    # 預算已高於 ceiling，不再被加倍；prompt 從頭到尾都是原樣（沒被灌「你講錯了」訊息）
+    assert [mt for mt, _ in seen] == [70000, 70000, 70000]
+    assert all(p == "P" for _, p in seen)

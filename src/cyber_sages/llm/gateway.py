@@ -182,9 +182,10 @@ class LLMGateway:
                 return parse_into(schema, result.text)
             except (ValidationError, ValueError) as e:
                 last_err = e
-                if result.stop_reason == "max_tokens" and budget < _MAX_TOKENS_CEILING:
-                    # 截斷：保留原 prompt，加倍預算讓它把 JSON 寫完
-                    budget = min(budget * 2, _MAX_TOKENS_CEILING)
+                if result.stop_reason == "max_tokens":
+                    # 截斷：保留原 prompt（已封頂也別餵「講錯」訊息誤導模型——它只是沒講完）
+                    if budget < _MAX_TOKENS_CEILING:
+                        budget = min(budget * 2, _MAX_TOKENS_CEILING)
                     current_prompt = prompt
                 else:
                     current_prompt = (
