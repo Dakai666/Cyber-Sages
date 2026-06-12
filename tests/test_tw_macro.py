@@ -193,6 +193,18 @@ def test_compute_indicator_evidence_fields():
     assert sma20.category == "history"
 
 
+def test_52w_distance_fields():
+    # 距高/低點百分比確定性算好，分析師可直接引用、不必自己算「距高點 X%」
+    import pandas as pd
+    close = pd.Series([918.0] + [1500.0] * 250 + [2425.0, 2310.0])  # 高 2425、低 918、現 2310
+    evs = {e.field: e.value for e in compute_indicator_evidence(
+        close, as_of=date(2026, 6, 12), url=None, source="t", price_unit="TWD")}
+    assert evs["high_52w"] == 2425.0 and evs["low_52w"] == 918.0
+    # (2425-2310)/2425*100 = 4.74；(2310-918)/918*100 = 151.63
+    assert evs["pct_below_52w_high"] == 4.74
+    assert evs["pct_above_52w_low"] == 151.63
+
+
 def test_compute_indicator_evidence_too_short():
     assert compute_indicator_evidence(pd.Series(range(10), dtype=float),
                                       as_of=date.today(), url=None, source="t") == []

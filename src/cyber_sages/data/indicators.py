@@ -30,6 +30,7 @@ def compute_indicator_evidence(
             unit=unit, source=source, url=url, as_of=as_of, note=note,
         )
 
+    last = close.iloc[-1]
     evs = [
         ev("sma_20", close.rolling(20).mean().iloc[-1], price_unit),
         ev("sma_50", close.rolling(50).mean().iloc[-1], price_unit),
@@ -37,6 +38,12 @@ def compute_indicator_evidence(
         ev("return_3m_pct", (close.iloc[-1] / close.iloc[-63] - 1) * 100, "%"),
         ev("high_52w", close.max(), price_unit),
         ev("low_52w", close.min(), price_unit),
+        # 距高/低點百分比：確定性算好讓分析師直接引用，避免自己算「距高點 X%」時
+        # 把 (高-現)/高 寫成正值卻對不上驗證層的帶號變動率（源頭給值，不放寬驗證）。
+        ev("pct_below_52w_high", (close.max() - last) / close.max() * 100, "%",
+           note="距 52 週高點（正=低於高點）"),
+        ev("pct_above_52w_low", (last - close.min()) / close.min() * 100, "%",
+           note="距 52 週低點（正=高於低點）"),
         ev("volatility_30d_annualized_pct",
            close.pct_change().tail(30).std() * (252 ** 0.5) * 100, "%"),
     ]
