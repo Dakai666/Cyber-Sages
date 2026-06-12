@@ -92,6 +92,9 @@ def render_brief(result: AnalysisResult) -> str:
     ]
     if c.outliers:
         lines.append(f"離群者：{'、'.join(c.outliers)}（意見已強制進入辯論）")
+    if result.debate and result.debate.unrebutted_outliers:
+        lines.append(f"⚠️ 裁判未完成論點級反駁：{'、'.join(result.debate.unrebutted_outliers)}"
+                     "（其核心論點尚未被正面回應，閱讀時請自行加權）")
     lines += ["", v.thesis, ""]
 
     if v.key_risks:
@@ -103,12 +106,22 @@ def render_brief(result: AnalysisResult) -> str:
 
     dq = "⚠️ 降級（信心已封頂 0.5）" if result.audit.degraded else \
         f"✅ 通過（{len(result.audit.findings)} 項提示）" if result.audit.findings else "✅ 乾淨"
-    unverified = sum(len(r.unverified_claims) for r in result.reports)
-    uv = f" · {unverified} 條 claim 未過引用驗證" if unverified else ""
+    flat = [(r.analyst, u) for r in result.reports for u in r.unverified]
+    uv = f" · {len(flat)} 條 claim 未過引用驗證" if flat else ""
     lines += [
         "",
         f"資料品質：{dq}{uv} — 深挖請看 `details/`",
     ]
+
+    # 引用驗證未過清單：brief 一頁可判斷會不會動搖裁定，不必每次再深挖 details/
+    if flat:
+        lines += ["", "### 引用驗證未過清單"]
+        for analyst, u in flat[:5]:
+            ids = " ".join(u.evidence_ids) or "—"
+            text = u.text if len(u.text) <= 48 else u.text[:47] + "…"
+            lines.append(f"- `[{u.tag}]` {analyst}：{text} ｜ 引用 {ids} ｜ {u.reason}")
+        if len(flat) > 5:
+            lines.append(f"- …其餘 {len(flat) - 5} 條請看 `details/analysts.md`")
     return "\n".join(lines)
 
 
@@ -120,9 +133,10 @@ def render_analysts(result: AnalysisResult) -> str:
         lines += ["", f"## {r.analyst}（{STANCE_ZH[r.outlook]}）", r.summary, ""]
         for cl in r.claims:
             lines.append(f"- {cl.text} `[{', '.join(cl.evidence_ids)}]`")
-        if r.unverified_claims:
+        if r.unverified:
             lines += ["", "> ⚠️ 以下 claim 未通過引用驗證："]
-            lines += [f"> - {u}" for u in r.unverified_claims]
+            lines += [f"> - `[{u.tag}]` {u.text} ｜ 引用 {' '.join(u.evidence_ids) or '—'}"
+                      f" ｜ {u.reason}" for u in r.unverified]
     return "\n".join(lines)
 
 
@@ -160,6 +174,15 @@ def render_debate(result: AnalysisResult) -> str:
     ]
     if d.unresolved_risks:
         lines.append("- 未解風險：" + "；".join(d.unresolved_risks))
+    if d.outlier_rebuttals:
+        lines += ["", "## 對敗方離群者的論點級反駁"]
+        for rb in d.outlier_rebuttals:
+            ids = f" `[{', '.join(rb.evidence_ids)}]`" if rb.evidence_ids else ""
+            lines += [f"### {rb.sage}", f"- 核心論點：{rb.thesis_point}",
+                      f"- 反駁：{rb.rebuttal}{ids}"]
+    if d.unrebutted_outliers:
+        lines += ["", f"> ⚠️ 裁判未對 {len(d.unrebutted_outliers)} 位敗方離群者完成論點級"
+                  f"反駁：{'、'.join(d.unrebutted_outliers)}（其核心論點尚未被正面回應）"]
     return "\n".join(lines)
 
 
@@ -225,8 +248,11 @@ def build_agent_payload(result: AnalysisResult) -> dict:
             "errors": [f.message for f in result.audit.errors],
             "warnings": [f.message for f in result.audit.findings
                          if f.severity == "warning"],
-            "unverified_claims": [u for r in result.reports
-                                  for u in r.unverified_claims],
+            "unverified_claims": [
+                {"analyst": r.analyst, "text": u.text, "tag": u.tag,
+                 "evidence_ids": u.evidence_ids, "reason": u.reason}
+                for r in result.reports for u in r.unverified
+            ],
         },
         "note_to_judge": (
             "verdict 是幕僚長建議，council 是陪審團票數與個別論點，"

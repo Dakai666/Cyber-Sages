@@ -6,9 +6,30 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from cyber_sages.verify.citation_check import Claim
+from cyber_sages.verify.citation_check import Claim, FailureKind
 
 Stance = Literal["bullish", "bearish", "neutral"]
+
+
+class UnverifiedClaim(BaseModel):
+    """cite-check 後仍未通過的 claim，保留 evidence id 與原因供 brief 直接呈現。
+
+    kind 由驗證層（citation_check.FailureKind）權威給定，不在此用 reason 子串猜。
+    """
+    text: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    reason: str = ""
+    kind: FailureKind = "num_mismatch"
+
+    @property
+    def tag(self) -> str:
+        # 讓讀者一眼分辨：壞引用 / 無引用 / 數字對不上
+        return {"bad_ref": "BAD_REF", "no_cite": "NO_CITE",
+                "num_mismatch": "NUM_MISMATCH", "ok": "OK"}[self.kind]
+
+    def as_line(self) -> str:
+        """給 LLM prompt 用的精簡單行（council/synthesis）；brief 另有 rich 渲染。"""
+        return f"{self.text} ({self.reason})"
 
 
 class AnalystReport(BaseModel):
@@ -18,7 +39,7 @@ class AnalystReport(BaseModel):
     claims: list[Claim] = Field(
         description="Each key finding as a claim citing evidence ids"
     )
-    unverified_claims: list[str] = Field(default_factory=list)  # cite-check 後標記
+    unverified: list[UnverifiedClaim] = Field(default_factory=list)  # cite-check 後標記
 
 
 class SageSignal(BaseModel):
@@ -45,12 +66,28 @@ class DebateArgument(BaseModel):
     argument: str = Field(description="Traditional Chinese, cite evidence ids inline")
 
 
+class OutlierRebuttal(BaseModel):
+    """裁判對敗方離群大師「核心論點」的具體反駁——避免少數派被名義上擊敗卻論點還活著。"""
+    sage: str
+    thesis_point: str = Field(description="The outlier sage's core claim being rebutted")
+    rebuttal: str = Field(
+        description="Specific point-level counter in Traditional Chinese, cite evidence ids"
+    )
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class DebateVerdict(BaseModel):
     winner: Literal["bull", "bear", "draw"]
     rationale: str
     strongest_bull_point: str
     strongest_bear_point: str
     unresolved_risks: list[str] = Field(default_factory=list)
+    outlier_rebuttals: list[OutlierRebuttal] = Field(
+        default_factory=list,
+        description="One point-level rebuttal per outlier sage on the LOSING side",
+    )
+    # fail-loud：補打後仍未被論點級反駁的敗方離群者，brief 顯式警告而非假裝完成
+    unrebutted_outliers: list[str] = Field(default_factory=list)
 
 
 class RiskNote(BaseModel):

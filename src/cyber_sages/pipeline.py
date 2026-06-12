@@ -132,7 +132,7 @@ async def run_pipeline(
 
     # [4] Cite-check 結果彙報
     total_claims = sum(len(r.claims) for r in reports)
-    unverified = sum(len(r.unverified_claims) for r in reports)
+    unverified = sum(len(r.unverified) for r in reports)
     if unverified:
         await _emit(on_stage, "cite", "warn",
                     f"{total_claims - unverified}/{total_claims} claims verified，"

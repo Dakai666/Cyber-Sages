@@ -65,8 +65,9 @@ def _reports_text(reports: list[AnalystReport]) -> str:
             f"  - {c.text} [{', '.join(c.evidence_ids)}]" for c in r.claims
         )
         flags = (
-            "\n  ⚠ UNVERIFIED claims (excluded from verification): " + "; ".join(r.unverified_claims)
-            if r.unverified_claims else ""
+            "\n  ⚠ UNVERIFIED claims (excluded from verification): "
+            + "; ".join(u.as_line() for u in r.unverified)
+            if r.unverified else ""
         )
         parts.append(f"## {r.analyst} (outlook: {r.outlook})\n{r.summary}\n{claims}{flags}")
     return "\n\n".join(parts)
