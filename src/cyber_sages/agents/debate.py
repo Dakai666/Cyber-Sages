@@ -7,6 +7,7 @@ from cyber_sages.agents.schemas import (
     CouncilVerdict,
     DebateArgument,
     DebateVerdict,
+    OutlierRebuttal,
 )
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
@@ -47,6 +48,22 @@ def _outlier_theses_text(council: CouncilVerdict, names: list[str]) -> str:
     lines = [f"- {n}（{by_name[n].stance}）: {by_name[n].thesis}"
              for n in names if n in by_name]
     return "\n".join(lines)
+
+
+def _merge_rebuttals(
+    original: list[OutlierRebuttal], retry: list[OutlierRebuttal], needed: list[str]
+) -> tuple[list[OutlierRebuttal], list[str]]:
+    """合併首打與補打的反駁（依 sage 去重，首打優先），回傳 (合併結果, 仍未反駁名單)。
+
+    對 needed 集合判定缺漏（而非對原 covered 集合），避免補打只補了一部分卻被當成完成——
+    仍缺者塞進 unrebutted 讓 brief 顯式警告（fail-loud > 假裝做了）。
+    """
+    by_sage = {r.sage: r for r in original}
+    for r in retry:
+        by_sage.setdefault(r.sage, r)
+    merged = list(by_sage.values())
+    unrebutted = sorted(set(needed) - set(by_sage))
+    return merged, unrebutted
 
 
 def _council_text(council: CouncilVerdict) -> str:
@@ -123,8 +140,7 @@ async def run_debate(
 
     # 強制論點級反駁：敗方的離群者若有人未被逐點反駁，補打一次
     needed = _outliers_needing_rebuttal(council, verdict.winner)
-    covered = {r.sage for r in verdict.outlier_rebuttals}
-    missing = [n for n in needed if n not in covered]
+    missing = [n for n in needed if n not in {r.sage for r in verdict.outlier_rebuttals}]
     if missing:
         retry = await gateway.structured(
             "judge", system=JUDGE_SYSTEM,
@@ -132,12 +148,12 @@ async def run_debate(
                 judge_prompt
                 + f"\n\nYour verdict ruled '{verdict.winner}' won but did not rebut the "
                   f"core thesis of these losing-side outlier sages: {', '.join(missing)}. "
-                  "Re-issue the full verdict with one concrete, evidence-cited "
-                  "outlier_rebuttals entry per missing sage."
+                  "Keep your winner / rationale / strongest points UNCHANGED; only add one "
+                  "concrete, evidence-cited outlier_rebuttals entry per missing sage."
             ),
             schema=DebateVerdict,
         )
-        # 只要重試補上的更完整就採用，避免回退
-        if {r.sage for r in retry.outlier_rebuttals} >= covered:
-            verdict = retry
+        # winner/rationale 等以原判為準（避免補打改判）；只合併 rebuttal、揭露仍缺者
+        verdict.outlier_rebuttals, verdict.unrebutted_outliers = _merge_rebuttals(
+            verdict.outlier_rebuttals, retry.outlier_rebuttals, needed)
     return bull, bear, verdict

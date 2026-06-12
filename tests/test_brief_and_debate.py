@@ -2,7 +2,13 @@
 
 from types import SimpleNamespace
 
-from cyber_sages.agents.debate import _outliers_needing_rebuttal
+from cyber_sages.agents.debate import (
+    _merge_rebuttals,
+    _outlier_theses_text,
+    _outliers_needing_rebuttal,
+    run_debate,
+)
+from cyber_sages.data.evidence import Evidence, EvidenceStore
 from cyber_sages.agents.schemas import (
     AnalystReport,
     CouncilVerdict,
@@ -18,10 +24,11 @@ from cyber_sages.verify.citation_check import Claim
 
 # ---------- Issue 2：tag 分類 ----------
 
-def test_unverified_tag_classification():
-    assert UnverifiedClaim(text="x", reason="cites nonexistent evidence id E9").tag == "BAD_REF"
-    assert UnverifiedClaim(text="x", reason="no evidence cited").tag == "NO_CITE"
-    assert UnverifiedClaim(text="x", reason="numbers [1.0] not found").tag == "NUM_MISMATCH"
+def test_unverified_tag_maps_from_authoritative_kind():
+    # tag 純映射自驗證層給的 kind，不再用 reason 子串猜
+    assert UnverifiedClaim(text="x", kind="bad_ref").tag == "BAD_REF"
+    assert UnverifiedClaim(text="x", kind="no_cite").tag == "NO_CITE"
+    assert UnverifiedClaim(text="x", kind="num_mismatch").tag == "NUM_MISMATCH"
 
 
 def test_render_analysts_shows_unverified_with_ids_and_tag():
@@ -60,6 +67,106 @@ def test_outliers_needing_rebuttal_only_losing_side():
     assert _outliers_needing_rebuttal(c, "draw") == []               # 平手不強制
 
 
+def test_neutral_outlier_never_needs_rebuttal():
+    # 辯論軸是 bull vs bear，中性離群者無軸可歸，任何 winner 都不需反駁
+    c = CouncilVerdict(
+        signals=[SageSignal(sage="Switzerland", stance="neutral", confidence=0.5,
+                            thesis="觀望", what_would_change_my_mind="x")],
+        outliers=["Switzerland"])
+    assert _outliers_needing_rebuttal(c, "bull") == []
+    assert _outliers_needing_rebuttal(c, "bear") == []
+
+
+def test_outlier_theses_text_lists_only_known_signals():
+    c = _council()
+    txt = _outlier_theses_text(c, ["Cathie Wood", "Ghost"])  # Ghost 無 signal → 略過
+    assert "Cathie Wood" in txt and "Wright's Law" in txt and "Ghost" not in txt
+
+
+def test_merge_rebuttals_discloses_remaining_gap():
+    A = OutlierRebuttal(sage="A", thesis_point="a", rebuttal="ra")
+    B = OutlierRebuttal(sage="B", thesis_point="b", rebuttal="rb")
+    # 補打只補了 B，C 仍缺 → unrebutted 必須揭露 C（這正是 review I-1 的洞）
+    merged, unrebutted = _merge_rebuttals([A], [B], needed=["A", "B", "C"])
+    assert {r.sage for r in merged} == {"A", "B"}
+    assert unrebutted == ["C"]
+
+
+def test_merge_rebuttals_prefers_original_for_same_sage():
+    orig = OutlierRebuttal(sage="A", thesis_point="a", rebuttal="原判反駁")
+    retry = OutlierRebuttal(sage="A", thesis_point="a", rebuttal="補打反駁")
+    merged, unrebutted = _merge_rebuttals([orig], [retry], needed=["A"])
+    assert len(merged) == 1 and merged[0].rebuttal == "原判反駁"
+    assert unrebutted == []
+
+
+class _FakeDebateGateway:
+    """debater 回固定陳詞；judge 依腳本依序回 verdict，並計次。"""
+    def __init__(self, judge_verdicts):
+        self._judge = list(judge_verdicts)
+        self.judge_calls = 0
+        self.debater_calls = 0
+
+    async def structured(self, role, *, system, prompt, schema, **kw):
+        if role == "debater":
+            self.debater_calls += 1
+            return DebateArgument(side="bull", argument="陳詞 [E001]")
+        if role == "judge":
+            v = self._judge[self.judge_calls]
+            self.judge_calls += 1
+            return v
+        raise AssertionError(f"unexpected role {role}")
+
+
+def _store_council():
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="quote", field="latest_close", value=2310.0,
+                       unit="TWD", source="x"))
+    council = CouncilVerdict(
+        signals=[
+            SageSignal(sage="Cathie Wood", stance="bullish", confidence=0.8,
+                       thesis="Wright's Law", what_would_change_my_mind="a"),
+            SageSignal(sage="Buffett", stance="bearish", confidence=0.7,
+                       thesis="貴", what_would_change_my_mind="b"),
+        ],
+        outliers=["Cathie Wood"], consensus="bearish")
+    return store, council
+
+
+def _verdict(winner="bear", rebuttals=()):
+    return DebateVerdict(winner=winner, rationale="r", strongest_bull_point="b",
+                         strongest_bear_point="s", outlier_rebuttals=list(rebuttals))
+
+
+async def test_run_debate_no_retry_when_complete():
+    store, council = _store_council()
+    rb = OutlierRebuttal(sage="Cathie Wood", thesis_point="x", rebuttal="y", evidence_ids=["E001"])
+    gw = _FakeDebateGateway([_verdict(rebuttals=[rb])])
+    _, _, v = await run_debate(store, [], council, None, gw)
+    assert gw.judge_calls == 1            # 首打已完整 → 不補打
+    assert v.unrebutted_outliers == []
+
+
+async def test_run_debate_retry_merges_and_preserves_winner():
+    store, council = _store_council()
+    rb = OutlierRebuttal(sage="Cathie Wood", thesis_point="x", rebuttal="y", evidence_ids=["E001"])
+    # 首打缺反駁且 retry 想改判 bull → 應補上反駁但 winner 維持原判 bear
+    gw = _FakeDebateGateway([_verdict(winner="bear"), _verdict(winner="bull", rebuttals=[rb])])
+    _, _, v = await run_debate(store, [], council, None, gw)
+    assert gw.judge_calls == 2
+    assert v.winner == "bear"                              # 補打未改判
+    assert {r.sage for r in v.outlier_rebuttals} == {"Cathie Wood"}
+    assert v.unrebutted_outliers == []
+
+
+async def test_run_debate_discloses_when_retry_still_incomplete():
+    store, council = _store_council()
+    gw = _FakeDebateGateway([_verdict(winner="bear"), _verdict(winner="bear")])  # 兩次都缺
+    _, _, v = await run_debate(store, [], council, None, gw)
+    assert gw.judge_calls == 2
+    assert v.unrebutted_outliers == ["Cathie Wood"]        # fail-loud 揭露
+
+
 def test_render_debate_shows_outlier_rebuttals():
     verdict = DebateVerdict(
         winner="bear", rationale="空方證據較紮實",
@@ -78,3 +185,14 @@ def test_render_debate_shows_outlier_rebuttals():
     assert "論點級反駁" in out
     assert "Cathie Wood" in out and "Wright's Law" in out
     assert "E018, E047" in out
+
+
+def test_render_debate_warns_on_unrebutted_outliers():
+    verdict = DebateVerdict(winner="bear", rationale="r", strongest_bull_point="b",
+                            strongest_bear_point="s", unrebutted_outliers=["Druckenmiller"])
+    result = SimpleNamespace(
+        ticker="2330", debate=verdict,
+        bull=DebateArgument(side="bull", argument="多"),
+        bear=DebateArgument(side="bear", argument="空"))
+    out = render_debate(result)
+    assert "未對" in out and "Druckenmiller" in out  # fail-loud 警告有呈現

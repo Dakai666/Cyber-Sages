@@ -137,6 +137,15 @@ def test_tampered_number_still_caught():
     assert not check_claim(claim, store, CFG).verified
 
 
+def test_failure_kind_is_authoritative():
+    # 失敗種類由驗證層權威給定（presentation 端不再用 reason 子串猜）
+    store = make_store()
+    assert check_claim(Claim(text="x", evidence_ids=["E999"]), store, CFG).kind == "bad_ref"
+    assert check_claim(Claim(text="x 30%", evidence_ids=[]), store, CFG).kind == "no_cite"
+    assert check_claim(Claim(text="P/E 99.9x", evidence_ids=["E002"]), store, CFG).kind == "num_mismatch"
+    assert check_claim(Claim(text="P/E 35.3x", evidence_ids=["E002"]), store, CFG).kind == "ok"
+
+
 def test_number_inside_string_evidence_verified():
     # 新聞類 evidence 的 value 是字串，claim 引用其中的數字也要能驗
     store = EvidenceStore(ticker="TEST")

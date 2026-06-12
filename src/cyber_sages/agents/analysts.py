@@ -103,7 +103,8 @@ async def run_analyst(
     # 重寫額度用完：保留報告但標記未通過驗證的 claim（最終報告強制揭露）
     citation = check_claims(report.claims, store, settings.citation)
     report.unverified = [
-        UnverifiedClaim(text=c.claim.text, evidence_ids=c.claim.evidence_ids, reason=c.reason)
+        UnverifiedClaim(text=c.claim.text, evidence_ids=c.claim.evidence_ids,
+                        reason=c.reason, kind=c.kind)
         for c in citation.unverified
     ]
     return report

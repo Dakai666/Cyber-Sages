@@ -92,6 +92,9 @@ def render_brief(result: AnalysisResult) -> str:
     ]
     if c.outliers:
         lines.append(f"離群者：{'、'.join(c.outliers)}（意見已強制進入辯論）")
+    if result.debate and result.debate.unrebutted_outliers:
+        lines.append(f"⚠️ 裁判未完成論點級反駁：{'、'.join(result.debate.unrebutted_outliers)}"
+                     "（其核心論點尚未被正面回應，閱讀時請自行加權）")
     lines += ["", v.thesis, ""]
 
     if v.key_risks:
@@ -177,6 +180,9 @@ def render_debate(result: AnalysisResult) -> str:
             ids = f" `[{', '.join(rb.evidence_ids)}]`" if rb.evidence_ids else ""
             lines += [f"### {rb.sage}", f"- 核心論點：{rb.thesis_point}",
                       f"- 反駁：{rb.rebuttal}{ids}"]
+    if d.unrebutted_outliers:
+        lines += ["", f"> ⚠️ 裁判未對 {len(d.unrebutted_outliers)} 位敗方離群者完成論點級"
+                  f"反駁：{'、'.join(d.unrebutted_outliers)}（其核心論點尚未被正面回應）"]
     return "\n".join(lines)
 
 

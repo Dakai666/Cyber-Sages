@@ -10,6 +10,7 @@ claim 文字裡的每個「有意義的數字」必須能在其引用的 evidenc
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -22,10 +23,15 @@ class Claim(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+# 失敗種類由驗證層權威認定（不在 presentation 端用 reason 子串猜）
+FailureKind = Literal["ok", "bad_ref", "no_cite", "num_mismatch"]
+
+
 class ClaimCheck(BaseModel):
     claim: Claim
     verified: bool
     reason: str = ""
+    kind: FailureKind = "ok"
 
 
 class CitationReport(BaseModel):
@@ -109,11 +115,12 @@ def check_claim(claim: Claim, store: EvidenceStore, cfg: CitationConfig) -> Clai
     for eid in claim.evidence_ids:
         ev = store.get(eid)
         if ev is None:
-            return ClaimCheck(claim=claim, verified=False,
+            return ClaimCheck(claim=claim, verified=False, kind="bad_ref",
                               reason=f"cites nonexistent evidence id {eid}")
         cited.append(ev)
     if not cited:
-        return ClaimCheck(claim=claim, verified=False, reason="no evidence cited")
+        return ClaimCheck(claim=claim, verified=False, kind="no_cite",
+                          reason="no evidence cited")
 
     numbers = extract_meaningful_numbers(claim.text)
     if not numbers:
@@ -128,7 +135,7 @@ def check_claim(claim: Claim, store: EvidenceStore, cfg: CitationConfig) -> Clai
     if unmatched:
         direct = [float(e.value) for e in cited if isinstance(e.value, (int, float))]
         return ClaimCheck(
-            claim=claim, verified=False,
+            claim=claim, verified=False, kind="num_mismatch",
             reason=f"numbers {unmatched} not found in cited evidence "
                    f"(cited values: {direct}, incl. derived ratios)",
         )
