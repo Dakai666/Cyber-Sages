@@ -26,8 +26,10 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "trend (price vs SMA20/50/200), momentum (RSI, MACD, returns), volatility, "
         "distance from 52-week range. Identify concrete support/resistance levels "
         "from the SMAs and 52w range. If 籌碼 (chips) evidence is present — 台股三大法人"
-        "買賣超 (foreign/trust/dealer net) and 融資融券餘額 (margin/short balances) — "
-        "read it as an institutional-flow and leverage signal alongside the technicals.",
+        "買賣超 (foreign/trust/dealer net) and 融資融券餘額 (margin/short balances), or US "
+        "short interest (short_percent_of_float, short_ratio days-to-cover, MoM change) — "
+        "read it as an institutional-flow / positioning / leverage signal alongside the "
+        "technicals (US short interest is second-hand FINRA data; TW 借券+融券 is a proxy).",
         ["history", "quote", "chips"],
     ),
     (

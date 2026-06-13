@@ -142,7 +142,43 @@ class USStockProvider:
                 value=f"{info.get('sector')} / {info.get('industry', '?')}",
                 source="yfinance info", url=url,
             ))
+        # 空頭部位（short interest）——複用上面已抓的 info，不重打一次 .info
+        evs += self._short_interest_evidence(info, url)
         return evs
+
+    @staticmethod
+    def _short_interest_evidence(info: dict, url: str) -> list[Evidence]:
+        """yfinance 的 short interest（二手：源自 FINRA 半月報，yfinance 轉手）。歸 chips
+        類別讓技術/籌碼分析師讀為空方定位訊號；source 明標 second-hand。"""
+        src = "yfinance short interest (FINRA, second-hand)"
+        as_of = None
+        ts = info.get("dateShortInterest")
+        if isinstance(ts, (int, float)):
+            as_of = datetime.fromtimestamp(ts, tz=timezone.utc).date()
+        out: list[Evidence] = []
+        if info.get("shortPercentOfFloat") is not None:
+            out.append(Evidence(
+                category="chips", field="short_percent_of_float",
+                value=round(float(info["shortPercentOfFloat"]) * 100, 2), unit="%",
+                source=src, url=url, as_of=as_of, note="流通股中被放空比例（二手，FINRA 半月報）"))
+        if info.get("sharesShort") is not None:
+            out.append(Evidence(
+                category="chips", field="shares_short", value=int(info["sharesShort"]),
+                unit="shares", source=src, url=url, as_of=as_of, note="放空股數（二手）"))
+        if info.get("shortRatio") is not None:
+            out.append(Evidence(
+                category="chips", field="short_ratio", value=round(float(info["shortRatio"]), 2),
+                unit="days", source=src, url=url, as_of=as_of,
+                note="days-to-cover：放空股數 / 日均量（二手）"))
+        # MoM 趨勢：放空是否擴大（確定性算，Burry 看空方累積）
+        cur, prior = info.get("sharesShort"), info.get("sharesShortPriorMonth")
+        if cur is not None and prior:
+            out.append(Evidence(
+                category="chips", field="short_interest_change_mom_pct",
+                value=round((float(cur) / float(prior) - 1) * 100, 2), unit="%",
+                source=f"computed from {src}", url=url, as_of=as_of,
+                note="放空股數較上月變化（正=空方擴大）"))
+        return out
 
     # ---------- history + 確定性技術指標 ----------
 

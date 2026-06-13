@@ -333,9 +333,10 @@ class TWStockProvider:
         # issue #4：法人要 20 交易日累計，視窗需 ~35 天（含假日約 25 交易日）；融資券只要
         # 5 日變化，12 天足夠。原 issue C 段「縮到 3 天省配額」與 A 段「20 日累計」互斥，
         # 取較高價值的趨勢需求（A），捨棄籌碼端的配額節省。
-        inst, margin = await asyncio.gather(
+        inst, margin, sbl = await asyncio.gather(
             self._fm("TaiwanStockInstitutionalInvestorsBuySell", stock_id, days_ago(35)),
             self._fm("TaiwanStockMarginPurchaseShortSale", stock_id, days_ago(12)),
+            self._fm("TaiwanDailyShortSaleBalances", stock_id, days_ago(12)),
             return_exceptions=True,
         )
         evs: list[Evidence] = []
@@ -343,7 +344,28 @@ class TWStockProvider:
             evs += self._institutional_evidence(inst, stock_id)
         if not isinstance(margin, BaseException) and margin:
             evs += self._margin_evidence(margin, stock_id)
+        if not isinstance(sbl, BaseException) and sbl:
+            evs += self._securities_lending_evidence(sbl, stock_id)
         return evs
+
+    @staticmethod
+    def _securities_lending_evidence(rows: list[dict], stock_id: str) -> list[Evidence]:
+        """借券賣出餘額（SBL）——與融券餘額合為台股 short interest proxy（決議 3）。
+
+        台股無美式 short interest，借券賣出 + 融券是最接近的第一手定位指標；evidence
+        note 明示「proxy，非美式 short interest」，避免被當成同口徑值。"""
+        rows = sorted(rows, key=lambda r: r["date"])
+        latest = rows[-1]
+        bal = latest.get("SBLShortSalesCurrentDayBalance")
+        if bal is None:
+            return []
+        return [Evidence(
+            category="chips", field="securities_lending_short_balance",
+            value=int(bal), unit="shares", source="FinMind TaiwanDailyShortSaleBalances",
+            url=f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/margin-trading",
+            as_of=date.fromisoformat(latest["date"]),
+            note="借券賣出餘額（與融券餘額合為 short interest proxy；非美式 short interest）",
+        )]
 
     @staticmethod
     def _institutional_evidence(rows: list[dict], stock_id: str) -> list[Evidence]:

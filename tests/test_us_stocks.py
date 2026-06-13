@@ -186,3 +186,31 @@ def test_pe_crosscheck_skips_when_eps_missing():
         # 無 eps_diluted_annual
     ])
     assert not _has_pe_finding(store)
+
+
+# ---------- short interest（二手 FINRA，chips 類別）----------
+
+def test_short_interest_evidence():
+    info = {
+        "shortPercentOfFloat": 0.0106,
+        "sharesShort": 155_886_024,
+        "sharesShortPriorMonth": 134_675_274,
+        "shortRatio": 3.12,
+        "dateShortInterest": 1_700_000_000,
+    }
+    m = {e.field: e for e in USStockProvider._short_interest_evidence(info, "u")}
+    assert m["short_percent_of_float"].value == 1.06          # 0.0106 × 100
+    assert m["shares_short"].value == 155_886_024
+    assert m["short_ratio"].value == 3.12
+    # MoM 變化 = (155886024/134675274 - 1) × 100 ≈ 15.75
+    assert m["short_interest_change_mom_pct"].value == 15.75
+    assert all(e.category == "chips" for e in m.values())
+    assert all("second-hand" in e.source for e in m.values())
+    assert m["short_percent_of_float"].as_of == date(2023, 11, 14)  # 自 timestamp 轉
+
+
+def test_short_interest_skips_missing_fields():
+    # 缺 prior month → 無 MoM；完全無 short 欄位 → 空
+    m = {e.field for e in USStockProvider._short_interest_evidence({"sharesShort": 100}, "u")}
+    assert m == {"shares_short"}
+    assert USStockProvider._short_interest_evidence({}, "u") == []
