@@ -65,6 +65,16 @@ BALANCE_FIELDS: dict[str, tuple[str, str]] = {
     "CurrentLiabilities": ("current_liabilities", "TWD"),
 }
 
+# FinMind 法人別 name → 三大法人口徑。模組常數（同 TTM_FIELDS 慣例：無實例狀態、
+# 測試可直接 import）。目前累計趨勢只做 foreign 與三法人合計（issue #4 範圍）；
+# trust_net_buy_5d / dealer_net_buy_5d 留待 Spec E 若有「法人分歧」skill 再補
+# （合計會抵消投信買、外資賣的分歧訊號）。
+INST_GROUPS: dict[str, list[str]] = {
+    "foreign_net_buy": ["Foreign_Investor", "Foreign_Dealer_Self"],
+    "trust_net_buy": ["Investment_Trust"],
+    "dealer_net_buy": ["Dealer_self", "Dealer_Hedging"],
+}
+
 
 class TWStockProvider:
     market = "TW"
@@ -319,9 +329,12 @@ class TWStockProvider:
 
     async def get_chips(self, ticker: str) -> list[Evidence]:
         stock_id = to_stock_id(ticker)
+        # issue #4：法人要 20 交易日累計，視窗需 ~35 天（含假日約 25 交易日）；融資券只要
+        # 5 日變化，12 天足夠。原 issue C 段「縮到 3 天省配額」與 A 段「20 日累計」互斥，
+        # 取較高價值的趨勢需求（A），捨棄籌碼端的配額節省。
         inst, margin = await asyncio.gather(
-            self._fm("TaiwanStockInstitutionalInvestorsBuySell", stock_id, days_ago(10)),
-            self._fm("TaiwanStockMarginPurchaseShortSale", stock_id, days_ago(10)),
+            self._fm("TaiwanStockInstitutionalInvestorsBuySell", stock_id, days_ago(35)),
+            self._fm("TaiwanStockMarginPurchaseShortSale", stock_id, days_ago(12)),
             return_exceptions=True,
         )
         evs: list[Evidence] = []
@@ -333,28 +346,26 @@ class TWStockProvider:
 
     @staticmethod
     def _institutional_evidence(rows: list[dict], stock_id: str) -> list[Evidence]:
-        latest = max(r["date"] for r in rows)
-        as_of = date.fromisoformat(latest)
         url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/institutional-trading"
-        net: dict[str, float] = {}
+        src = "FinMind TaiwanStockInstitutionalInvestorsBuySell"
+        # 每個交易日、每個法人別的 net buy（買-賣），供單日與 5/20 日累計共用。
+        by_date: dict[str, dict[str, float]] = {}
         for r in rows:
-            if r["date"] != latest:
-                continue
-            net[r["name"]] = net.get(r["name"], 0.0) + float(r["buy"]) - float(r["sell"])
-        # 名稱分群 → 三大法人口徑
-        groups = {
-            "foreign_net_buy": ["Foreign_Investor", "Foreign_Dealer_Self"],
-            "trust_net_buy": ["Investment_Trust"],
-            "dealer_net_buy": ["Dealer_self", "Dealer_Hedging"],
-        }
+            day = by_date.setdefault(r["date"], {})
+            day[r["name"]] = day.get(r["name"], 0.0) + float(r["buy"]) - float(r["sell"])
+        dates_desc = sorted(by_date, reverse=True)
+        latest = dates_desc[0]
+        as_of = date.fromisoformat(latest)
+        net = by_date[latest]  # 單日（最新一日）
+
+        groups = INST_GROUPS
         evs: list[Evidence] = []
         zh = {"foreign_net_buy": "外資", "trust_net_buy": "投信", "dealer_net_buy": "自營商"}
         for field, names in groups.items():
             val = sum(net.get(n, 0.0) for n in names)
             evs.append(Evidence(
                 category="chips", field=field, value=round(val, 0), unit="shares",
-                source="FinMind TaiwanStockInstitutionalInvestorsBuySell", url=url, as_of=as_of,
-                note=f"{zh[field]}單日買賣超（正=買超）",
+                source=src, url=url, as_of=as_of, note=f"{zh[field]}單日買賣超（正=買超）",
             ))
         # 合計直接由所有 name 加總（= 三大法人合計），對 FinMind 改 schema 健壯；
         # 若出現未納入分群的新 name，於 note 標出以免靜默漏算。
@@ -366,27 +377,61 @@ class TWStockProvider:
             note += f"；⚠ FinMind 出現未分群類別 {unmapped}，已計入合計但未獨立呈現"
         evs.append(Evidence(
             category="chips", field="institutional_net_buy_total", value=round(total, 0),
-            unit="shares", source="FinMind TaiwanStockInstitutionalInvestorsBuySell",
-            url=url, as_of=as_of, note=note,
+            unit="shares", source=src, url=url, as_of=as_of, note=note,
         ))
+
+        # issue #4 — 累計趨勢：外資 5/20 日、三法人合計 5 日。確定性加總，不足天數不發。
+        def cum(names, n: int) -> float:
+            return sum(by_date[d].get(nm, 0.0) for d in dates_desc[:n] for nm in names)
+
+        all_names = sorted({nm for d in by_date.values() for nm in d})
+        n_days = len(dates_desc)
+        foreign = groups["foreign_net_buy"]
+        for field, names, window, label in [
+            ("foreign_net_buy_5d", foreign, 5, "外資累計買賣超"),
+            ("foreign_net_buy_20d", foreign, 20, "外資累計買賣超"),
+            ("institutional_net_buy_5d", all_names, 5, "三大法人累計買賣超"),
+        ]:
+            if n_days < window:
+                continue  # 視窗內交易日不足，不發半截累計（避免誤導趨勢）
+            evs.append(Evidence(
+                category="chips", field=field, value=round(cum(names, window), 0),
+                unit="shares", source=f"computed from {src}", url=url, as_of=as_of,
+                # 明寫「N 個交易日」而非僅日期區間：window 內含假日時 calendar gap > 交易日數，
+                # 避免 LLM 把 {start}…{latest} 當成日曆天誤算「近月/近週」。
+                note=f"{label}（{window} 個交易日 {dates_desc[window - 1]}…{latest}；正=買超）",
+            ))
         return evs
 
     @staticmethod
     def _margin_evidence(rows: list[dict], stock_id: str) -> list[Evidence]:
+        rows = sorted(rows, key=lambda r: r["date"])  # 防 FinMind 非升冪
         latest = rows[-1]
         as_of = date.fromisoformat(latest["date"])
         url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/margin-trading"
+        src = "FinMind TaiwanStockMarginPurchaseShortSale"
+        # 5 交易日前那一筆（index -6）；不足 6 筆則無法算 5 日變化。
+        prior5 = rows[-6] if len(rows) >= 6 else None
         out: list[Evidence] = []
-        for key, field, note in [
-            ("MarginPurchaseTodayBalance", "margin_balance", "融資餘額（張）"),
-            ("ShortSaleTodayBalance", "short_balance", "融券餘額（張）"),
+        for key, field, note, chg_field, zh in [
+            ("MarginPurchaseTodayBalance", "margin_balance", "融資餘額（張）",
+             "margin_balance_change_5d_pct", "融資餘額"),
+            ("ShortSaleTodayBalance", "short_balance", "融券餘額（張）",
+             "short_balance_change_5d_pct", "融券餘額"),
         ]:
             if latest.get(key) is not None:
                 out.append(Evidence(
                     category="chips", field=field, value=int(latest[key]), unit="lots",
-                    source="FinMind TaiwanStockMarginPurchaseShortSale",
-                    url=url, as_of=as_of, note=note,
+                    source=src, url=url, as_of=as_of, note=note,
                 ))
+                # issue #4 — 5 日餘額變化 %：區分多殺多趨勢 vs 當日沖銷殘留（程式算）。
+                if prior5 and prior5.get(key) not in (None, 0):
+                    chg = (float(latest[key]) / float(prior5[key]) - 1) * 100
+                    out.append(Evidence(
+                        category="chips", field=chg_field, value=round(chg, 2), unit="%",
+                        source=f"computed from {src}", url=url, as_of=as_of,
+                        note=f"{zh} 近 5 交易日變化（正=增加；vs {prior5['date']}）",
+                    ))
         return out
 
     # ---------- news ----------
