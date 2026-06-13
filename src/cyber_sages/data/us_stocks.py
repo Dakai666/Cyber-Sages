@@ -33,6 +33,40 @@ GAAP_FIELDS: list[tuple[str, list[str], str]] = [
     ("total_liabilities", ["Liabilities"], "USD"),
     ("stockholders_equity", ["StockholdersEquity"], "USD"),
     ("operating_cash_flow", ["NetCashProvidedByUsedInOperatingActivities"], "USD"),
+    # 以下為 Spec A P0 衍生欄位的原始輸入（owner earnings / 安全邊際 / 槓桿 / 利息保障）。
+    ("gross_profit", ["GrossProfit"], "USD"),
+    ("operating_income", ["OperatingIncomeLoss"], "USD"),
+    ("current_assets", ["AssetsCurrent"], "USD"),
+    ("current_liabilities", ["LiabilitiesCurrent"], "USD"),
+    ("capex", ["PaymentsToAcquirePropertyPlantAndEquipment",
+               "PaymentsToAcquireProductiveAssets"], "USD"),
+    ("depreciation_amortization", ["DepreciationDepletionAndAmortization",
+                                   "DepreciationAmortizationAndAccretionNet",
+                                   "DepreciationAndAmortization"], "USD"),
+    ("interest_expense", ["InterestExpense", "InterestExpenseNonoperating"], "USD"),
+]
+
+# 確定性衍生欄位（絕不讓 LLM 算數）：以年報值為輸入，公式與輸入欄位寫進 note 供 cite-check。
+# 每筆 (欄位名, 單位, 公式說明, 計算函式 fn(vals)->float|None)。fn 回 None 表示輸入缺/不合法則略過。
+def _safe_div(num: float, den: float) -> float | None:
+    return num / den if den else None
+
+
+DERIVED_FUNDAMENTALS: list[tuple[str, str | None, str, "callable"]] = [
+    ("free_cash_flow_annual", "USD", "OCF − CapEx",
+     lambda v: v["operating_cash_flow_annual"] - v["capex_annual"]),
+    ("working_capital", "USD", "流動資產 − 流動負債",
+     lambda v: v["current_assets_annual"] - v["current_liabilities_annual"]),
+    ("net_net_value", "USD", "流動資產 − 總負債（Graham net-net）",
+     lambda v: v["current_assets_annual"] - v["total_liabilities_annual"]),
+    ("debt_to_equity", None, "總負債 / 股東權益",
+     lambda v: _safe_div(v["total_liabilities_annual"], v["stockholders_equity_annual"])),
+    ("interest_coverage", "x", "營業利益 / 利息費用",
+     lambda v: _safe_div(v["operating_income_annual"], abs(v["interest_expense_annual"]))),
+    ("gross_margin_pct", "%", "毛利 / 營收 × 100",
+     lambda v: _safe_div(v["gross_profit_annual"] * 100, v["revenue_annual"])),
+    ("roe_pct", "%", "稅後淨利 / 股東權益 × 100",
+     lambda v: _safe_div(v["net_income_annual"] * 100, v["stockholders_equity_annual"])),
 ]
 
 
@@ -144,10 +178,20 @@ class USStockProvider:
             resp = await with_retry(_fetch, what=f"EDGAR companyfacts {ticker}")
             facts = resp.json()
 
+        filing_base = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}"
+        return self._facts_to_evidence(facts, filing_base)
+
+    @classmethod
+    def _facts_to_evidence(cls, facts: dict, filing_base: str) -> list[Evidence]:
+        """純解析：SEC companyfacts JSON → Evidence（raw 年報/季報 + 確定性衍生）。
+
+        抽成純函式以便不打網路測試；網路只負責取得 `facts`。"""
         evs: list[Evidence] = []
         gaap = facts.get("facts", {}).get("us-gaap", {})
-        filing_base = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}"
 
+        # 衍生欄位要用同一份年報數，邊發 raw evidence 邊記下年度值與其 end 日期。
+        annual_vals: dict[str, float] = {}
+        annual_as_of: date | None = None
         for field, concepts, unit in GAAP_FIELDS:
             # 公司會換 XBRL 標籤（如 NVDA 的營收概念）：
             # 不能用「第一個有資料的概念」，要跨概念取 end 日期最新的一筆。
@@ -157,9 +201,9 @@ class USStockProvider:
                 entries = gaap.get(concept, {}).get("units", {}).get(unit, [])
                 if not entries:
                     continue
-                a = self._latest(entries, form_prefix="10-K",
-                                 min_duration_days=300 if unit == "USD" and field != "eps_diluted" else None)
-                q = self._latest(entries, form_prefix="10-Q")
+                a = cls._latest(entries, form_prefix="10-K",
+                                min_duration_days=300 if unit == "USD" and field != "eps_diluted" else None)
+                q = cls._latest(entries, form_prefix="10-Q")
                 if a and (annual is None or a["end"] > annual["end"]):
                     annual = {**a, "_concept": concept}
                 if q and (quarterly is None or q["end"] > quarterly["end"]):
@@ -171,6 +215,9 @@ class USStockProvider:
                     url=filing_base, as_of=date.fromisoformat(annual["end"]),
                     note=f"FY{annual.get('fy')} {annual['_concept']}",
                 ))
+                annual_vals[f"{field}_annual"] = float(annual["val"])
+                end = date.fromisoformat(annual["end"])
+                annual_as_of = end if annual_as_of is None or end > annual_as_of else annual_as_of
             if quarterly and (not annual or quarterly["end"] > annual["end"]):
                 evs.append(Evidence(
                     category="fundamentals", field=f"{field}_latest_quarter",
@@ -178,9 +225,11 @@ class USStockProvider:
                     url=filing_base, as_of=date.fromisoformat(quarterly["end"]),
                     note=f"{quarterly.get('fy')}{quarterly.get('fp', '')} {quarterly['_concept']}",
                 ))
+        evs += cls._derived_fundamentals(annual_vals, annual_as_of, filing_base)
+
         dei = facts.get("facts", {}).get("dei", {})
         shares = dei.get("EntityCommonStockSharesOutstanding", {}).get("units", {}).get("shares", [])
-        latest_shares = self._latest(shares, form_prefix="10-")
+        latest_shares = cls._latest(shares, form_prefix="10-")
         if latest_shares:
             evs.append(Evidence(
                 category="fundamentals", field="shares_outstanding",
@@ -188,6 +237,29 @@ class USStockProvider:
                 url=filing_base, as_of=date.fromisoformat(latest_shares["end"]),
             ))
         return evs
+
+    @staticmethod
+    def _derived_fundamentals(
+        annual_vals: dict[str, float], as_of: date | None, url: str
+    ) -> list[Evidence]:
+        """從年報原始值確定性算出衍生欄位（FCF / 槓桿 / 利息保障 / 毛利率 / ROE / net-net）。
+
+        缺任一輸入或除以零則該欄位略過——寧缺勿錯，下游 persona skill 會把缺值記為
+        not_evaluable（見 Spec E），不假裝有值。"""
+        out: list[Evidence] = []
+        for field, unit, formula, fn in DERIVED_FUNDAMENTALS:
+            try:
+                val = fn(annual_vals)
+            except KeyError:
+                continue  # 缺原始輸入
+            if val is None:
+                continue
+            out.append(Evidence(
+                category="fundamentals", field=field, value=round(float(val), 2),
+                unit=unit, source="computed from SEC EDGAR companyfacts (10-K)",
+                url=url, as_of=as_of, note=f"確定性衍生：{formula}",
+            ))
+        return out
 
     async def _resolve_cik(self, client: httpx.AsyncClient, ticker: str) -> int | None:
         async def _fetch() -> httpx.Response:
