@@ -17,18 +17,30 @@ FinMind 已驗證的欄位（2330 實測）：
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date
 
 import httpx
 
+from cyber_sages.data.base import is_tw_etf
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.finmind import days_ago, finmind_get
 from cyber_sages.data.indicators import compute_indicator_evidence
+
+logger = logging.getLogger(__name__)
 
 
 def to_stock_id(ticker: str) -> str:
     """2330 / 2330.TW / 2330.TWO → 2330。"""
     return ticker.upper().split(".")[0]
+
+
+# 綜合損益表是「單季」值；估值要用 TTM（近四季合計），單季 EPS×4 會放大成數倍的
+# 本益比誤判，故確定性算出 TTM。模組常數：不需要實例狀態，測試可直接 import。
+TTM_FIELDS: dict[str, tuple[str, str]] = {
+    "EPS": ("eps_ttm", "TWD/share"),
+    "Revenue": ("revenue_ttm", "TWD"),
+}
 
 
 def _twse_url(stock_id: str) -> str:
@@ -107,8 +119,9 @@ class TWStockProvider:
                         category="profile", field="sector", value=industry,
                         source="FinMind TaiwanStockInfo", url=url,
                     ))
-        except Exception:
-            pass
+        except Exception as e:
+            # profile 是非核心類別；失敗只少了公司名/產業，不該悶掉——記 log 供追蹤
+            logger.warning("TW profile (TaiwanStockInfo) fetch failed for %s: %s", stock_id, e)
         return evs
 
     @staticmethod
@@ -120,7 +133,9 @@ class TWStockProvider:
                 last = getattr(fast, "last_price", None)
                 if last:
                     return float(last)
-        except Exception:
+        except Exception as e:
+            # 第二條跨源比對路徑失敗不致命（FinMind 收盤仍在），但要記 log
+            logger.warning("TW yfinance cross-source price failed for %s: %s", stock_id, e)
             return None
         return None
 
@@ -148,7 +163,7 @@ class TWStockProvider:
 
     async def get_fundamentals(self, ticker: str) -> list[Evidence]:
         stock_id = to_stock_id(ticker)
-        if stock_id.startswith("00"):
+        if is_tw_etf(ticker):
             return []  # ETF 無個股損益表/資產負債表/月營收，不發無謂的 FinMind 請求
         income, balance, month = await asyncio.gather(
             self._fm("TaiwanStockFinancialStatements", stock_id, days_ago(550)),
@@ -169,19 +184,13 @@ class TWStockProvider:
         return evs
 
     # FinMind 的綜合損益表是「單季」值（已驗證：2024 四季 EPS 加總 = FY 全年）。
-    # 估值要用的是 TTM（近四季合計），單季 EPS×4 會放大成數倍的本益比誤判，
-    # 故在此確定性算出 TTM，讓估值分析師有正確的 P/E 錨點。
-    TTM_FIELDS: dict[str, tuple[str, str]] = {
-        "EPS": ("eps_ttm", "TWD/share"),
-        "Revenue": ("revenue_ttm", "TWD"),
-    }
-
-    @classmethod
-    def _ttm_evidence(cls, rows, url) -> list[Evidence]:
+    # 在此確定性算出近四季合計 TTM，讓估值分析師有正確的 P/E 錨點（見 TTM_FIELDS）。
+    @staticmethod
+    def _ttm_evidence(rows, url) -> list[Evidence]:
         if isinstance(rows, BaseException) or not rows:
             return []
         out: list[Evidence] = []
-        for fm_type, (field, unit) in cls.TTM_FIELDS.items():
+        for fm_type, (field, unit) in TTM_FIELDS.items():
             quarters = sorted(
                 ((r["date"], float(r["value"])) for r in rows
                  if r["type"] == fm_type and r["value"] is not None),
@@ -326,7 +335,8 @@ class TWStockProvider:
         stock_id = to_stock_id(ticker)
         try:
             rows = await self._fm("TaiwanStockNews", stock_id, days_ago(14))
-        except Exception:
+        except Exception as e:
+            logger.warning("TW news (TaiwanStockNews) fetch failed for %s: %s", stock_id, e)
             return []
         rows = sorted(rows, key=lambda r: r.get("date", ""), reverse=True)[:10]
         evs: list[Evidence] = []

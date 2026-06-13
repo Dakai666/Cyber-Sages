@@ -116,6 +116,27 @@ def test_balance_sheet_excludes_percentage_variants():
     assert by_field == {"total_assets": 7000.0, "total_liabilities": 2000.0, "equity": 5000.0}
 
 
+# ---------- 公司基本資料（含 ETF）----------
+
+async def test_tw_etf_company_info(monkeypatch):
+    # ETF 也會發 TaiwanStockInfo 拿名稱/產業；驗證 FinMind 回 ETF row 時欄位映射正確，
+    # 不會因 ETF 的 industry_category（如 "ETF"）而漏掉 profile evidence。
+    provider = TWStockProvider()
+
+    async def fake_fm(dataset, stock_id, start_date):
+        if dataset == "TaiwanStockInfo":
+            return [{"stock_name": "元大台灣50", "industry_category": "ETF"}]
+        return []  # TaiwanStockPrice 等其餘類別此測試不關心
+
+    monkeypatch.setattr(provider, "_fm", fake_fm)
+    monkeypatch.setattr(provider, "_yf_last_price", lambda sid: None)
+
+    profile = {e.field: e for e in await provider.get_quote("0050") if e.category == "profile"}
+    assert profile["company_name"].value == "元大台灣50 (0050)"
+    assert profile["sector"].value == "ETF"
+    assert profile["company_name"].source == "FinMind TaiwanStockInfo"
+
+
 # ---------- 月營收 + YoY ----------
 
 def test_month_revenue_yoy():

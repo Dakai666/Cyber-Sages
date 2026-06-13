@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 
@@ -16,6 +17,8 @@ import httpx
 
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.indicators import compute_indicator_evidence
+
+logger = logging.getLogger(__name__)
 
 EDGAR_TICKER_MAP = "https://www.sec.gov/files/company_tickers.json"
 EDGAR_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
@@ -82,8 +85,9 @@ class USStockProvider:
         info = {}
         try:
             info = t.info or {}
-        except Exception:
-            pass
+        except Exception as e:
+            # info 失敗只少了 PE/股利/公司名（非核心），但 schema 變更會悶掉整欄——記 log
+            logger.warning("US yfinance .info failed for %s: %s", ticker, e)
         for field, key in [("trailing_pe", "trailingPE"), ("forward_pe", "forwardPE"),
                            ("dividend_yield_pct", "dividendYield")]:
             if info.get(key) is not None:
@@ -209,8 +213,9 @@ class USStockProvider:
         if key:
             try:
                 return await self._finnhub_news(ticker, key)
-            except Exception:
-                pass  # 降級到 yfinance
+            except Exception as e:
+                logger.warning("US finnhub news failed for %s, falling back to yfinance: %s",
+                               ticker, e)
         return await asyncio.to_thread(self._yf_news_sync, ticker)
 
     async def _finnhub_news(self, ticker: str, key: str) -> list[Evidence]:
@@ -240,7 +245,8 @@ class USStockProvider:
         evs: list[Evidence] = []
         try:
             news = yf.Ticker(ticker).news or []
-        except Exception:
+        except Exception as e:
+            logger.warning("US yfinance news failed for %s: %s", ticker, e)
             return evs
         for i, raw in enumerate(news[:10]):
             content = raw.get("content", raw)  # 新舊版 yfinance 結構不同

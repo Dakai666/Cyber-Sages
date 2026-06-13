@@ -157,7 +157,7 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     return findings
 
 
-class _AuditorOutput(BaseModel):
+class AuditorOutput(BaseModel):
     findings: list[AuditFinding] = Field(default_factory=list)
     summary: str
 
@@ -195,7 +195,7 @@ async def run_audit(
             # .replace 而非 .format：prompt 未來若含 JSON 範例的字面 {}，.format 會炸
             system=AUDITOR_SYSTEM.replace("{today}", date.today().isoformat()),
             prompt=f"Ticker: {store.ticker}\n\nEvidence dump:\n{store.digest()}",
-            schema=_AuditorOutput,
+            schema=AuditorOutput,
         )
         # LLM 稽核員只當「語意顧問」：其發現一律降為 warning，不獨自觸發降級。
         # 降級（信心封頂 0.5）保留給可信的確定性閘門，避免非確定性的稽核員
