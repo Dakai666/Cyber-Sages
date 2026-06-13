@@ -327,6 +327,26 @@ def test_margin_balance_trend_pct():
     assert by_field["short_balance_change_5d_pct"] == -20.0    # (40/50-1)×100
 
 
+def test_securities_lending_short_balance():
+    # 借券賣出餘額（short interest proxy，決議 3）：取最新日、標 proxy note
+    rows = [
+        {"date": "2026-06-11", "SBLShortSalesCurrentDayBalance": 12_000_000},
+        {"date": "2026-06-12", "SBLShortSalesCurrentDayBalance": 13_166_514},
+    ]
+    evs = TWStockProvider._securities_lending_evidence(rows, "2330")
+    assert len(evs) == 1
+    e = evs[0]
+    assert e.field == "securities_lending_short_balance"
+    assert e.value == 13_166_514 and e.unit == "shares"
+    assert e.category == "chips" and e.as_of == date(2026, 6, 12)
+    assert "proxy" in e.note
+
+
+def test_securities_lending_skips_when_balance_missing():
+    rows = [{"date": "2026-06-12", "SBLShortSalesShortSales": 20000}]  # 無 CurrentDayBalance
+    assert TWStockProvider._securities_lending_evidence(rows, "2330") == []
+
+
 # ---------- 技術指標共用邏輯 ----------
 
 def test_compute_indicator_evidence_fields():
