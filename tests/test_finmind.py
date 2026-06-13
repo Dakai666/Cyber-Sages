@@ -45,13 +45,19 @@ async def test_finmind_get_parses_data():
 
 
 async def test_finmind_get_logical_error_raises():
-    # HTTP 200 但 body status != 200（如查無資料 / 配額）→ 邏輯錯誤，不重試直接拋
+    # HTTP 200 但 body status != 200（如查無資料 / 配額）→ 邏輯錯誤，不重試直接拋。
+    # 斷言 call count==1 鎖住「body 檢查在 with_retry 邊界之外」這個結構不變量：
+    # 若未來有人把 body 檢查搬進 _fetch，這裡會抓到 silent retry（4xx 路徑的測試覆蓋不到）。
+    calls = {"n": 0}
+
     def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
         return httpx.Response(200, json={"status": 402, "msg": "quota exceeded"})
 
     async with _client(handler) as client:
         with pytest.raises(RuntimeError, match="quota exceeded"):
             await finmind_get(client, "TaiwanStockPrice", "2330")
+    assert calls["n"] == 1  # 單次呼叫即失敗，不重試
 
 
 async def test_finmind_get_retries_transient_then_succeeds():

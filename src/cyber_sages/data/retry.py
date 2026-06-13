@@ -24,6 +24,8 @@ T = TypeVar("T")
 
 # 只重試暫時性錯誤：連線 / 逾時類，加上 HTTP 429（限流）與 5xx（伺服器端）。
 # 其餘 4xx 多為永久性（找不到、參數錯），重試只是浪費配額。
+# 註：TimeoutException 本就是 TransportError 子類，isinstance 上冗餘；明列是當文件用，
+# 讓讀者一眼看到「逾時也算 transient」。
 _RETRYABLE_TRANSPORT = (httpx.TransportError, httpx.TimeoutException)
 
 
