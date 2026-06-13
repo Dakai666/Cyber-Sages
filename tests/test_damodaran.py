@@ -54,3 +54,22 @@ def test_benchmark_evidence_unknown_industry_still_gives_market_baseline():
 def test_benchmark_evidence_none_industry():
     m = {e.field for e in industry_benchmark_evidence(None, "u")}
     assert m == {"market_pe_trailing"}  # 無 industry 仍給市場基準
+
+
+def test_benchmark_emits_growth_and_units():
+    # I-2：5y growth 要 expose；n-1：P/E/PEG 帶 unit="x"、growth 帶 "%"
+    m = {e.field: e for e in industry_benchmark_evidence("Semiconductors", "u")}
+    assert "industry_growth_5y_pct" in m
+    assert m["industry_pe_trailing"].unit == "x"
+    assert m["industry_peg"].unit == "x"
+    assert m["industry_growth_5y_pct"].unit == "%"
+    assert m["market_pe_trailing"].unit == "x"
+
+
+def test_benchmark_skips_nan_fields_for_consumer_electronics():
+    # Electronics (Consumer & Office) 的 trailing_pe / peg 在快照為 nan，只有 forward_pe 有值
+    fields = {e.field for e in industry_benchmark_evidence("Consumer Electronics", "u")}
+    assert "industry_pe_trailing" not in fields   # nan → 跳過
+    assert "industry_peg" not in fields           # nan → 跳過
+    assert "industry_pe_forward" in fields        # 有值
+    assert "market_pe_trailing" in fields

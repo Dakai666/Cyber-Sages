@@ -7,10 +7,36 @@ persona 哲學同源）。multiples 是**美股口徑**，故僅對 US 個股發
 資料以 **vendored CSV 快照**形式 commit 進 repo（`datasets/damodaran_us_industries.csv`），
 runtime 只讀 stdlib csv——年更資料無需每 run 打網路 / 解析舊式 .xls。
 
-刷新（年更）流程（手動，一次性）：
-    uv run --with lxml python -c "..."  # 抓 pedata.html → read_html → 寫 CSV
-    （header 註明 source URL 與 retrieved 日期；欄位：industry / num_firms /
-      trailing_pe / forward_pe / expected_growth_5y_pct / peg）
+刷新（年更）流程（手動，一次性）——完整可重現指令：
+
+    uv run --with lxml python -c "
+    import httpx, pandas as pd, io, re, csv
+    h={'User-Agent':'Mozilla/5.0'}
+    html = httpx.get('https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/pedata.html',
+                     headers=h, timeout=25, follow_redirects=True).text
+    t = max(pd.read_html(io.StringIO(html)), key=lambda d: d.shape[0])
+    t.columns = [re.sub(r'\\s+',' ',str(c)).strip() for c in t.iloc[0]]; t = t.iloc[1:]
+    def num(x):
+        x=re.sub(r'[%,\\$]','',str(x)).strip()
+        try: return float(x)
+        except: return ''
+    rows=[{'industry': re.sub(r'\\s+',' ',str(r['Industry Name'])).strip(),
+           'num_firms': num(r['Number of firms']), 'trailing_pe': num(r['Trailing PE']),
+           'forward_pe': num(r['Forward PE']),
+           'expected_growth_5y_pct': num(r['Expected growth - next 5 years']),
+           'peg': num(r['PEG Ratio'])}
+          for _,r in t.iterrows() if str(r['Industry Name']).strip().lower() not in ('','nan')]
+    with open('src/cyber_sages/data/datasets/damodaran_us_industries.csv','w',newline='',encoding='utf-8') as f:
+        f.write('# Damodaran (NYU Stern) US industry valuation multiples — vendored snapshot\\n')
+        f.write('# source: https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/pedata.html\\n')
+        f.write('# retrieved_date: <YYYY-MM-DD> ; refresh: 年更，重跑本指令\\n')
+        f.write('# source typos preserved verbatim (e.g. \\'Heathcare\\' = Damodaran 原始 typo)\\n')
+        w=csv.DictWriter(f, fieldnames=['industry','num_firms','trailing_pe','forward_pe','expected_growth_5y_pct','peg'])
+        w.writeheader(); [w.writerow(r) for r in rows]
+    "
+
+刷新後手動把 `<YYYY-MM-DD>` 改成當日，並 commit。產業名保留 Damodaran 原始拼寫（含 typo），
+以維持 source fidelity；對映在 _INDUSTRY_MAP 處理。
 """
 
 from __future__ import annotations
@@ -116,10 +142,10 @@ def industry_benchmark_evidence(yf_industry: str | None, url: str) -> list[Evide
         return []
     out: list[Evidence] = []
 
-    def emit(field, value, note):
+    def emit(field, value, unit, note):
         out.append(Evidence(
             category="reference", field=field, value=round(float(value), 2),
-            source=_SOURCE, url=_URL, note=note))
+            unit=unit, source=_SOURCE, url=_URL, note=note))
 
     dam = map_industry(yf_industry)
     if dam and dam in table:
@@ -127,14 +153,21 @@ def industry_benchmark_evidence(yf_industry: str | None, url: str) -> list[Evide
         n = int(m.get("num_firms", 0))
         tag = f"{dam}（{n} 家美股同業，年度聚合，二手）"
         if "trailing_pe" in m:
-            emit("industry_pe_trailing", m["trailing_pe"], f"產業 trailing P/E：{tag}")
+            emit("industry_pe_trailing", m["trailing_pe"], "x", f"產業 trailing P/E：{tag}")
         if "forward_pe" in m:
-            emit("industry_pe_forward", m["forward_pe"], f"產業 forward P/E：{tag}")
+            emit("industry_pe_forward", m["forward_pe"], "x", f"產業 forward P/E：{tag}")
         if "peg" in m:
-            emit("industry_peg", m["peg"], f"產業 PEG：{tag}")
+            emit("industry_peg", m["peg"], "x", f"產業 PEG：{tag}")
+        if "expected_growth_5y_pct" in m:
+            emit("industry_growth_5y_pct", m["expected_growth_5y_pct"], "%",
+                 f"產業 5 年預估年成長：{tag}（Damodaran 預估，非公司 actual；peg = pe / growth 的分母）")
+    elif yf_industry:
+        # 有 industry 但對映不到 → 只給市場 baseline；記 debug 供未來擴充 _INDUSTRY_MAP
+        logger.debug("Damodaran: unmapped yfinance industry %r → industry benchmark skipped",
+                     yf_industry)
 
     market = table.get("Total Market")
     if market and "trailing_pe" in market:
-        emit("market_pe_trailing", market["trailing_pe"],
+        emit("market_pe_trailing", market["trailing_pe"], "x",
              "全美股市場 trailing P/E（估值基準，二手年度聚合）")
     return out

@@ -1,6 +1,8 @@
 # Damodaran (NYU Stern) US industry valuation multiples — vendored snapshot
 # source: https://pages.stern.nyu.edu/~adamodar/New_Home_Page/datafile/pedata.html
-# retrieved: 2026-06-14 ; refresh: 年更，重跑 vendoring（見 data/damodaran.py docstring）
+# retrieved_date: 2026-06-14
+# refresh: 年更，重跑 data/damodaran.py docstring 的完整指令
+# source typos preserved verbatim (e.g. 'Heathcare Information and Technology' = Damodaran 原始 typo)
 industry,num_firms,trailing_pe,forward_pe,expected_growth_5y_pct,peg
 Advertising,52.0,44.43,52.87,2.29,11.16
 Aerospace/Defense,79.0,92.8,45.87,25.04,1.41
