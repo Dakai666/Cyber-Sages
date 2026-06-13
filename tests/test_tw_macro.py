@@ -116,6 +116,72 @@ def test_balance_sheet_excludes_percentage_variants():
     assert by_field == {"total_assets": 7000.0, "total_liabilities": 2000.0, "equity": 5000.0}
 
 
+# ---------- 確定性衍生欄位（TW）----------
+
+def _income_4q() -> list[dict]:
+    # 4 季 IncomeAfterTaxes 各 100（TTM=400）+ 最新季毛利/營收
+    return [
+        {"date": "2025-06-30", "type": "IncomeAfterTaxes", "value": 100.0},
+        {"date": "2025-09-30", "type": "IncomeAfterTaxes", "value": 100.0},
+        {"date": "2025-12-31", "type": "IncomeAfterTaxes", "value": 100.0},
+        {"date": "2026-03-31", "type": "IncomeAfterTaxes", "value": 100.0},
+        {"date": "2026-03-31", "type": "GrossProfit", "value": 600.0},
+        {"date": "2026-03-31", "type": "Revenue", "value": 1000.0},
+    ]
+
+
+def _balance() -> list[dict]:
+    return [
+        {"date": "2026-03-31", "type": "CurrentAssets", "value": 1500.0},
+        {"date": "2026-03-31", "type": "CurrentLiabilities", "value": 800.0},
+        {"date": "2026-03-31", "type": "Liabilities", "value": 3000.0},
+        {"date": "2026-03-31", "type": "Equity", "value": 2000.0},
+    ]
+
+
+def test_tw_derived_fundamentals_arithmetic():
+    evs = TWStockProvider._derived_fundamentals(_income_4q(), _balance(), "url")
+    m = {e.field: e.value for e in evs}
+    assert m["working_capital"] == 700.0          # 1500 − 800
+    assert m["net_net_value"] == -1500.0          # 1500 − 3000
+    assert m["debt_to_equity"] == 1.5             # 3000 / 2000
+    assert m["gross_margin_pct"] == 60.0          # 600 / 1000 × 100
+    assert m["roe_pct"] == 20.0                   # TTM 淨利 400 / 2000 × 100
+    assert all(e.category == "fundamentals" for e in evs)
+    assert all("確定性衍生" in e.note for e in evs)
+
+
+def test_tw_roe_uses_ttm_not_single_quarter():
+    # 只有一季淨利 → 不足四季 TTM → roe 不發（不拿單季 ÷ 權益低估 4x）
+    income = [
+        {"date": "2026-03-31", "type": "IncomeAfterTaxes", "value": 100.0},
+        {"date": "2026-03-31", "type": "GrossProfit", "value": 600.0},
+        {"date": "2026-03-31", "type": "Revenue", "value": 1000.0},
+    ]
+    m = {e.field for e in TWStockProvider._derived_fundamentals(income, _balance(), "url")}
+    assert "roe_pct" not in m
+    assert "gross_margin_pct" in m  # 不依賴 TTM 的仍在
+
+
+def test_tw_derived_skips_on_missing_or_zero():
+    # 缺流動負債 → working_capital 不發；權益為 0 → debt_to_equity 不發
+    balance = [
+        {"date": "2026-03-31", "type": "CurrentAssets", "value": 1500.0},
+        {"date": "2026-03-31", "type": "Liabilities", "value": 3000.0},
+        {"date": "2026-03-31", "type": "Equity", "value": 0.0},
+    ]
+    m = {e.field for e in TWStockProvider._derived_fundamentals(_income_4q(), balance, "url")}
+    assert "working_capital" not in m
+    assert "debt_to_equity" not in m
+    assert "net_net_value" in m  # 流動資產 − 總負債 仍可算
+
+
+def test_tw_ttm_now_includes_net_income():
+    evs = TWStockProvider._ttm_evidence(_income_4q(), "url")
+    by_field = {e.field: e.value for e in evs}
+    assert by_field["net_income_ttm"] == 400.0
+
+
 # ---------- 公司基本資料（含 ETF）----------
 
 async def test_tw_etf_company_info(monkeypatch):

@@ -154,6 +154,29 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                         "diverge >25% (share count drift or data issue)",
                 evidence_ids=[eps[0].id, ni[0].id, sh[0].id],
             ))
+
+    # 6. W2 — US trailing P/E cross-check：yfinance 的 trailing_pe 是它自算的二手值，
+    # 用 SEC 第一手年報 EPS 反算 implied P/E 比對，偏離過大代表二手值可疑 → error。
+    # 僅 US：trailing_pe 由 yfinance info 提供，TW 端不發此欄位。
+    if store.market == "US":
+        pe = field_evs("quote", "trailing_pe")
+        eps_a = field_evs("fundamentals", "eps_diluted_annual")
+        price = field_evs("quote", "last_price") or field_evs("quote", "latest_close")
+        if pe and eps_a and price and float(eps_a[0].value) > 0:
+            yf_pe = float(pe[0].value)
+            implied_pe = float(price[0].value) / float(eps_a[0].value)
+            if yf_pe > 0:
+                # 分母用 yf_pe（非 max）：度量「yfinance 二手值偏離 SEC 第一手真相的相對誤差」，
+                # 刻意不對稱——與既有 internal_consistency 的 |implied-reported|/reported 同風格。
+                div = abs(yf_pe - implied_pe) / yf_pe * 100
+                if div > cfg.max_pe_divergence_pct:
+                    findings.append(AuditFinding(
+                        severity="error", check="cross_source",
+                        message=f"P/E divergence {div:.0f}%: yfinance trailing P/E {yf_pe:.1f} "
+                                f"vs SEC-implied (price/EPS_annual) {implied_pe:.1f} "
+                                f"(max {cfg.max_pe_divergence_pct:.0f}%; 口徑差: TTM vs FY 年報)",
+                        evidence_ids=[pe[0].id, eps_a[0].id, price[0].id],
+                    ))
     return findings
 
 

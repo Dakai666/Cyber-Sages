@@ -40,6 +40,7 @@ def to_stock_id(ticker: str) -> str:
 TTM_FIELDS: dict[str, tuple[str, str]] = {
     "EPS": ("eps_ttm", "TWD/share"),
     "Revenue": ("revenue_ttm", "TWD"),
+    "IncomeAfterTaxes": ("net_income_ttm", "TWD"),  # ROE 用 TTM 淨利，單季會低估 4x
 }
 
 
@@ -60,6 +61,8 @@ BALANCE_FIELDS: dict[str, tuple[str, str]] = {
     "TotalAssets": ("total_assets", "TWD"),
     "Liabilities": ("total_liabilities", "TWD"),
     "Equity": ("equity", "TWD"),
+    "CurrentAssets": ("current_assets", "TWD"),
+    "CurrentLiabilities": ("current_liabilities", "TWD"),
 }
 
 
@@ -180,6 +183,7 @@ class TWStockProvider:
         evs += self._ttm_evidence(income, base_url)
         evs += self._statement_evidence(balance, BALANCE_FIELDS, base_url,
                                         "FinMind TaiwanStockBalanceSheet")
+        evs += self._derived_fundamentals(income, balance, base_url)
         if not isinstance(month, BaseException):
             evs += self._month_revenue_evidence(month, stock_id)
         return evs
@@ -187,20 +191,28 @@ class TWStockProvider:
     # FinMind 的綜合損益表是「單季」值（已驗證：2024 四季 EPS 加總 = FY 全年）。
     # 在此確定性算出近四季合計 TTM，讓估值分析師有正確的 P/E 錨點（見 TTM_FIELDS）。
     @staticmethod
-    def _ttm_evidence(rows, url) -> list[Evidence]:
+    def _ttm_sum(rows, fm_type: str) -> tuple[float, list[tuple[str, float]]] | None:
+        """近四季合計 (total, last4)；不足四季回 None（不硬湊，避免低估 TTM）。"""
         if isinstance(rows, BaseException) or not rows:
-            return []
+            return None
+        quarters = sorted(
+            ((r["date"], float(r["value"])) for r in rows
+             if r["type"] == fm_type and r["value"] is not None),
+            reverse=True,
+        )
+        if len(quarters) < 4:
+            return None
+        last4 = quarters[:4]
+        return sum(v for _, v in last4), last4
+
+    @classmethod
+    def _ttm_evidence(cls, rows, url) -> list[Evidence]:
         out: list[Evidence] = []
         for fm_type, (field, unit) in TTM_FIELDS.items():
-            quarters = sorted(
-                ((r["date"], float(r["value"])) for r in rows
-                 if r["type"] == fm_type and r["value"] is not None),
-                reverse=True,
-            )
-            if len(quarters) < 4:
-                continue  # 不足四季不硬湊，避免低估 TTM
-            last4 = quarters[:4]
-            total = sum(v for _, v in last4)
+            res = cls._ttm_sum(rows, fm_type)
+            if res is None:
+                continue
+            total, last4 = res
             span = f"{last4[-1][0]}…{last4[0][0]}"
             out.append(Evidence(
                 category="fundamentals", field=field, value=round(total, 2),
@@ -209,6 +221,16 @@ class TWStockProvider:
                 note=f"近四季合計 TTM（{span}）；估值用 P/E 應以此為分母，勿用單季×4",
             ))
         return out
+
+    @staticmethod
+    def _latest_values(rows) -> tuple[dict[str, float], date | None]:
+        """最新一季的 {type: value}（跳過 None）與其季別日期；無資料回 ({}, None)。"""
+        if isinstance(rows, BaseException) or not rows:
+            return {}, None
+        latest = max(r["date"] for r in rows)
+        vals = {r["type"]: float(r["value"]) for r in rows
+                if r["date"] == latest and r["value"] is not None}
+        return vals, date.fromisoformat(latest)
 
     @staticmethod
     def _statement_evidence(rows, field_map, url, source) -> list[Evidence]:
@@ -226,6 +248,43 @@ class TWStockProvider:
                     unit=unit, source=source, url=url, as_of=as_of,
                     note=f"季別 {latest}（{fm_type}）",
                 ))
+        return out
+
+    # 確定性衍生欄位（與美股 canonical 命名對齊）。資產負債表與單季損益是同口徑的
+    # 時點/單季快照，可直接相除；現金流量表（FCF / 利息保障）因 FinMind 給的是 YTD
+    # 累計值、與單季混算會跨期出錯，留待後續專案處理，這裡不發。
+    @classmethod
+    def _derived_fundamentals(cls, income, balance, url) -> list[Evidence]:
+        inc, inc_as_of = cls._latest_values(income)
+        bal, bal_as_of = cls._latest_values(balance)
+        src = "computed from FinMind TaiwanStockBalanceSheet / FinancialStatements"
+        out: list[Evidence] = []
+
+        def emit(field, value, unit, formula, as_of):
+            out.append(Evidence(
+                category="fundamentals", field=field, value=round(float(value), 2),
+                unit=unit, source=src, url=url, as_of=as_of,
+                note=f"確定性衍生：{formula}",
+            ))
+
+        ca, cl = bal.get("CurrentAssets"), bal.get("CurrentLiabilities")
+        liab, eq = bal.get("Liabilities"), bal.get("Equity")
+        if ca is not None and cl is not None:
+            emit("working_capital", ca - cl, "TWD", "流動資產 − 流動負債", bal_as_of)
+        if ca is not None and liab is not None:
+            emit("net_net_value", ca - liab, "TWD", "流動資產 − 總負債（Graham net-net）", bal_as_of)
+        if liab is not None and eq:
+            emit("debt_to_equity", liab / eq, None, "總負債 / 股東權益", bal_as_of)
+
+        gp, rev = inc.get("GrossProfit"), inc.get("Revenue")
+        if gp is not None and rev:
+            emit("gross_margin_pct", gp / rev * 100, "%", "單季毛利 / 營收 × 100", inc_as_of)
+
+        # ROE 用 TTM 淨利（單季 ÷ 權益會低估 ~4x）；不足四季則不發。
+        ni_ttm = cls._ttm_sum(income, "IncomeAfterTaxes")
+        if ni_ttm is not None and eq:
+            emit("roe_pct", ni_ttm[0] / eq * 100, "%",
+                 "近四季 TTM 稅後淨利 / 股東權益 × 100", bal_as_of)
         return out
 
     @staticmethod
