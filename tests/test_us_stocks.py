@@ -109,6 +109,26 @@ def test_latest_prefers_recent_and_respects_duration():
     assert annual["val"] == 200  # 取最新且滿足年度 duration
 
 
+def test_latest_picks_by_end_date_not_value():
+    # 取最新 end，與 val 大小無關（舊年度值較大也不該勝出）
+    entries = [
+        _usd_annual(999, end="2023-12-31", start="2023-01-01"),
+        _usd_annual(10, end="2024-12-31", start="2024-01-01"),
+    ]
+    assert USStockProvider._latest(entries, form_prefix="10-K", min_duration_days=300)["val"] == 10
+
+
+def test_latest_form_prefix_routes_annual_vs_quarterly():
+    # 同概念混 10-K / 10-Q，form_prefix 正確分流到兩個出口
+    entries = [
+        _usd_annual(200, end="2024-12-31", start="2024-01-01", form="10-K"),
+        {"form": "10-Q", "start": "2025-01-01", "end": "2025-03-31", "val": 60},
+    ]
+    annual = USStockProvider._latest(entries, form_prefix="10-K", min_duration_days=300)
+    quarterly = USStockProvider._latest(entries, form_prefix="10-Q")
+    assert annual["val"] == 200 and quarterly["val"] == 60
+
+
 # ---------- W2 P/E cross-check ----------
 
 def _us_store(trailing_pe: float, eps_annual: float = 2.0, price: float = 20.0) -> EvidenceStore:
@@ -141,3 +161,28 @@ def test_pe_crosscheck_skipped_for_tw():
     store.market = "TW"
     findings = deterministic_checks(store, AuditConfig())
     assert not [f for f in findings if f.check == "cross_source" and "P/E" in f.message]
+
+
+def _has_pe_finding(store: EvidenceStore) -> bool:
+    return bool([f for f in deterministic_checks(store, AuditConfig())
+                 if f.check == "cross_source" and "P/E" in f.message])
+
+
+def test_pe_crosscheck_skips_negative_eps():
+    # 虧損公司 EPS_annual < 0 → P/E 無意義，須早退不發 finding（即便數值上偏離很大）
+    assert not _has_pe_finding(_us_store(trailing_pe=30.0, eps_annual=-2.0))
+
+
+def test_pe_crosscheck_skips_nonpositive_yf_pe():
+    # yfinance trailing_pe ≤ 0（虧損股 yfinance 常給 0/None）→ 不做比對
+    assert not _has_pe_finding(_us_store(trailing_pe=0.0))
+
+
+def test_pe_crosscheck_skips_when_eps_missing():
+    store = EvidenceStore(ticker="TEST", market="US")
+    store.add_all([
+        Evidence(category="quote", field="last_price", value=20.0, unit="USD", source="yf"),
+        Evidence(category="quote", field="trailing_pe", value=30.0, source="yfinance info (derived)"),
+        # 無 eps_diluted_annual
+    ])
+    assert not _has_pe_finding(store)

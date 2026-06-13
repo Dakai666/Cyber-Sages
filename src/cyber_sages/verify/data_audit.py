@@ -166,6 +166,8 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
             yf_pe = float(pe[0].value)
             implied_pe = float(price[0].value) / float(eps_a[0].value)
             if yf_pe > 0:
+                # 分母用 yf_pe（非 max）：度量「yfinance 二手值偏離 SEC 第一手真相的相對誤差」，
+                # 刻意不對稱——與既有 internal_consistency 的 |implied-reported|/reported 同風格。
                 div = abs(yf_pe - implied_pe) / yf_pe * 100
                 if div > cfg.max_pe_divergence_pct:
                     findings.append(AuditFinding(

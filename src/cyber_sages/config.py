@@ -42,6 +42,7 @@ class AuditConfig(BaseModel):
     # W2：yfinance 二手 trailing P/E 與 SEC 第一手年報 EPS 反算的 implied P/E 偏離上限。
     # 注意口徑差：yfinance trailing 用 TTM、implied 用最近年報（FY），高成長股年度<TTM
     # 會自然偏離，故閾值放寬到 25%（>此視為 yfinance 二手值可疑 → error）。
+    # TODO(issue #19)：補算 US eps_ttm 做 TTM-vs-TTM 口徑對齊後，此閾值可收回嚴格 10%。
     max_pe_divergence_pct: float = 25.0
     # 單一財報欄位嚴重過時（如換 XBRL 標籤撈到舊值）即 error；年報自然落後 ~1 年，
     # 超過 ~16 個月視為異常。與 max_fundamentals_age_days（整類新鮮度）分開。
