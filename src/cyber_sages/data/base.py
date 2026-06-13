@@ -34,6 +34,14 @@ class ChipsProvider(Protocol):
 
 
 @runtime_checkable
+class EstimateProvider(Protocol):
+    """分析師前瞻共識（forward EPS / 目標價 / 成長率）。獨立能力協議（同 ChipsProvider
+    範式）：來源是二手聚合的估計值，與第一手 quote/fundamentals 分流到 estimate 類別。"""
+
+    async def get_estimates(self, ticker: str) -> list[Evidence]: ...
+
+
+@runtime_checkable
 class MacroProvider(Protocol):
     """市場無關的總經背景（FRED 利率 / 殖利率曲線 / CPI / 就業）。
 

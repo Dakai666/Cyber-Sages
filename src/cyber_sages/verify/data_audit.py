@@ -202,6 +202,9 @@ CRITICAL — do NOT do any of the following:
   authoritative current date is {today} as stated above.
 - Do NOT report staleness/freshness or missing-data problems — those are checked
   deterministically by separate code. Focus only on cross-field/cross-source consistency.
+- Do NOT flag `estimate`-category values (forward_eps, target_mean_price, *_growth_est,
+  analyst_*) as inconsistent with first-hand actuals: they are forward-looking analyst
+  consensus, so forward_eps > trailing EPS or a target price above spot is normal, not an error.
 
 You do NOT give investment opinions. Only report genuine data problems; an empty findings
 list is the correct answer for clean data. Reference evidence ids."""
