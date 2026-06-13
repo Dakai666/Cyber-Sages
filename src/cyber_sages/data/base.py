@@ -42,6 +42,8 @@ class MacroProvider(Protocol):
     來源，反而更亂。沿用 `ChipsProvider` 的「額外能力＝獨立 runtime_checkable 協議」範式。
     """
 
+    market: str  # 來源標籤（如 "MACRO"）；列入協議，未來加第二個總經源不會漏設而漂移
+
     async def get_macro(self) -> list[Evidence]: ...
 
 
