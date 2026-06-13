@@ -163,7 +163,7 @@ class TWStockProvider:
 
     async def get_fundamentals(self, ticker: str) -> list[Evidence]:
         stock_id = to_stock_id(ticker)
-        if is_tw_etf(ticker):
+        if is_tw_etf(stock_id):  # stock_id 已是台股純數字形式，語意直接
             return []  # ETF 無個股損益表/資產負債表/月營收，不發無謂的 FinMind 請求
         income, balance, month = await asyncio.gather(
             self._fm("TaiwanStockFinancialStatements", stock_id, days_ago(550)),

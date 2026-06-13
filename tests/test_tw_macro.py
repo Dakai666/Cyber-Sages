@@ -137,6 +137,21 @@ async def test_tw_etf_company_info(monkeypatch):
     assert profile["company_name"].source == "FinMind TaiwanStockInfo"
 
 
+async def test_tw_etf_fundamentals_short_circuit(monkeypatch):
+    # ETF 無個股財報：get_fundamentals 應 early return []，且完全不發 FinMind 請求
+    provider = TWStockProvider()
+    called = False
+
+    async def spy_fm(dataset, stock_id, start_date):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(provider, "_fm", spy_fm)
+    assert await provider.get_fundamentals("0050") == []
+    assert not called  # is_tw_etf 短路在發請求之前
+
+
 # ---------- 月營收 + YoY ----------
 
 def test_month_revenue_yoy():
