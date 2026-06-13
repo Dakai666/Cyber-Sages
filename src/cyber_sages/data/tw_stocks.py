@@ -23,6 +23,7 @@ from datetime import date
 import httpx
 
 from cyber_sages.data.base import is_tw_etf
+from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.finmind import days_ago, finmind_get
 from cyber_sages.data.indicators import compute_indicator_evidence
@@ -433,6 +434,18 @@ class TWStockProvider:
                         note=f"{zh} 近 5 交易日變化（正=增加；vs {prior5['date']}）",
                     ))
         return out
+
+    # ---------- estimates（分析師前瞻共識，estimate 類別）----------
+
+    async def get_estimates(self, ticker: str) -> list[Evidence]:
+        stock_id = to_stock_id(ticker)
+        if is_tw_etf(stock_id):
+            return []  # ETF 無個股盈餘共識
+        # yfinance 對台股以 .TW / .TWO 兩種字尾掛牌，依序試（同 _yf_last_price 範式）
+        return await asyncio.to_thread(
+            fetch_estimates, [f"{stock_id}.TW", f"{stock_id}.TWO"], currency="TWD",
+            url=f"https://finance.yahoo.com/quote/{stock_id}.TW/analysis",
+        )
 
     # ---------- news ----------
 

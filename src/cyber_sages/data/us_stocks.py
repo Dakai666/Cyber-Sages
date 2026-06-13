@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
+from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.indicators import compute_indicator_evidence
 from cyber_sages.data.retry import with_retry
@@ -287,6 +288,14 @@ class USStockProvider:
             if best is None or e["end"] > best["end"]:
                 best = e
         return best
+
+    # ---------- estimates（分析師前瞻共識，estimate 類別）----------
+
+    async def get_estimates(self, ticker: str) -> list[Evidence]:
+        return await asyncio.to_thread(
+            fetch_estimates, [ticker], currency="USD",
+            url=f"https://finance.yahoo.com/quote/{ticker}/analysis",
+        )
 
     # ---------- news ----------
 

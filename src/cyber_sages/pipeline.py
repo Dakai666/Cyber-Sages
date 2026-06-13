@@ -26,6 +26,7 @@ from cyber_sages.agents.synthesis import run_synthesis
 from cyber_sages.config import Settings
 from cyber_sages.data.base import (
     ChipsProvider,
+    EstimateProvider,
     detect_instrument,
     detect_market,
     make_macro_provider,
@@ -133,6 +134,8 @@ async def run_pipeline(
     ]
     if isinstance(provider, ChipsProvider):
         collectors.append(provider.get_chips(ticker))
+    if isinstance(provider, EstimateProvider):
+        collectors.append(provider.get_estimates(ticker))
     if macro_provider is not None:
         collectors.append(macro_provider.get_macro())
 

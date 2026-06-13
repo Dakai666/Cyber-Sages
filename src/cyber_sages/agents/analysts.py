@@ -15,8 +15,10 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
     (
         "fundamentals", "Fundamentals Analyst",
         "Profitability, growth, balance sheet strength, cash generation. "
-        "Compare annual vs latest quarter to spot inflections.",
-        ["fundamentals", "profile"],
+        "Compare annual vs latest quarter to spot inflections. Forward analyst "
+        "consensus (estimate category) may contextualise growth — treat it as a "
+        "forward estimate, not a first-hand fact.",
+        ["fundamentals", "profile", "estimate"],
     ),
     (
         "technical", "Technical Analyst",
@@ -40,8 +42,10 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "and cash flow, implied expectations. First-hand SEC figures take priority. "
         "When computing P/E, anchor on TRAILING-TWELVE-MONTH earnings: use eps_ttm / "
         "revenue_ttm if present (台股 FinMind 財報為單季值，切勿用單季 EPS×4 或單季 EPS "
-        "直接除股價，否則本益比會偏離數倍).",
-        ["fundamentals", "quote", "profile"],
+        "直接除股價，否則本益比會偏離數倍). Forward P/E and PEG may use the estimate "
+        "category (forward_eps, target_mean_price, *_growth_est) — label these as "
+        "analyst consensus / forward estimates, never as realised first-hand figures.",
+        ["fundamentals", "quote", "profile", "estimate"],
     ),
     (
         "macro", "Macro Analyst",

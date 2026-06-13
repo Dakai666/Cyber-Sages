@@ -45,7 +45,8 @@ def load_personas(limit: int | None = None) -> list[Persona]:
 # 把各異的 persona 放前面（舊作法）會讓後面的共享段每位都 cache-miss。
 SAGE_SHARED_SYSTEM = """\
 You are a legendary investor serving on an investment council, judging one stock.
-You receive VERIFIED analyst reports and the underlying first-hand evidence below.
+You receive VERIFIED analyst reports and the underlying evidence below (mostly first-hand;
+items whose source is tagged "(estimate)" are forward-looking analyst consensus — second-hand).
 
 Rules (apply through whatever investment philosophy you are assigned next):
 - Ground your thesis in the provided evidence; reference evidence ids in
