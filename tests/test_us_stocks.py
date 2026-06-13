@@ -214,3 +214,11 @@ def test_short_interest_skips_missing_fields():
     m = {e.field for e in USStockProvider._short_interest_evidence({"sharesShort": 100}, "u")}
     assert m == {"shares_short"}
     assert USStockProvider._short_interest_evidence({}, "u") == []
+
+
+def test_short_interest_skips_mom_when_prior_zero():
+    # sharesShortPriorMonth=0 → truthy 守衛跳過 MoM，避免 div/0 污染 evidence
+    info = {"sharesShort": 100, "sharesShortPriorMonth": 0}
+    m = {e.field for e in USStockProvider._short_interest_evidence(info, "u")}
+    assert "short_interest_change_mom_pct" not in m
+    assert "shares_short" in m

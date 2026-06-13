@@ -172,7 +172,8 @@ class USStockProvider:
                 note="days-to-cover：放空股數 / 日均量（二手）"))
         # MoM 趨勢：放空是否擴大（確定性算，Burry 看空方累積）
         cur, prior = info.get("sharesShort"), info.get("sharesShortPriorMonth")
-        if cur is not None and prior:
+        if cur is not None and prior:  # truthy 守衛擋 prior=0/None，避免 div/0
+
             out.append(Evidence(
                 category="chips", field="short_interest_change_mom_pct",
                 value=round((float(cur) / float(prior) - 1) * 100, 2), unit="%",

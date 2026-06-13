@@ -362,9 +362,12 @@ class TWStockProvider:
         return [Evidence(
             category="chips", field="securities_lending_short_balance",
             value=int(bal), unit="shares", source="FinMind TaiwanDailyShortSaleBalances",
-            url=f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/margin-trading",
+            # 資料源是 TWSE 借券交易（TWT72U），非 Yahoo 融資券頁——指向 TWSE 借券報表
+            url="https://www.twse.com.tw/zh/trading/historical/twt72u.html",
             as_of=date.fromisoformat(latest["date"]),
-            note="借券賣出餘額（與融券餘額合為 short interest proxy；非美式 short interest）",
+            note="借券賣出餘額；與 short_balance（融券餘額）並列為台股空方定位 proxy（非美式 "
+                 "short interest）。⚠ 兩欄單位不同——本欄為股數、short_balance 為張(lots, ×1000 股)，"
+                 "比較或合計前須換算，勿直接相加。",
         )]
 
     @staticmethod
