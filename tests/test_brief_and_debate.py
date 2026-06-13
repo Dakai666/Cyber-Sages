@@ -259,3 +259,18 @@ async def test_run_council_warms_cache_with_first_sage_when_provider_caches():
     )
     assert order[0] == seated[0]  # 首位先完成（暖快取），不與其餘同時併發
     assert sorted(order) == sorted(seated)
+
+
+async def test_run_council_survives_braces_in_reports():
+    # I-1 迴歸：analyst 報告含字面 {}（LLM 偶爾輸出 placeholder）時，shared_system 組裝
+    # 不可炸——舊 .format() 會 raise KeyError/IndexError，現改 .replace
+    from cyber_sages.verify.citation_check import Claim
+    store = EvidenceStore(ticker="2330", market="TW")
+    report = AnalystReport(
+        analyst="估值分析師", summary="模板 {x} 與 {未知欄位} 都不該炸", outlook="bullish",
+        claims=[Claim(text="毛利率 {gross_margin} 約 50%", evidence_ids=["E001"])],
+    )
+    council = await run_council(
+        store, [report], _council_settings(), _fake_gateway(set()), n_sages=2
+    )
+    assert len(council.signals) == 2  # 沒炸、兩位都出訊號

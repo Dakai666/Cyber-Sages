@@ -66,6 +66,31 @@ class LLMGateway:
         if asyncio.iscoroutine(result):
             await result
 
+    @staticmethod
+    def _build_system(*, system, schema, use_native_schema, cache_prefix, cache_system, provider):
+        """組 `messages.create` 的 system 欄位，依 cache_prefix / cache_system / provider 是否
+        支援 cache_control 走四條分支：
+        1. cache_prefix + cache_control → 兩 block（前綴帶 breakpoint、persona 接其後不快取）
+        2. cache_system + cache_control → 單 block（整段 system 帶 breakpoint）
+        3. cache_prefix + 無 cache_control → 字串串接（乾淨標準請求，無快取）
+        4. 皆無 → 原 system 字串
+        非原生 schema 時的指示是跨呼叫共享的，有 cache_prefix 就併進前綴一起快取。"""
+        if schema is not None and not use_native_schema:
+            if cache_prefix is not None:
+                cache_prefix = cache_prefix + schema_prompt(schema)
+            else:
+                system = system + schema_prompt(schema)
+        if cache_prefix is not None and provider.has("cache_control"):
+            return [
+                {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": system},
+            ]
+        if cache_system and provider.has("cache_control"):
+            return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if cache_prefix is not None:
+            return f"{cache_prefix}\n\n{system}"
+        return system
+
     async def complete(
         self,
         role: str,
@@ -97,28 +122,10 @@ class LLMGateway:
         }
 
         use_native_schema = schema is not None and provider.has("json_schema_output")
-        if schema is not None and not use_native_schema:
-            # schema 指示是跨 persona 共享的——有 cache_prefix 時併進前綴，讓它也命中快取
-            if cache_prefix is not None:
-                cache_prefix = cache_prefix + schema_prompt(schema)
-            else:
-                system = system + schema_prompt(schema)
-
-        if cache_prefix is not None and provider.has("cache_control"):
-            # 共享前綴單獨成一個帶 breakpoint 的 block；persona（system）接其後、不快取
-            kwargs["system"] = [
-                {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
-                {"type": "text", "text": system},
-            ]
-        elif cache_system and provider.has("cache_control"):
-            kwargs["system"] = [
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-            ]
-        elif cache_prefix is not None:
-            # provider 不支援 cache_control：併成單一乾淨字串，語意不變、只是沒快取
-            kwargs["system"] = f"{cache_prefix}\n\n{system}"
-        else:
-            kwargs["system"] = system
+        kwargs["system"] = self._build_system(
+            system=system, schema=schema, use_native_schema=use_native_schema,
+            cache_prefix=cache_prefix, cache_system=cache_system, provider=provider,
+        )
 
         if provider.has("adaptive_thinking"):
             kwargs["thinking"] = {"type": "adaptive"}

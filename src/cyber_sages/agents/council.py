@@ -98,9 +98,15 @@ async def run_council(
     on_signal=None,  # callback(SageSignal) — CLI 即時更新投票表
 ) -> CouncilVerdict:
     personas = load_personas(n_sages or settings.defaults.sages)
-    # 共享前綴：證據摘要 + 分析師報告，所有大師一字不差地共用 → 走 cache_prefix 命中快取
-    shared_system = SAGE_SHARED_SYSTEM.format(
-        ticker=store.ticker, reports=_reports_text(reports), digest=store.digest(),
+    # 共享前綴：證據摘要 + 分析師報告，所有大師一字不差地共用 → 走 cache_prefix 命中快取。
+    # 用 .replace 而非 .format：analyst 報告 / digest 是 LLM 生成 + 數值文本，可能含字面
+    # `{` `}`（如「{x}」placeholder 或一般 curly braces），.format 會 raise KeyError/
+    # IndexError——與 verify/data_audit.py 的 .replace("{today}") 同一個雷、同一個解法。
+    shared_system = (
+        SAGE_SHARED_SYSTEM
+        .replace("{ticker}", store.ticker)
+        .replace("{reports}", _reports_text(reports))
+        .replace("{digest}", store.digest())
     )
     # provider 是否支援 prompt cache：決定要不要「先暖一位再 fan-out」。MiniMax 不快取，
     # 全平行即可；Anthropic 會快取，同時併發全部會在快取寫入前每位都 miss（快取在首個
@@ -110,8 +116,9 @@ async def run_council(
     async def one(p: Persona) -> SageSignal:
         signal = await gateway.structured(
             "sage",
-            system=SAGE_PERSONA.format(name=p.name, philosophy=p.philosophy,
-                                       focus=p.focus, voice=p.voice),
+            system=(SAGE_PERSONA
+                    .replace("{name}", p.name).replace("{philosophy}", p.philosophy)
+                    .replace("{focus}", p.focus).replace("{voice}", p.voice)),
             prompt="Deliver your signal now.",
             schema=SageSignal,
             cache_prefix=shared_system,
@@ -124,20 +131,18 @@ async def run_council(
                 await result
         return signal
 
-    async def one_safe(p: Persona) -> SageSignal | BaseException:
-        # 大師推理是陪審團的本體，不輕易丟棄：gateway 已會在 thinking 截斷 JSON 時自動加大
-        # 預算重試讓大師把話講完。這裡只是最後防線——加大重試後仍硬失敗者轉為結果值（記為
-        # 缺席、不拖垮全場）；唯有過半失敗才視為合議失效而報錯。正常一場 absent 應為空。
-        try:
-            return await one(p)
-        except BaseException as e:  # noqa: BLE001 — 等同 gather(return_exceptions=True)
-            return e
-
+    # 大師推理是陪審團的本體，不輕易丟棄：gateway 已會在 thinking 截斷 JSON 時自動加大預算
+    # 重試讓大師把話講完。這裡是最後防線——仍硬失敗者經 return_exceptions 轉為結果值（記為
+    # 缺席、不拖垮全場），唯有過半失敗才視為合議失效而報錯。正常一場 absent 應為空。
     if sage_caches and len(personas) > 1:
-        results: list = [await one_safe(personas[0])]
-        results += await asyncio.gather(*(one_safe(p) for p in personas[1:]))
+        # provider 支援快取時先暖一位（把共享前綴寫進快取）再 fan-out 其餘讀取——快取在首個
+        # 回應開始後才可讀，同時併發全部會每位 miss。⚠ 首位若失敗則前綴沒寫入、其餘 N-1 仍
+        # cache-miss（不影響正確性，只是該場退回近 N 倍成本）。MiniMax 無快取則照舊全平行。
+        first = await asyncio.gather(one(personas[0]), return_exceptions=True)
+        rest = await asyncio.gather(*(one(p) for p in personas[1:]), return_exceptions=True)
+        results = [*first, *rest]
     else:
-        results = await asyncio.gather(*(one_safe(p) for p in personas))
+        results = await asyncio.gather(*(one(p) for p in personas), return_exceptions=True)
     signals: list[SageSignal] = []
     absent: list[str] = []
     for p, r in zip(personas, results):

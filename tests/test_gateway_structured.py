@@ -100,3 +100,50 @@ async def test_truncation_at_ceiling_keeps_original_prompt():
     # 預算已高於 ceiling，不再被加倍；prompt 從頭到尾都是原樣（沒被灌「你講錯了」訊息）
     assert [mt for mt, _ in seen] == [70000, 70000, 70000]
     assert all(p == "P" for _, p in seen)
+
+
+# ---------- _build_system 四條分支（W3 cache_prefix 拓樸）----------
+
+def _provider(*feats):
+    return SimpleNamespace(has=lambda f: f in feats)
+
+
+def test_cache_prefix_creates_two_block_system_when_provider_supports_cache_control():
+    out = LLMGateway._build_system(
+        system="PERSONA", schema=None, use_native_schema=False,
+        cache_prefix="SHARED", cache_system=False, provider=_provider("cache_control"))
+    # 共享前綴單獨成帶 breakpoint 的 block；persona 接其後、不帶 cache_control
+    assert out == [
+        {"type": "text", "text": "SHARED", "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": "PERSONA"},
+    ]
+
+
+def test_cache_prefix_concatenates_to_system_string_when_provider_lacks_cache_control():
+    out = LLMGateway._build_system(
+        system="PERSONA", schema=None, use_native_schema=False,
+        cache_prefix="SHARED", cache_system=False, provider=_provider())
+    assert out == "SHARED\n\nPERSONA"  # 乾淨單一字串，無快取
+
+
+def test_cache_system_single_block_when_no_prefix():
+    out = LLMGateway._build_system(
+        system="SYS", schema=None, use_native_schema=False,
+        cache_prefix=None, cache_system=True, provider=_provider("cache_control"))
+    assert out == [{"type": "text", "text": "SYS", "cache_control": {"type": "ephemeral"}}]
+
+
+def test_plain_system_when_no_caching():
+    out = LLMGateway._build_system(
+        system="SYS", schema=None, use_native_schema=False,
+        cache_prefix=None, cache_system=False, provider=_provider())
+    assert out == "SYS"
+
+
+def test_schema_prompt_folded_into_cache_prefix_not_persona():
+    # 非原生 schema：指示併進共享前綴（block 0 一起快取），persona block 1 保持純淨
+    out = LLMGateway._build_system(
+        system="PERSONA", schema=SageSignal, use_native_schema=False,
+        cache_prefix="SHARED", cache_system=False, provider=_provider("cache_control"))
+    assert out[0]["text"].startswith("SHARED") and len(out[0]["text"]) > len("SHARED")
+    assert out[1]["text"] == "PERSONA"
