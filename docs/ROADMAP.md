@@ -38,9 +38,9 @@
 |---|---|---|---|
 | W1 | 3 個 persona 招牌焦點缺資料 | Pillar 1+2 同步受傷 | A |
 | W2 | US P/E 是 yfinance 二手值, audit 沒 cross-check | US 估值每 run 受影響 | A |
-| W3 | Council prompt cache 沒用 | 10x token 浪費 | B（**前置到 Phase 0**） |
+| W3 | Council prompt cache 沒用 | 10x token 浪費 | B（**✅ Phase 0 完成**，PR #13；dormant 待 sage 上 Anthropic） |
 | W4 | cite-check 笛卡兒積過寬, 偽造可過 | 反幻覺閘門失效 | B |
-| W5 | 6 處 silent exception | schema 變更 = 整欄消失 | B（**前置到 Phase 0**） |
+| W5 | 6 處 silent exception | schema 變更 = 整欄消失 | B（**✅ Phase 0 完成**，PR #12） |
 | W6 | 沒 retry/backoff | 高流量時段 run 不穩 | A |
 | W7 | Chief thesis 整段沒 cite-check | brief 主體是 Pillar 1 唯一未驗證 | B |
 | W8 | macro 過期 4 個月只 warning | 巨集分析師拿舊資料 | B |
@@ -75,20 +75,30 @@
 > 順序原則：鐵律 1 ⇒ Phase 0–2 把 Pillar 1 做完；鐵律 2 ⇒ Phase 3 起建專家內涵。
 > 每個 Phase 一條（或數條小）feature branch + PR，驗收條件見對應 spec。
 
-### Phase 0 — 護欄與速贏（先有保護網，再動大刀）
+### Phase 0 — 護欄與速贏 ✅ **全數完成（2026-06-13）**
 
-小、低風險、互相獨立，合計 1–2 個工作天量級：
+小、低風險、互相獨立。6 項全部合併進 `main`（測試基線：main **91 passed**）：
 
-1. **Issue #5**：TW 端到端 pipeline 整合測試（2330 個股 + 0050 ETF 兩個 scenario）
-   ——Spec A 要大改 `tw_stocks.py`，這是它的迴歸保護網，**必須最先做**
-2. **Issue #7**：run 輸出標 commit hash（已實際造成 review 誤判）
-3. **Issue #6**：TTM_FIELDS 模組常數化 / `_AuditorOutput` 公開 / ETF TaiwanStockInfo 實測
-4. **Issue #8**：MacroProvider 併入 `MarketDataProvider` 協議（**A 路徑**：協議加
-   `get_macro`，個股 provider no-op 回 `[]`）
-5. **B-W3 前置**：Council shared_prompt 尾端加 cache_control——之後每個 Phase 的
-   開發迭代都燒 token，越早做後面所有實驗越便宜
-6. **B-W5 前置**：6 處 silent `except: pass` 改 `logger.warning` + audit finding
-   ——保護 Phase 1 動資料層時不被 schema 變更無聲咬掉整欄
+1. ✅ **Issue #5**：TW 端到端 pipeline 整合測試（2330 個股 + 0050 ETF）— PR #11
+2. ✅ **Issue #7**：run 輸出標 commit hash — PR #11
+3. ✅ **Issue #6**：TTM_FIELDS 模組常數化 / `_AuditorOutput`→`AuditorOutput` 公開 /
+   ETF profile + fundamentals 短路測試 / `get_fundamentals` 改用 `is_tw_etf` — PR #12
+4. ✅ **Issue #8**：MacroProvider 統一協議契約——**實際採 B 路徑（非原列 A）**。A 不成立：
+   macro 市場無關（`get_macro` 不綁 ticker、全市場抓一次），塞進個股協議只會讓每個
+   provider 多一個 no-op 方法、仍需獨立 FRED 源。改比照 `ChipsProvider` 立獨立
+   `runtime_checkable` 的 `MacroProvider` 協議；具體類別 `MacroProvider`→`FredMacroProvider`；
+   新增 `make_macro_provider()` 工廠；pipeline chips 偵測改 `isinstance` — PR #14
+5. ✅ **B-W3 前置**：Council prompt cache——**原描述「shared_prompt 尾端加 cache_control」
+   經查證無法命中快取**（cache 是前綴比對 `tools→system→messages`，各異的 system 早於共享
+   user prompt 會一併失效）。實際做法相反：shared evidence 當 cached **system** prefix、
+   persona 接其後（gateway 新增 `cache_prefix` 參數 + provider 支援快取時先暖一位再 fan-out）。
+   ⚠ **目前 dormant**：`sage` 角色在 MiniMax（`features` 無 cache_control），此為 cache-ready
+   前置，≥60% token 節省要等 `sage` 改用 Anthropic provider 才實際生效 — PR #13
+   （Spec B 決議 item 4 已標 2026-06-13 更正）
+6. ✅ **B-W5 前置**：6 處 silent `except` 改 `logger.warning`（引入 stdlib logging +
+   CLI 入口 `logging.basicConfig`）；narrow `ValueError`（日期解析）保留 — PR #12
+
+**下一步：Phase 1（Spec A 資料層擴充）。**
 
 ### Phase 1 — Spec A：資料層擴充（鐵律 1 的「資料正確」）
 
