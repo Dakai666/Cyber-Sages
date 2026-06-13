@@ -157,6 +157,7 @@ class TWStockProvider:
             close, as_of=date.fromisoformat(rows[-1]["date"]),
             url=f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/technical-analysis",
             source="computed from FinMind 1y daily closes", price_unit="TWD",
+            trading_days=245,  # 台股年交易日約 245（W10）
         )
 
     # ---------- fundamentals（FinMind 綜合損益表 + 資產負債表 + 月營收）----------

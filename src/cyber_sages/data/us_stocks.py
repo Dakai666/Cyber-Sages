@@ -17,6 +17,7 @@ import httpx
 
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.retry import with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +135,13 @@ class USStockProvider:
             cik = await self._resolve_cik(client, ticker)
             if cik is None:
                 return []
-            resp = await client.get(EDGAR_FACTS.format(cik=cik))
-            resp.raise_for_status()
+
+            async def _fetch() -> httpx.Response:
+                r = await client.get(EDGAR_FACTS.format(cik=cik))
+                r.raise_for_status()
+                return r
+
+            resp = await with_retry(_fetch, what=f"EDGAR companyfacts {ticker}")
             facts = resp.json()
 
         evs: list[Evidence] = []
@@ -184,8 +190,12 @@ class USStockProvider:
         return evs
 
     async def _resolve_cik(self, client: httpx.AsyncClient, ticker: str) -> int | None:
-        resp = await client.get(EDGAR_TICKER_MAP)
-        resp.raise_for_status()
+        async def _fetch() -> httpx.Response:
+            r = await client.get(EDGAR_TICKER_MAP)
+            r.raise_for_status()
+            return r
+
+        resp = await with_retry(_fetch, what="EDGAR ticker map")
         for entry in resp.json().values():
             if entry["ticker"].upper() == ticker.upper():
                 return int(entry["cik_str"])
@@ -222,11 +232,16 @@ class USStockProvider:
         to = date.today()
         frm = to - timedelta(days=14)
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                "https://finnhub.io/api/v1/company-news",
-                params={"symbol": ticker, "from": frm.isoformat(), "to": to.isoformat(), "token": key},
-            )
-            resp.raise_for_status()
+            async def _fetch() -> httpx.Response:
+                r = await client.get(
+                    "https://finnhub.io/api/v1/company-news",
+                    params={"symbol": ticker, "from": frm.isoformat(),
+                            "to": to.isoformat(), "token": key},
+                )
+                r.raise_for_status()
+                return r
+
+            resp = await with_retry(_fetch, what=f"finnhub news {ticker}")
             items = resp.json()[:10]
         return [
             Evidence(
