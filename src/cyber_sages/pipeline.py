@@ -24,9 +24,14 @@ from cyber_sages.agents.schemas import (
 )
 from cyber_sages.agents.synthesis import run_synthesis
 from cyber_sages.config import Settings
-from cyber_sages.data.base import detect_instrument, detect_market, make_provider
+from cyber_sages.data.base import (
+    ChipsProvider,
+    detect_instrument,
+    detect_market,
+    make_macro_provider,
+    make_provider,
+)
 from cyber_sages.data.evidence import EvidenceStore
-from cyber_sages.data.macro import MacroProvider
 from cyber_sages.llm.gateway import LLMGateway
 from cyber_sages.verify.data_audit import AuditReport, run_audit
 
@@ -115,8 +120,8 @@ async def run_pipeline(
 
     # [1] Collect — 個股四路 + 台股籌碼（若 provider 支援）+ 總經（全市場共用）
     src_label = "FinMind / yfinance .TW" if market == "TW" else "yfinance / SEC EDGAR"
-    want_macro = include_macro and MacroProvider.available()
-    macro_note = " + FRED 總經" if want_macro else ""
+    macro_provider = make_macro_provider() if include_macro else None
+    macro_note = " + FRED 總經" if macro_provider is not None else ""
     await _emit(on_stage, "collect", "running",
                 f"[{market}] {src_label} for {ticker}{macro_note}")
     store = EvidenceStore(ticker=ticker, market=market,
@@ -126,10 +131,10 @@ async def run_pipeline(
         provider.get_quote(ticker), provider.get_history(ticker),
         provider.get_fundamentals(ticker), provider.get_news(ticker),
     ]
-    if hasattr(provider, "get_chips"):
+    if isinstance(provider, ChipsProvider):
         collectors.append(provider.get_chips(ticker))
-    if want_macro:
-        collectors.append(MacroProvider().get_macro())
+    if macro_provider is not None:
+        collectors.append(macro_provider.get_macro())
 
     results = await asyncio.gather(*collectors, return_exceptions=True)
     fetch_errors = []

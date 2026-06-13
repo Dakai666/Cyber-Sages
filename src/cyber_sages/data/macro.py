@@ -28,7 +28,9 @@ LEVEL_SERIES: list[tuple[str, str, str, str]] = [
 ]
 
 
-class MacroProvider:
+class FredMacroProvider:
+    """FRED 實作的 `MacroProvider` 協議（見 data/base.py）。"""
+
     market = "MACRO"
 
     @staticmethod

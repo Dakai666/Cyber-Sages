@@ -10,7 +10,7 @@
 import pytest
 
 from cyber_sages.config import load_settings
-from cyber_sages.data.macro import MacroProvider
+from cyber_sages.data.macro import FredMacroProvider
 from cyber_sages.pipeline import run_pipeline
 from cyber_sages.report import build_agent_payload, render_brief
 from tests.conftest import make_macro_evidence
@@ -20,12 +20,12 @@ from tests.test_pipeline_dry import FakeGateway
 async def test_tw_stock_pipeline_full(patch_tw_provider, monkeypatch):
     """2330 個股：chips + macro 齊全，七階段跑完、不降級。"""
     patch_tw_provider(etf=False)
-    monkeypatch.setattr(MacroProvider, "available", lambda: True)
+    monkeypatch.setattr(FredMacroProvider, "available", lambda: True)
 
     async def fake_macro(self):
         return make_macro_evidence()
 
-    monkeypatch.setattr(MacroProvider, "get_macro", fake_macro)
+    monkeypatch.setattr(FredMacroProvider, "get_macro", fake_macro)
 
     settings = load_settings()
     gateway = FakeGateway()
