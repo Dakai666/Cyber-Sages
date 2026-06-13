@@ -4,7 +4,7 @@ from cyber_sages.config import AuditConfig, Settings
 from cyber_sages.data.evidence import Evidence, EvidenceStore
 from cyber_sages.verify.data_audit import (
     AuditFinding,
-    _AuditorOutput,
+    AuditorOutput,
     deterministic_checks,
     run_audit,
 )
@@ -114,7 +114,7 @@ async def test_llm_auditor_error_is_clamped_to_warning():
     # 降級只保留給可信的確定性閘門。
     store = healthy_store()
     settings = Settings.model_construct(audit=CFG)
-    fake = _FakeGateway(_AuditorOutput(
+    fake = _FakeGateway(AuditorOutput(
         findings=[AuditFinding(severity="error", check="data_freshness",
                                message="dates are in the future → fake data")],
         summary="bogus",

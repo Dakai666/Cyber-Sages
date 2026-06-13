@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections import deque
 from pathlib import Path
 
@@ -27,6 +28,15 @@ from cyber_sages.report import build_agent_payload, render_brief, save_run
 
 app = typer.Typer(add_completion=False, rich_markup_mode="rich")
 console = Console()
+
+
+@app.callback()
+def _configure_logging() -> None:
+    # W5 的 logger.warning（資料源失敗 / 降級）走 stdlib logging。在 CLI 入口設一次
+    # basicConfig，讓 doctor / analyze 都能在 stderr 看到資料源失敗原因（預設無 handler
+    # 會吞掉這些訊息）。寫 stderr 不汙染 --json 的 stdout payload。
+    logging.basicConfig(level=logging.WARNING,
+                        format="%(levelname)s %(name)s: %(message)s")
 
 STATUS_ICON = {"pending": "[dim]○[/]", "running": "[yellow]◉[/]",
                "done": "[green]✓[/]", "warn": "[yellow]⚠[/]", "fail": "[red]✗[/]"}

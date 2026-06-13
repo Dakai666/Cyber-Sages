@@ -35,7 +35,7 @@ class FakeGateway:
     async def structured(self, role, *, system, prompt, schema, **kwargs):
         self.calls.append(role)
         name = schema.__name__
-        if name == "_AuditorOutput":
+        if name == "AuditorOutput":
             return schema(findings=[], summary="資料無異常")
         if name == "AnalystReport":
             return AnalystReport(
