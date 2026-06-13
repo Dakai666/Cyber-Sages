@@ -257,6 +257,9 @@ def test_institutional_net_buy_groups():
     assert by_field["dealer_net_buy"] == -50           # 200-250
     assert by_field["institutional_net_buy_total"] == 1200  # 650+600-50
     assert all(e.category == "chips" for e in evs)
+    # 只有 2 個交易日 → 5d/20d 累計不該 emit（鎖住 n_days<window 早退路徑）
+    assert "foreign_net_buy_5d" not in by_field
+    assert "institutional_net_buy_5d" not in by_field
 
 
 def test_institutional_total_robust_to_unmapped_name():

@@ -32,9 +32,14 @@ Cyber-Sages 對「第一手資料 + 確定性計算」的承諾，是整個反�
 - 全 provider retry/backoff（指數退避 + jitter，max 3 retry）
 - `indicators.py` 245 天校準
 - `tests/test_us_stocks.py`、`tests/test_indicators.py`、`tests/test_finmind.py` 新增
-- **Issue #4 併入**：法人 5/20 日累計（`foreign_net_buy_5d/20d`、`institutional_net_buy_5d`）、
-  融資券趨勢（`margin_balance_change_5d_pct`、`short_balance_change_5d_pct`）、
-  fetch 視窗 `days_ago(10)` → `days_ago(3)`（省 70% FinMind 配額）
+- **Issue #4 併入**（PR #20 完成）：法人 5/20 日累計（`foreign_net_buy_5d/20d`、
+  `institutional_net_buy_5d`）、融資券趨勢（`margin_balance_change_5d_pct`、
+  `short_balance_change_5d_pct`）、fetch 視窗法人 `days_ago(10)` → `days_ago(35)`、
+  融資券 → `days_ago(12)`。
+  > ⚠ **修正（2026-06-13，PR #20）**：原寫「→ `days_ago(3)`（省 70% 配額）」與「20 日累計」
+  > **互斥**——3 天資料算不出 20 日累計。20 日累計是 issue #4 自評 P2 的核心理由（敘事性
+  > 結論的方向佐證），實質價值 > 配額節省，故**取 A 段累計、捨 C 段縮窗**，籌碼端視窗反而
+  > 加長。無 token 用戶的 chips 配額策略（限流時降級 / user toggle）若要做另開 follow-up。
 
 ### Out of scope
 
@@ -45,7 +50,9 @@ Cyber-Sages 對「第一手資料 + 確定性計算」的承諾，是整個反�
 ## 驗收條件（草案）
 
 - [ ] 至少 8/10 persona 焦點各有 ≥ 1 個量化 evidence
-- [ ] US `info.P/E` vs SEC EPS × shares_outstanding 算回來的 implied P/E 偏離 > 10% → audit error
+- [x] US `info.P/E` vs SEC EPS 反算的 implied P/E 偏離超閾值 → audit error（PR #18 完成）
+  > 閾值實作為 **25%**（非草案的 10%）：yfinance trailing 用 TTM、implied 用 FY 年報，
+  > 口徑差使高成長股自然偏離；補算 US `eps_ttm` 做 TTM-vs-TTM 後可收回 10%（follow-up #19）。
 - [ ] 所有 data fetch 失敗時 retry 3 次 backoff，3 次都失敗才 raise / warn
 - [ ] TW run 的 `volatility_30d_annualized_pct` 改用 245 校準
 - [ ] `us_stocks.py` / `indicators.py` / `finmind.py` 各自有專屬測試檔
@@ -73,8 +80,11 @@ Cyber-Sages 對「第一手資料 + 確定性計算」的承諾，是整個反�
 5. **working capital 定義**：`working_capital = current_assets - current_liabilities`
    （標準定義，audit / Damodaran 用）；另出 `net_net_value = current_assets -
    total_liabilities`（Graham 專用，給其 skill 求值）。兩者都是確定性計算欄位。
-6. **retry/backoff 不分層**：統一 3 次指數退避 + jitter。FinMind 配額壓力靠
-   issue #4 的縮窗解決，不引入分層 budget 的複雜度。
+6. **retry/backoff 不分層**：統一 3 次指數退避 + jitter（PR #16 完成），不引入分層
+   budget 的複雜度。
+   > ⚠ **修正（PR #20）**：原寫「FinMind 配額壓力靠 issue #4 的縮窗解決」已不成立——
+   > issue #4 的 20 日累計反而需要加長籌碼視窗（見 in-scope 修正）。配額節省未在本 Phase
+   > 達成，待後續 follow-up。
 
 ## 相關檔案
 

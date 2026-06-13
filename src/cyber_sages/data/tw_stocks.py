@@ -65,6 +65,16 @@ BALANCE_FIELDS: dict[str, tuple[str, str]] = {
     "CurrentLiabilities": ("current_liabilities", "TWD"),
 }
 
+# FinMind 法人別 name → 三大法人口徑。模組常數（同 TTM_FIELDS 慣例：無實例狀態、
+# 測試可直接 import）。目前累計趨勢只做 foreign 與三法人合計（issue #4 範圍）；
+# trust_net_buy_5d / dealer_net_buy_5d 留待 Spec E 若有「法人分歧」skill 再補
+# （合計會抵消投信買、外資賣的分歧訊號）。
+INST_GROUPS: dict[str, list[str]] = {
+    "foreign_net_buy": ["Foreign_Investor", "Foreign_Dealer_Self"],
+    "trust_net_buy": ["Investment_Trust"],
+    "dealer_net_buy": ["Dealer_self", "Dealer_Hedging"],
+}
+
 
 class TWStockProvider:
     market = "TW"
@@ -334,15 +344,8 @@ class TWStockProvider:
             evs += self._margin_evidence(margin, stock_id)
         return evs
 
-    # 名稱分群 → 三大法人口徑（module-level 慣例放 method 內以維持靜態方法自含）
-    _INST_GROUPS = {
-        "foreign_net_buy": ["Foreign_Investor", "Foreign_Dealer_Self"],
-        "trust_net_buy": ["Investment_Trust"],
-        "dealer_net_buy": ["Dealer_self", "Dealer_Hedging"],
-    }
-
-    @classmethod
-    def _institutional_evidence(cls, rows: list[dict], stock_id: str) -> list[Evidence]:
+    @staticmethod
+    def _institutional_evidence(rows: list[dict], stock_id: str) -> list[Evidence]:
         url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/institutional-trading"
         src = "FinMind TaiwanStockInstitutionalInvestorsBuySell"
         # 每個交易日、每個法人別的 net buy（買-賣），供單日與 5/20 日累計共用。
@@ -355,7 +358,7 @@ class TWStockProvider:
         as_of = date.fromisoformat(latest)
         net = by_date[latest]  # 單日（最新一日）
 
-        groups = cls._INST_GROUPS
+        groups = INST_GROUPS
         evs: list[Evidence] = []
         zh = {"foreign_net_buy": "外資", "trust_net_buy": "投信", "dealer_net_buy": "自營商"}
         for field, names in groups.items():
@@ -385,16 +388,18 @@ class TWStockProvider:
         n_days = len(dates_desc)
         foreign = groups["foreign_net_buy"]
         for field, names, window, label in [
-            ("foreign_net_buy_5d", foreign, 5, "外資近 5 交易日累計買賣超"),
-            ("foreign_net_buy_20d", foreign, 20, "外資近 20 交易日累計買賣超"),
-            ("institutional_net_buy_5d", all_names, 5, "三大法人近 5 交易日累計買賣超"),
+            ("foreign_net_buy_5d", foreign, 5, "外資累計買賣超"),
+            ("foreign_net_buy_20d", foreign, 20, "外資累計買賣超"),
+            ("institutional_net_buy_5d", all_names, 5, "三大法人累計買賣超"),
         ]:
             if n_days < window:
                 continue  # 視窗內交易日不足，不發半截累計（避免誤導趨勢）
             evs.append(Evidence(
                 category="chips", field=field, value=round(cum(names, window), 0),
                 unit="shares", source=f"computed from {src}", url=url, as_of=as_of,
-                note=f"{label}（正=買超；{dates_desc[window - 1]}…{latest}）",
+                # 明寫「N 個交易日」而非僅日期區間：window 內含假日時 calendar gap > 交易日數，
+                # 避免 LLM 把 {start}…{latest} 當成日曆天誤算「近月/近週」。
+                note=f"{label}（{window} 個交易日 {dates_desc[window - 1]}…{latest}；正=買超）",
             ))
         return evs
 
