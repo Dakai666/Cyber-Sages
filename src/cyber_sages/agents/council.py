@@ -39,23 +39,39 @@ def load_personas(limit: int | None = None) -> list[Persona]:
     return personas[:limit] if limit else personas
 
 
-SAGE_SYSTEM = """\
-You are {name}, the legendary investor, serving on an investment council.
+# 合議庭通用框架 + 證據摘要——所有 sage 共用，故當作 prompt-cache 的「共享前綴」。
+# persona 各異的身分接在其後（見 SAGE_PERSONA）。prompt cache 是前綴比對（順序
+# tools→system→messages），要讓 N 位大師共用快取，共享內容必須在前、persona 在後；
+# 把各異的 persona 放前面（舊作法）會讓後面的共享段每位都 cache-miss。
+SAGE_SHARED_SYSTEM = """\
+You are a legendary investor serving on an investment council, judging one stock.
+You receive VERIFIED analyst reports and the underlying first-hand evidence below.
 
-Your philosophy: {philosophy}
-You focus on: {focus}
-Your voice: {voice}
-
-You receive VERIFIED analyst reports and the underlying evidence for one stock.
-Judge it strictly through your own philosophy — do not be a generic analyst.
-Rules:
+Rules (apply through whatever investment philosophy you are assigned next):
 - Ground your thesis in the provided evidence; reference evidence ids in
   key_evidence_ids. No outside numbers.
 - It is perfectly acceptable (and in character) to disagree with the analysts.
 - confidence: how strongly your philosophy speaks on THIS stock (0.2 = barely
   in your circle of competence, 0.9 = textbook case for you).
 - Write `thesis` and `what_would_change_my_mind` in Traditional Chinese (繁體中文),
-  in your distinctive voice; keep tickers/terms in English."""
+  in your distinctive voice; keep tickers/terms in English.
+
+# Stock: {ticker}
+
+# Verified analyst reports
+{reports}
+
+# Evidence digest
+{digest}"""
+
+# persona 身分——各大師相異，接在共享前綴之後（快取 breakpoint 之外，每位重算）。
+SAGE_PERSONA = """\
+You are {name}. Judge the stock above strictly through your own philosophy —
+do not be a generic analyst.
+
+Your philosophy: {philosophy}
+You focus on: {focus}
+Your voice: {voice}"""
 
 
 def _reports_text(reports: list[AnalystReport]) -> str:
@@ -82,19 +98,23 @@ async def run_council(
     on_signal=None,  # callback(SageSignal) — CLI 即時更新投票表
 ) -> CouncilVerdict:
     personas = load_personas(n_sages or settings.defaults.sages)
-    shared_prompt = (
-        f"Stock: {store.ticker}\n\n# Verified analyst reports\n{_reports_text(reports)}\n\n"
-        f"# Evidence digest\n{store.digest()}\n\nDeliver your signal."
+    # 共享前綴：證據摘要 + 分析師報告，所有大師一字不差地共用 → 走 cache_prefix 命中快取
+    shared_system = SAGE_SHARED_SYSTEM.format(
+        ticker=store.ticker, reports=_reports_text(reports), digest=store.digest(),
     )
+    # provider 是否支援 prompt cache：決定要不要「先暖一位再 fan-out」。MiniMax 不快取，
+    # 全平行即可；Anthropic 會快取，同時併發全部會在快取寫入前每位都 miss（快取在首個
+    # 回應開始後才可讀），故先跑一位把共享前綴寫進快取，其餘再平行讀取。
+    sage_caches = settings.providers[settings.roles["sage"].provider].has("cache_control")
 
     async def one(p: Persona) -> SageSignal:
         signal = await gateway.structured(
             "sage",
-            system=SAGE_SYSTEM.format(name=p.name, philosophy=p.philosophy,
-                                      focus=p.focus, voice=p.voice),
-            prompt=shared_prompt,
+            system=SAGE_PERSONA.format(name=p.name, philosophy=p.philosophy,
+                                       focus=p.focus, voice=p.voice),
+            prompt="Deliver your signal now.",
             schema=SageSignal,
-            cache_system=False,  # persona 各異；共享前綴在 prompt 端（anthropic 自動前綴比對）
+            cache_prefix=shared_system,
         )
         signal.sage = p.name
         signal.confidence = max(0.0, min(1.0, signal.confidence))
@@ -104,10 +124,20 @@ async def run_council(
                 await result
         return signal
 
-    # 大師推理是陪審團的本體，不輕易丟棄：gateway 已會在 thinking 截斷 JSON 時自動加大
-    # 預算重試，讓大師把話講完。這裡只是最後防線——加大重試後仍硬失敗者才記為缺席、不拖垮
-    # 全場；且唯有過半失敗才視為合議失效而報錯。正常一場 absent 應為空。
-    results = await asyncio.gather(*[one(p) for p in personas], return_exceptions=True)
+    async def one_safe(p: Persona) -> SageSignal | BaseException:
+        # 大師推理是陪審團的本體，不輕易丟棄：gateway 已會在 thinking 截斷 JSON 時自動加大
+        # 預算重試讓大師把話講完。這裡只是最後防線——加大重試後仍硬失敗者轉為結果值（記為
+        # 缺席、不拖垮全場）；唯有過半失敗才視為合議失效而報錯。正常一場 absent 應為空。
+        try:
+            return await one(p)
+        except BaseException as e:  # noqa: BLE001 — 等同 gather(return_exceptions=True)
+            return e
+
+    if sage_caches and len(personas) > 1:
+        results: list = [await one_safe(personas[0])]
+        results += await asyncio.gather(*(one_safe(p) for p in personas[1:]))
+    else:
+        results = await asyncio.gather(*(one_safe(p) for p in personas))
     signals: list[SageSignal] = []
     absent: list[str] = []
     for p, r in zip(personas, results):

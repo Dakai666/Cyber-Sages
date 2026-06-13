@@ -75,8 +75,15 @@ class LLMGateway:
         schema: type[BaseModel] | None = None,
         max_tokens: int | None = None,
         cache_system: bool = False,
+        cache_prefix: str | None = None,
     ) -> LLMResult:
-        """跑一次 completion；schema 給定時由呼叫端再用 parse() 取得物件。"""
+        """跑一次 completion；schema 給定時由呼叫端再用 parse() 取得物件。
+
+        cache_prefix：跨多個請求共享、放在 system 最前段的內容（如合議庭的證據摘要）。
+        prompt cache 是「前綴比對」（順序 tools→system→messages），故要讓 N 個 persona
+        共用快取，共享內容必須是 prefix、各異的 persona 放其後。breakpoint 打在 prefix
+        尾端：支援 cache_control 的 provider 會自動快取整段共享前綴；不支援者（MiniMax）
+        則退化為把 prefix 併入 system 的乾淨標準請求。"""
         role_cfg = self.settings.roles[role]
         provider = self.settings.providers[role_cfg.provider]
         client = self._client(role_cfg.provider, provider)
@@ -91,12 +98,25 @@ class LLMGateway:
 
         use_native_schema = schema is not None and provider.has("json_schema_output")
         if schema is not None and not use_native_schema:
-            system = system + schema_prompt(schema)
+            # schema 指示是跨 persona 共享的——有 cache_prefix 時併進前綴，讓它也命中快取
+            if cache_prefix is not None:
+                cache_prefix = cache_prefix + schema_prompt(schema)
+            else:
+                system = system + schema_prompt(schema)
 
-        if cache_system and provider.has("cache_control"):
+        if cache_prefix is not None and provider.has("cache_control"):
+            # 共享前綴單獨成一個帶 breakpoint 的 block；persona（system）接其後、不快取
+            kwargs["system"] = [
+                {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": system},
+            ]
+        elif cache_system and provider.has("cache_control"):
             kwargs["system"] = [
                 {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
             ]
+        elif cache_prefix is not None:
+            # provider 不支援 cache_control：併成單一乾淨字串，語意不變、只是沒快取
+            kwargs["system"] = f"{cache_prefix}\n\n{system}"
         else:
             kwargs["system"] = system
 
@@ -157,6 +177,7 @@ class LLMGateway:
         schema: type[T],
         max_tokens: int | None = None,
         cache_system: bool = False,
+        cache_prefix: str | None = None,
     ) -> T:
         """結構化輸出：解析失敗時重試。
 
@@ -177,6 +198,7 @@ class LLMGateway:
                 schema=schema,
                 max_tokens=budget,
                 cache_system=cache_system,
+                cache_prefix=cache_prefix,
             )
             try:
                 return parse_into(schema, result.text)

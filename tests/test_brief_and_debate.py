@@ -204,11 +204,23 @@ def test_render_debate_warns_on_unrebutted_outliers():
 # ---------- Council 韌性：單一大師失敗不該拖垮全場 ----------
 
 
-def _fake_gateway(fail_names: set[str]):
+def _council_settings(caches: bool = False) -> SimpleNamespace:
+    # run_council 會查 sage provider 是否支援 cache_control 來決定要不要先暖快取再 fan-out
+    return SimpleNamespace(
+        defaults=SimpleNamespace(sages=10),
+        roles={"sage": SimpleNamespace(provider="p")},
+        providers={"p": SimpleNamespace(has=lambda feat: caches)},
+    )
+
+
+def _fake_gateway(fail_names: set[str], order: list[str] | None = None):
     """structured() 對 fail_names 內的 persona 拋錯（模擬 3 次仍截斷），其餘回傳合法訊號。"""
     class G:
         async def structured(self, role, *, system, prompt, schema, **kw):
-            name = system.split(",", 1)[0].replace("You are ", "").strip()
+            # persona 身分在 system（"You are {name}. ..."）；證據摘要在 kw["cache_prefix"]
+            name = system.split(".", 1)[0].replace("You are ", "").strip()
+            if order is not None:
+                order.append(name)
             if name in fail_names:
                 raise RuntimeError("Structured output failed after 3 attempts")
             return schema(stance="neutral", confidence=0.5, thesis="t",
@@ -218,10 +230,9 @@ def _fake_gateway(fail_names: set[str]):
 
 async def test_run_council_drops_failed_sage_records_absent():
     store = EvidenceStore(ticker="0050", market="TW")
-    settings = SimpleNamespace(defaults=SimpleNamespace(sages=10))
     doomed = load_personas(4)[0].name  # 取一個確實被席的大師讓它失敗
     council = await run_council(
-        store, [], settings, _fake_gateway({doomed}), n_sages=4
+        store, [], _council_settings(), _fake_gateway({doomed}), n_sages=4
     )
     assert doomed in council.absent
     assert doomed not in [s.sage for s in council.signals]
@@ -230,10 +241,21 @@ async def test_run_council_drops_failed_sage_records_absent():
 
 async def test_run_council_raises_when_quorum_lost():
     store = EvidenceStore(ticker="0050", market="TW")
-    settings = SimpleNamespace(defaults=SimpleNamespace(sages=10))
     # 4 席中 3 席失敗 → 未過半 → fail-loud 報錯
     seated = [p.name for p in load_personas(4)]
     with pytest.raises(RuntimeError, match="Council failed"):
         await run_council(
-            store, [], settings, _fake_gateway(set(seated[:3])), n_sages=4
+            store, [], _council_settings(), _fake_gateway(set(seated[:3])), n_sages=4
         )
+
+
+async def test_run_council_warms_cache_with_first_sage_when_provider_caches():
+    # provider 支援快取時：先跑首位（最高權重）把共享前綴寫進快取，其餘才平行讀取
+    store = EvidenceStore(ticker="0050", market="TW")
+    order: list[str] = []
+    seated = [p.name for p in load_personas(4)]
+    await run_council(
+        store, [], _council_settings(caches=True), _fake_gateway(set(), order), n_sages=4
+    )
+    assert order[0] == seated[0]  # 首位先完成（暖快取），不與其餘同時併發
+    assert sorted(order) == sorted(seated)

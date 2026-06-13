@@ -27,7 +27,8 @@ async def test_truncation_escalates_budget_and_keeps_prompt():
     g = _gateway(role_max=16384)
     seen: list[tuple[int, str]] = []
 
-    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system):
+    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system,
+                            cache_prefix=None):
         seen.append((max_tokens, prompt))
         # 前兩次被截斷（thinking 吃光預算），第三次講完
         text = _VALID if len(seen) == 3 else '{"thesis":"…(截斷'
@@ -49,7 +50,8 @@ async def test_validation_error_feeds_error_back_not_escalate():
     g = _gateway(role_max=16384)
     seen: list[tuple[int, str]] = []
 
-    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system):
+    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system,
+                            cache_prefix=None):
         seen.append((max_tokens, prompt))
         text = _VALID if len(seen) == 2 else '{"stance":"bananas"}'  # 合法 JSON 但 schema 不符
         return LLMResult(text=text, model="m", input_tokens=0, output_tokens=0,
@@ -68,7 +70,8 @@ async def test_budget_caps_at_ceiling():
     g = _gateway(role_max=40000)
     seen: list[int] = []
 
-    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system):
+    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system,
+                            cache_prefix=None):
         seen.append(max_tokens)
         return LLMResult(text="not json", model="m", input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, stop_reason="max_tokens")
@@ -85,7 +88,8 @@ async def test_truncation_at_ceiling_keeps_original_prompt():
     g = _gateway(role_max=70000)
     seen: list[tuple[int, str]] = []
 
-    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system):
+    async def fake_complete(role, *, system, prompt, schema, max_tokens, cache_system,
+                            cache_prefix=None):
         seen.append((max_tokens, prompt))
         return LLMResult(text="not json", model="m", input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, stop_reason="max_tokens")
