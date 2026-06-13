@@ -217,7 +217,7 @@ def _check_data_sources() -> None:
     import httpx
 
     from cyber_sages.data.finmind import finmind_get
-    from cyber_sages.data.macro import MacroProvider
+    from cyber_sages.data.macro import FredMacroProvider
 
     async def finmind_probe() -> int:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -232,9 +232,9 @@ def _check_data_sources() -> None:
     except Exception as e:
         console.print(f"[red]✗[/] FinMind   token={tok:7s} → {e}")
 
-    if MacroProvider.available():
+    if FredMacroProvider.available():
         try:
-            evs = asyncio.run(MacroProvider().get_macro())
+            evs = asyncio.run(FredMacroProvider().get_macro())
             console.print(f"[green]✓[/] FRED      key=set     → {len(evs)} macro series")
         except Exception as e:
             console.print(f"[red]✗[/] FRED      key=set     → {e}")
