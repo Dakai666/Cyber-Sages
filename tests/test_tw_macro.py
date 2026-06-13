@@ -278,6 +278,50 @@ def test_margin_evidence():
     by_field = {e.field: e.value for e in TWStockProvider._margin_evidence(rows, "2330")}
     assert by_field["margin_balance"] == 27470
     assert by_field["short_balance"] == 11
+    # 不足 6 筆 → 不發 5 日變化（不硬湊趨勢）
+    assert "margin_balance_change_5d_pct" not in by_field
+
+
+# ---------- issue #4：法人累計 + 融資券趨勢 ----------
+
+def test_institutional_cumulative_5d_and_20d():
+    # 22 個交易日，外資每日固定 net +100；驗 5d=500、20d=2000、單日=100
+    rows = []
+    for i in range(22):
+        day = f"2026-05-{i + 1:02d}"
+        rows.append({"date": day, "name": "Foreign_Investor", "buy": 100, "sell": 0})
+        rows.append({"date": day, "name": "Investment_Trust", "buy": 30, "sell": 0})
+    by_field = {e.field: e.value for e in TWStockProvider._institutional_evidence(rows, "2330")}
+    assert by_field["foreign_net_buy"] == 100             # 單日
+    assert by_field["foreign_net_buy_5d"] == 500          # 5 × 100
+    assert by_field["foreign_net_buy_20d"] == 2000        # 20 × 100
+    assert by_field["institutional_net_buy_5d"] == 650    # (100+30) × 5
+
+
+def test_institutional_cumulative_skipped_when_too_few_days():
+    # 只有 3 個交易日 → 5d/20d 都不發（不足窗）
+    rows = [{"date": f"2026-06-1{i}", "name": "Foreign_Investor", "buy": 100, "sell": 0}
+            for i in range(3)]
+    fields = {e.field for e in TWStockProvider._institutional_evidence(rows, "2330")}
+    assert "foreign_net_buy_5d" not in fields
+    assert "foreign_net_buy_20d" not in fields
+    assert "foreign_net_buy" in fields  # 單日仍在
+
+
+def test_margin_balance_trend_pct():
+    # 6 個交易日，融資餘額 1000→1100（5 日前為 index -6 = 1000），change = +10%
+    rows = [
+        {"date": "2026-06-04", "MarginPurchaseTodayBalance": 1000, "ShortSaleTodayBalance": 50},
+        {"date": "2026-06-05", "MarginPurchaseTodayBalance": 1020, "ShortSaleTodayBalance": 48},
+        {"date": "2026-06-06", "MarginPurchaseTodayBalance": 1040, "ShortSaleTodayBalance": 46},
+        {"date": "2026-06-07", "MarginPurchaseTodayBalance": 1060, "ShortSaleTodayBalance": 44},
+        {"date": "2026-06-08", "MarginPurchaseTodayBalance": 1080, "ShortSaleTodayBalance": 42},
+        {"date": "2026-06-09", "MarginPurchaseTodayBalance": 1100, "ShortSaleTodayBalance": 40},
+    ]
+    by_field = {e.field: e.value for e in TWStockProvider._margin_evidence(rows, "2330")}
+    assert by_field["margin_balance"] == 1100
+    assert by_field["margin_balance_change_5d_pct"] == 10.0    # (1100/1000-1)×100
+    assert by_field["short_balance_change_5d_pct"] == -20.0    # (40/50-1)×100
 
 
 # ---------- 技術指標共用邏輯 ----------
