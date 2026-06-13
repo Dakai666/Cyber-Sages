@@ -58,9 +58,22 @@ Pillar 1 的反幻覺哲學靠「閘門 + 確定性 + 結構化 log」撐起，�
 3. **缺漏分級**：`quote` / `history` / `fundamentals` 缺 → **error → degraded**
    （核心三類）；`news` / `chips` / `macro` 缺 → warning + brief 強制揭露。
    分級表寫成模組常數，不散落在 if 裡。
-4. **cache breakpoint 在 shared_prompt 尾端**（evidence digest 結尾處）。
+4. ~~**cache breakpoint 在 shared_prompt 尾端**（evidence digest 結尾處）。
    persona 差異全在 system prompt，user prompt 是共享前綴——breakpoint 放尾端
-   讓整段 digest 命中 cache（Anthropic 前綴比對）。Phase 0 已前置實作。
+   讓整段 digest 命中 cache（Anthropic 前綴比對）。~~
+
+   **2026-06-13 更正（DK 授權 cache-ready 重構）**：原做法經查證**無法命中快取**。
+   Anthropic prompt cache 是整段前綴比對，順序 `tools → system → messages`；persona
+   各異放 system，其差異在 prefix 中**早於**共享的 user prompt，會一併讓後面的共享段失效
+   （system 內容變更同時 invalidate system 與 messages 兩層快取）。正解相反：**把共享的
+   證據摘要 + 分析師報告當作 cached system prefix（breakpoint 打其尾端）、persona 接其後**。
+   實作：`gateway.complete/structured` 新增 `cache_prefix` 參數（provider-gated，比照其他
+   feature）；`council` 把 `SAGE_SHARED_SYSTEM`（含 digest）走 cache_prefix、`SAGE_PERSONA`
+   走 system。另補 spec 未提的併發陷阱——快取在首個回應開始後才可讀，同時併發 N 位會全部
+   miss，故 provider 支援快取時「先跑一位暖快取再 fan-out 其餘」。
+   **注意**：`config.yaml` 目前 `sage` 角色在 MiniMax（`features: []`，不送 cache_control），
+   故此重構是 **cache-ready 前置**——MiniMax 下退化為乾淨標準請求（無副作用、無快取），
+   ≥60% token 節省要等 `sage` 改用 Anthropic provider 才會實際生效。
 5. **chief cite-check 失敗**：retry 1 次（驗證錯誤回饋進 prompt，與 analyst
    階段同機制）→ 仍失敗則標 `unverified` 並在 brief 揭露。不 refuse——
    degraded-but-disclosed 一貫優於 silent failure 或整條 run 報廢。

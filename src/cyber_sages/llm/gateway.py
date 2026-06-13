@@ -66,6 +66,31 @@ class LLMGateway:
         if asyncio.iscoroutine(result):
             await result
 
+    @staticmethod
+    def _build_system(*, system, schema, use_native_schema, cache_prefix, cache_system, provider):
+        """組 `messages.create` 的 system 欄位，依 cache_prefix / cache_system / provider 是否
+        支援 cache_control 走四條分支：
+        1. cache_prefix + cache_control → 兩 block（前綴帶 breakpoint、persona 接其後不快取）
+        2. cache_system + cache_control → 單 block（整段 system 帶 breakpoint）
+        3. cache_prefix + 無 cache_control → 字串串接（乾淨標準請求，無快取）
+        4. 皆無 → 原 system 字串
+        非原生 schema 時的指示是跨呼叫共享的，有 cache_prefix 就併進前綴一起快取。"""
+        if schema is not None and not use_native_schema:
+            if cache_prefix is not None:
+                cache_prefix = cache_prefix + schema_prompt(schema)
+            else:
+                system = system + schema_prompt(schema)
+        if cache_prefix is not None and provider.has("cache_control"):
+            return [
+                {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": system},
+            ]
+        if cache_system and provider.has("cache_control"):
+            return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if cache_prefix is not None:
+            return f"{cache_prefix}\n\n{system}"
+        return system
+
     async def complete(
         self,
         role: str,
@@ -75,8 +100,15 @@ class LLMGateway:
         schema: type[BaseModel] | None = None,
         max_tokens: int | None = None,
         cache_system: bool = False,
+        cache_prefix: str | None = None,
     ) -> LLMResult:
-        """跑一次 completion；schema 給定時由呼叫端再用 parse() 取得物件。"""
+        """跑一次 completion；schema 給定時由呼叫端再用 parse() 取得物件。
+
+        cache_prefix：跨多個請求共享、放在 system 最前段的內容（如合議庭的證據摘要）。
+        prompt cache 是「前綴比對」（順序 tools→system→messages），故要讓 N 個 persona
+        共用快取，共享內容必須是 prefix、各異的 persona 放其後。breakpoint 打在 prefix
+        尾端：支援 cache_control 的 provider 會自動快取整段共享前綴；不支援者（MiniMax）
+        則退化為把 prefix 併入 system 的乾淨標準請求。"""
         role_cfg = self.settings.roles[role]
         provider = self.settings.providers[role_cfg.provider]
         client = self._client(role_cfg.provider, provider)
@@ -90,15 +122,10 @@ class LLMGateway:
         }
 
         use_native_schema = schema is not None and provider.has("json_schema_output")
-        if schema is not None and not use_native_schema:
-            system = system + schema_prompt(schema)
-
-        if cache_system and provider.has("cache_control"):
-            kwargs["system"] = [
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-            ]
-        else:
-            kwargs["system"] = system
+        kwargs["system"] = self._build_system(
+            system=system, schema=schema, use_native_schema=use_native_schema,
+            cache_prefix=cache_prefix, cache_system=cache_system, provider=provider,
+        )
 
         if provider.has("adaptive_thinking"):
             kwargs["thinking"] = {"type": "adaptive"}
@@ -157,6 +184,7 @@ class LLMGateway:
         schema: type[T],
         max_tokens: int | None = None,
         cache_system: bool = False,
+        cache_prefix: str | None = None,
     ) -> T:
         """結構化輸出：解析失敗時重試。
 
@@ -177,6 +205,7 @@ class LLMGateway:
                 schema=schema,
                 max_tokens=budget,
                 cache_system=cache_system,
+                cache_prefix=cache_prefix,
             )
             try:
                 return parse_into(schema, result.text)
