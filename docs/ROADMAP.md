@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-13（v2 — 開放問題定案 + Sage Runtime / Cyber-Nüwa 升級為核心軌）
+**Revision**: 2026-06-14（v3 — Phase 1 / Spec A 全數完成；下一步 Phase 2 / Spec B 剩餘）
 
 ## 願景
 
@@ -36,17 +36,17 @@
 
 | # | Gap | 影響 | Spec |
 |---|---|---|---|
-| W1 | 3 個 persona 招牌焦點缺資料 | Pillar 1+2 同步受傷 | A |
-| W2 | US P/E 是 yfinance 二手值, audit 沒 cross-check | US 估值每 run 受影響 | A |
+| W1 | 3 個 persona 招牌焦點缺資料 | Pillar 1+2 同步受傷 | A（**✅ Phase 1 完成**，PR #18/#21/#23/#24） |
+| W2 | US P/E 是 yfinance 二手值, audit 沒 cross-check | US 估值每 run 受影響 | A（**✅ Phase 1 完成**，PR #18；閾值 25%，收 10% 見 #19） |
 | W3 | Council prompt cache 沒用 | 10x token 浪費 | B（**✅ Phase 0 完成**，PR #13；dormant 待 sage 上 Anthropic） |
 | W4 | cite-check 笛卡兒積過寬, 偽造可過 | 反幻覺閘門失效 | B |
 | W5 | 6 處 silent exception | schema 變更 = 整欄消失 | B（**✅ Phase 0 完成**，PR #12） |
-| W6 | 沒 retry/backoff | 高流量時段 run 不穩 | A |
+| W6 | 沒 retry/backoff | 高流量時段 run 不穩 | A（**✅ Phase 1 完成**，PR #16；Retry-After 見 #22） |
 | W7 | Chief thesis 整段沒 cite-check | brief 主體是 Pillar 1 唯一未驗證 | B |
 | W8 | macro 過期 4 個月只 warning | 巨集分析師拿舊資料 | B |
 | W9 | 部分 collector 失敗不觸發降級 | 髒資料當滿資料 | B |
-| W10 | 252 天年化用於 TW | 略高估 TW 波動率 | A |
-| — | 測試覆蓋洞（us_stocks / indicators / gateway / macro / finmind / report） | 後續改動無保護 | A + B |
+| W10 | 252 天年化用於 TW | 略高估 TW 波動率 | A（**✅ Phase 1 完成**，PR #16） |
+| — | 測試覆蓋洞（us_stocks / indicators / gateway / macro / finmind / report） | 後續改動無保護 | A + B（A 部分：✅ us_stocks / indicators / finmind / estimates / damodaran，PR #16/#18/#21/#24） |
 
 ### 7 個 Pillar 2 結構性弱點（P1–P7）
 
@@ -98,14 +98,33 @@
 6. ✅ **B-W5 前置**：6 處 silent `except` 改 `logger.warning`（引入 stdlib logging +
    CLI 入口 `logging.basicConfig`）；narrow `ValueError`（日期解析）保留 — PR #12
 
-**下一步：Phase 1（Spec A 資料層擴充）。**
+### Phase 1 — Spec A：資料層擴充（鐵律 1 的「資料正確」）✅ **全數完成（2026-06-14）**
 
-### Phase 1 — Spec A：資料層擴充（鐵律 1 的「資料正確」）
+六條 PR 全部合併進 `main`（測試基線：main **149 passed**，自 Phase 0 的 91 起算）：
 
-含 **issue #4 併入**（法人 5/20 日累計、融資券趨勢、fetch 視窗 10→3 天——與 A 的
-「確定性衍生欄位」哲學同構）。欄位優先序**由 Spec E 的 persona skill 需求反推**
-（P0 清單見 Spec A 決議）。驗收核心：每位大師的招牌焦點至少 1 個量化錨點、
-US P/E 確定性 cross-check、全 provider retry/backoff、245 天校準、測試 ≥ 70。
+1. ✅ **W6 + W10**：統一 retry/backoff（`data/retry.py` `with_retry`，指數退避+jitter）+
+   波動率年化 `trading_days` 參數化（US 252 / TW 245）+ test_indicators / test_finmind — PR #16
+2. ✅ **W1 + W2 確定性衍生基本面**：US SEC 補 capex/D&A/流動資產負債/利息費用等原始欄位 +
+   FCF/working_capital/net_net/debt_to_equity/interest_coverage/gross_margin/roe 衍生；
+   TW 對齊（net_income_ttm + 同名衍生）；US implied P/E cross-check — PR #18
+3. ✅ **issue #4**：法人 5/20 日累計 + 融資券 5 日趨勢（Closes #4）。**取捨留痕**：issue 內
+   A 段「20 日累計」與 C 段「縮窗省配額」互斥，取 A 捨 C，籌碼視窗反而加長 — PR #20
+4. ✅ **estimate 類別**：新 evidence category + forward EPS consensus（yfinance，US+TW）；
+   cite-check 可引用、audit 不做 freshness error — PR #21
+5. ✅ **short interest**：US FINRA 二手（short_percent_of_float / ratio / MoM）+ TW 借券/融券
+   proxy（決議 3），都歸 chips 類別 — PR #23
+6. ✅ **Damodaran 產業 multiples**：新 reference 類別 + vendored CSV 快照（US-only，sector 映射，
+   Total Market baseline）（決議 2）— PR #24
+
+**偏離 / 決策留痕**：
+- W2 P/E 閾值實作為 **25%**（非草案 10%）：yfinance trailing(TTM) vs implied(FY) 口徑差；
+  收回 10% 的乾淨解（補 US `eps_ttm`）見 follow-up #19。
+- issue #4 fetch 視窗 10→**35/12**（非草案的 →3），原因見上 PR #20。
+
+**衍生 follow-up issues**：#17（Retry-After header）、#19（US eps_ttm → P/E 收 10%）、
+#22（yfinance timeout/重試）、#25（Damodaran `_INDUSTRY_MAP` 擴充）。
+
+**下一步：Phase 2（Spec B 剩餘：W4/W7/W8/W9 管線硬化）。**
 
 ### Phase 2 — Spec B 剩餘：管線硬化（鐵律 1 的「分析有意義」）
 
