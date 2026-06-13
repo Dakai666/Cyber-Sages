@@ -18,8 +18,12 @@ def compute_indicator_evidence(
     url: str | None,
     source: str,
     price_unit: str = "USD",
+    trading_days: int = 252,    # 年化波動率用的交易日數：美股 252、台股 245（W10 校準）
 ) -> list[Evidence]:
-    """至少需要 ~30 個交易日；不足回傳空 list。"""
+    """至少需要 ~30 個交易日；不足回傳空 list。
+
+    `trading_days` 控制波動率年化的根號因子。美股全年約 252 個交易日，台股因農曆年
+    等假期約 245，沿用 252 會略高估台股波動率，故由各 provider 傳入正確值。"""
     if len(close) < 30:
         return []
 
@@ -45,7 +49,7 @@ def compute_indicator_evidence(
         ev("pct_above_52w_low", (last - close.min()) / close.min() * 100, "%",
            note="距 52 週低點（正=高於低點）"),
         ev("volatility_30d_annualized_pct",
-           close.pct_change().tail(30).std() * (252 ** 0.5) * 100, "%"),
+           close.pct_change().tail(30).std() * (trading_days ** 0.5) * 100, "%"),
     ]
     if len(close) >= 200:
         evs.append(ev("sma_200", close.rolling(200).mean().iloc[-1], price_unit))

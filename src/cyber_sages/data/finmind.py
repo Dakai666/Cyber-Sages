@@ -11,6 +11,8 @@ from datetime import date, timedelta
 
 import httpx
 
+from cyber_sages.data.retry import with_retry
+
 FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
 
 
@@ -38,10 +40,15 @@ async def finmind_get(
     if tok:
         params["token"] = tok
 
-    resp = await client.get(FINMIND_URL, params=params)
-    resp.raise_for_status()
+    async def _fetch() -> httpx.Response:
+        resp = await client.get(FINMIND_URL, params=params)
+        resp.raise_for_status()
+        return resp
+
+    resp = await with_retry(_fetch, what=f"FinMind {dataset}")
     body = resp.json()
     if body.get("status") != 200:
+        # 非網路層錯誤（如配額用罄、查無資料）——邏輯錯誤不重試，交由上層降級。
         raise RuntimeError(f"FinMind {dataset} error: {body.get('msg')}")
     return body.get("data", [])
 

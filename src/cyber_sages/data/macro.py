@@ -15,6 +15,7 @@ from datetime import date
 import httpx
 
 from cyber_sages.data.evidence import Evidence
+from cyber_sages.data.retry import with_retry
 
 FRED_URL = "https://api.stlouisfed.org/fred/series/observations"
 
@@ -68,11 +69,15 @@ class FredMacroProvider:
         client: httpx.AsyncClient, series_id: str, key: str, *, limit: int
     ) -> list[tuple[date, float]]:
         """回傳最新在前的 (date, value)，自動跳過缺值（FRED 的 "."）。"""
-        resp = await client.get(FRED_URL, params={
-            "series_id": series_id, "api_key": key, "file_type": "json",
-            "sort_order": "desc", "limit": limit + 5,
-        })
-        resp.raise_for_status()
+        async def _fetch() -> httpx.Response:
+            resp = await client.get(FRED_URL, params={
+                "series_id": series_id, "api_key": key, "file_type": "json",
+                "sort_order": "desc", "limit": limit + 5,
+            })
+            resp.raise_for_status()
+            return resp
+
+        resp = await with_retry(_fetch, what=f"FRED {series_id}")
         out: list[tuple[date, float]] = []
         for o in resp.json().get("observations", []):
             if o["value"] in (".", "", None):
