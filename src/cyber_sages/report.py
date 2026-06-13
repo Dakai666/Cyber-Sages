@@ -213,7 +213,7 @@ def render_data_quality(result: AnalysisResult) -> str:
 def render_evidence(result: AnalysisResult) -> str:
     lines = [
         f"# 證據附錄 · {result.ticker}",
-        "所有結論可溯源至以下第一手資料：", "",
+        "所有結論可溯源至以下 evidence（多數為第一手；source 標 (estimate) 者為分析師前瞻共識，二手）：", "",
         "| ID | 欄位 | 值 | 來源 | 日期 |", "|---|---|---|---|---|",
     ]
     for e in result.store.items:

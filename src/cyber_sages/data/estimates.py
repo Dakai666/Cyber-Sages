@@ -46,7 +46,8 @@ def fetch_estimates(symbols: list[str], *, currency: str, url: str) -> list[Evid
 
     evs: list[Evidence] = []
     fe = info.get("forwardEps") if info.get("forwardEps") is not None else info.get("epsForward")
-    if fe is not None:
+    # 保留負值（虧損公司語意合理），但跳過 0：yfinance 常以 0 表「無估計」而非真零盈餘
+    if fe is not None and float(fe) != 0:
         evs.append(ev("forward_eps", round(float(fe), 3), f"{currency}/share",
                       "分析師共識前瞻 EPS（next FY）；前瞻估計值，非實際財報"))
     if info.get("targetMeanPrice") is not None:
@@ -58,7 +59,7 @@ def fetch_estimates(symbols: list[str], *, currency: str, url: str) -> list[Evid
     if info.get("revenueGrowth") is not None:
         evs.append(ev("revenue_growth_est_pct", round(float(info["revenueGrowth"]) * 100, 2), "%",
                       "分析師共識預估營收成長（前瞻）"))
-    if info.get("numberOfAnalystOpinions") is not None:
+    if info.get("numberOfAnalystOpinions"):  # 0 位分析師 = 空共識，不發
         evs.append(ev("analyst_count", int(info["numberOfAnalystOpinions"]), "analysts",
                       "貢獻共識的分析師人數（估計的可信度脈絡）"))
     if info.get("recommendationKey"):

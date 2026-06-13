@@ -82,6 +82,44 @@ def test_fetch_estimates_empty_when_no_data(fake_yf):
     assert fetch_estimates(["NOPE"], currency="USD", url="u") == []
 
 
+def test_fetch_estimates_skips_zero_forward_eps_and_zero_analysts(fake_yf):
+    # forwardEps=0（yfinance 以 0 表無估計）與 0 位分析師都不該 emit
+    fake_yf({"X": {"forwardEps": 0, "numberOfAnalystOpinions": 0, "targetMeanPrice": 50.0}})
+    m = {e.field for e in fetch_estimates(["X"], currency="USD", url="u")}
+    assert "forward_eps" not in m
+    assert "analyst_count" not in m
+    assert "target_mean_price" in m  # 其餘正常欄位不受影響
+
+
+def test_fetch_estimates_keeps_negative_forward_eps(fake_yf):
+    # 負 forward EPS（虧損公司）語意合理，保留
+    fake_yf({"X": {"forwardEps": -1.5, "numberOfAnalystOpinions": 5}})
+    m = {e.field: e.value for e in fetch_estimates(["X"], currency="USD", url="u")}
+    assert m["forward_eps"] == -1.5
+
+
+def test_fetch_estimates_recommendation_in_known_set(fake_yf):
+    fake_yf({"X": FULL_INFO})
+    rec = next(e for e in fetch_estimates(["X"], currency="USD", url="u")
+               if e.field == "analyst_recommendation")
+    assert rec.value in {"strongBuy", "strong_buy", "buy", "hold", "sell",
+                         "strongSell", "strong_sell", "underperform", "none"}
+
+
+def test_fetch_estimates_swallows_yfinance_exception(monkeypatch):
+    # yfinance .info 拋例外 → 回 [] 並 log，不讓 pipeline 整個炸（graceful 降級）
+    class _BoomTicker:
+        def __init__(self, symbol):
+            pass
+
+        @property
+        def info(self):
+            raise RuntimeError("rate limited")
+
+    monkeypatch.setattr("yfinance.Ticker", _BoomTicker)
+    assert fetch_estimates(["AAPL"], currency="USD", url="u") == []
+
+
 def test_providers_satisfy_estimate_protocol():
     assert isinstance(USStockProvider(), EstimateProvider)
     assert isinstance(TWStockProvider(), EstimateProvider)
