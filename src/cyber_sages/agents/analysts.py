@@ -46,8 +46,11 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "revenue_ttm if present (台股 FinMind 財報為單季值，切勿用單季 EPS×4 或單季 EPS "
         "直接除股價，否則本益比會偏離數倍). Forward P/E and PEG may use the estimate "
         "category (forward_eps, target_mean_price, *_growth_est) — label these as "
-        "analyst consensus / forward estimates, never as realised first-hand figures.",
-        ["fundamentals", "quote", "profile", "estimate"],
+        "analyst consensus / forward estimates, never as realised first-hand figures. "
+        "When industry/market benchmarks are present (reference category: industry_pe_*, "
+        "market_pe_trailing — Damodaran industry aggregates), compare this stock's multiple "
+        "to its industry and the market to judge relative cheapness/richness.",
+        ["fundamentals", "quote", "profile", "estimate", "reference"],
     ),
     (
         "macro", "Macro Analyst",
