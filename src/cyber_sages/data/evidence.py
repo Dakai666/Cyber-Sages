@@ -12,12 +12,15 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 Category = Literal[
-    "quote", "fundamentals", "history", "news", "profile", "chips", "macro", "estimate"
+    "quote", "fundamentals", "history", "news", "profile", "chips", "macro",
+    "estimate", "reference"
 ]
-# chips = 台股籌碼面（三大法人買賣超 / 融資融券）
+# chips = 台股籌碼面（三大法人買賣超 / 融資融券）+ 美股 short interest
 # macro = 總經（利率/通膨/殖利率曲線/就業），全市場共用、非個股
 # estimate = 分析師前瞻共識（forward EPS / 目標價 / 成長率），二手聚合值，
 #            標 (estimate) 來源、不做 freshness error、brief 與事實欄位視覺區隔
+# reference = 外部產業/市場 benchmark（Damodaran 產業 multiples），二手年度聚合，
+#             供相對估值比較；同 estimate 不做 freshness error、非必要類別
 
 
 class Evidence(BaseModel):

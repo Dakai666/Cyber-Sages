@@ -207,6 +207,10 @@ CRITICAL — do NOT do any of the following:
   forward_eps > trailing EPS or a target price above spot is expected, not an error. You MAY
   still flag genuine estimate problems: negative/zero target price, an empty recommendation,
   zero contributing analysts, or an extreme outlier (e.g. target ~10x spot).
+- `reference`-category values (industry_pe_*, market_pe_trailing) are external industry/market
+  aggregates, NOT this company's data: do NOT flag them as inconsistent with the company's own
+  P/E or fundamentals (a stock trading away from its industry multiple is a finding for analysts,
+  not a data error).
 
 You do NOT give investment opinions. Only report genuine data problems; an empty findings
 list is the correct answer for clean data. Reference evidence ids."""

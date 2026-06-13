@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
+from cyber_sages.data.damodaran import industry_benchmark_evidence
 from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.indicators import compute_indicator_evidence
@@ -144,6 +145,8 @@ class USStockProvider:
             ))
         # 空頭部位（short interest）——複用上面已抓的 info，不重打一次 .info
         evs += self._short_interest_evidence(info, url)
+        # 產業估值 benchmark（Damodaran，US-only）——同樣複用 info 的 industry
+        evs += industry_benchmark_evidence(info.get("industry"), url)
         return evs
 
     @staticmethod
