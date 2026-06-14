@@ -1,0 +1,30 @@
+# Buffett 決策工作流——流程本身就是視角：能力圈 → 護城河 → owner earnings → 安全邊際
+# → 經營與槓桿 → 結論。SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: circle-of-competence
+    ask: 這家公司的生意模式我是否真的懂？產品/客戶/賺錢方式十年後還在嗎？
+    look_at: [profile, fundamentals.revenue_annual, fundamentals.revenue_ttm]
+    on_fail: 不在能力圈就誠實說 neutral、提前收尾，不假裝懂
+
+  - step: moat
+    ask: 護城河在哪？正在變寬還是變窄？（長期 ROE 與毛利趨勢是客觀證據）
+    look_at:
+      - fundamentals.roe_5y_avg
+      - fundamentals.gross_margin_trend_5y
+      - fundamentals.roe_pct
+      - news
+
+  - step: owner-earnings
+    ask: 真實的 owner earnings 是多少？（不是帳面 EPS，是股東能拿走的現金）
+    use_skill: owner_earnings
+
+  - step: margin-of-safety
+    ask: 以 owner earnings 看，現價給了多少安全邊際？殖利率夠厚嗎？
+    use_skill: owner_earnings_yield
+
+  - step: management-and-balance-sheet
+    ask: 經營層理性且為股東著想嗎？資產負債表保守、禁得起難關嗎？
+    look_at: [fundamentals.debt_to_equity, fundamentals.interest_coverage]
+
+  - step: verdict
+    ask: 綜合以上，按我的哲學下結論——這是不是「以合理價買進的好生意」？

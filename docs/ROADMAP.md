@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-14（v7 — Phase 3 / Spec E1：PR1 框架已合併（#38，191 passed）；PR2 多年欄位資料開工（`data/longterm.py`，US+TW，200 passed）；下一步 PR3 Buffett/Munger-2019 pilot Pack。B1/B3/B9 開 issue 追到 E2，見 #39/#40/#41）
+**Revision**: 2026-06-14（v8 — Phase 3 / Spec E1：PR1 框架（#38）+ PR2 多年欄位（#42）已合併；PR3 Buffett/Munger-2019 手工 Pack 開工（210 passed），手工過程附錄＝Nüwa 規格輸入。剩 live NVDA/2330 質性驗證。B1/B3/B9/C3-4 開 issue 追到 E2，見 #39/#40/#41/#43）
 
 ## 願景
 
@@ -177,8 +177,11 @@ epoch 選 **2019**（Apple 時期）。拆三條 PR：
 2. **多年欄位資料**（純 Spec A 性質）：`roe_5y_avg`/`gross_margin_trend_5y`/
    `earnings_stability_5y`（`data/longterm.py` 共享純計算；US SEC 多年 10-K + TW FinMind
    季度聚合，單位口徑見 Spec E 附錄 PR2 落地註）。← **開工中**（branch `feat/e1-multiyear-fundamentals`）
-3. **pilot Pack**：Buffett-2019 + Munger-2019 手工 Pack，跑 NVDA/2330 驗 sop_trace
-   錨點 + clamp 生效；手工過程寫成 `docs/specs/` 附錄。
+3. **pilot Pack**：Buffett-2019 + Munger-2019 手工 Pack（persona/rules/sop/skills），
+   舊單檔 `buffett.yaml`/`munger.yaml` 退役為目錄 Pack；共用計算放 `personas/skills_lib.py`；
+   clamp 生效 + skill 可溯源 + sop_trace 軟揭露整合測試（真實 Pack 檔 + mock gateway）；
+   手工過程寫成 `docs/specs/2026-06-14-E1-pilot-pack-handcrafting.md`（＝Nüwa 規格輸入）。
+   ← **開工中**（branch `feat/e1-buffett-munger-packs`）；剩 live NVDA/2330 質性驗證。
 
 ### Phase 4 — Spec C：陪審團結構
 

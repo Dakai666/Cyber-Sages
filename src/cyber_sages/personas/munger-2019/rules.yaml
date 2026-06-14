@@ -1,0 +1,31 @@
+# Munger 硬規則（DSL）。與 Buffett 共用槓桿紅線，但更強調「避免平庸」——平庸生意是
+# 價值陷阱，再便宜也不值得。欄位單位同 Buffett（ROE 門檻為 %，寫 18 非 0.18）。
+hard_rules:
+  - id: no-leverage
+    if: {field: debt_to_equity, op: ">", value: 1.0}
+    action: cap_confidence
+    confidence_ceiling: 0.5
+    note: 槓桿是聰明人破產的少數方式之一——資產負債表難看就別碰
+
+  - id: avoid-mediocre
+    if: {field: roe_5y_avg, op: "<", value: 10}
+    action: cap_confidence
+    confidence_ceiling: 0.4
+    note: 長期低 ROE＝平庸生意＝價值陷阱；便宜不是買進平庸的理由
+
+  - id: quality-compounder
+    if:
+      all:
+        - {field: roe_5y_avg, op: ">", value: 18}
+        - {field: earnings_stability_5y, op: ">=", value: 0.6}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: 高且穩的 ROE＝會複利的好生意，值得為品質付合理溢價
+
+exceptions:
+  - >
+    truly great business 值得付合理溢價——對頂級生意，price discipline 可以讓步，
+    但前提是有 quality 證據（長期高且穩的 ROE、寬護城河），不能只憑故事。
+  - >
+    先 invert：什麼會摧毀這家公司（致命槓桿 / 技術顛覆 / 管理層誘因錯置）？
+    找不到致命傷、且生意夠好，才談上行——引用 evidence 說明致命傷的有無。

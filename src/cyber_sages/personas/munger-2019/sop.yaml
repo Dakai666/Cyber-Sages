@@ -1,0 +1,25 @@
+# Munger 決策工作流——以 inversion 為核心：先確認是好生意，再倒過來找致命傷，
+# 然後才談品質對價格。流程與 Buffett 不同調（先 invert、把「避免蠢事」獨立成步），
+# 這正是「流程本身就是視角」。
+sop:
+  - step: is-it-a-great-business
+    ask: 這是不是一門真正的好生意？（長期高 ROE、毛利未走弱、有結構性優勢）
+    look_at:
+      - fundamentals.roe_5y_avg
+      - fundamentals.gross_margin_trend_5y
+      - fundamentals.earnings_stability_5y
+      - profile
+
+  - step: invert
+    ask: 倒過來想——什麼會摧毀它？致命槓桿、技術顛覆、管理層誘因錯置在哪？
+    look_at: [fundamentals.debt_to_equity, fundamentals.interest_coverage, news]
+
+  - step: quality-vs-price
+    ask: 以品質看，現價值得嗎？好生意可付溢價，但 owner earnings 殖利率得說得過去。
+    use_skill: owner_earnings_yield
+
+  - step: avoid-stupidity
+    ask: 有沒有明顯的蠢事（炒作、誘因陷阱、我看不懂的複雜性）讓我該直接走開？
+
+  - step: verdict
+    ask: 綜合以上，按我的哲學下結論——避免愚蠢優先於追求精明。

@@ -203,9 +203,14 @@ async def run_council(
         signal = await gateway.structured(
             "sage", system=system, prompt=prompt, schema=SageSignal, cache_prefix=shared_system,
         )
-        # sop_trace 過 cite-check（軟揭露：retry 後仍對不上 → 標 unverified，不 refuse）
+        # sop_trace 過 cite-check（軟揭露：retry 後仍對不上 → 標 unverified，不 refuse）。
+        # 空 trace（LLM 未產出步驟）→ 無數字可驗，跳過、不觸 settings.citation。
+        report = None
         for attempt in range(_SOP_RECHECK_RETRIES + 1):
-            report = check_claims(_sop_claims(signal.sop_trace), sage_store, settings.citation)
+            claims = _sop_claims(signal.sop_trace)
+            if not claims:
+                break
+            report = check_claims(claims, sage_store, settings.citation)
             if report.all_verified:
                 break
             if attempt < _SOP_RECHECK_RETRIES:
@@ -218,7 +223,7 @@ async def run_council(
                             "或補上正確的 evidence id。"),
                     schema=SageSignal, cache_prefix=shared_system,
                 )
-        signal.unverified = [
+        signal.unverified = [] if report is None else [
             UnverifiedClaim(text=c.claim.text, evidence_ids=c.claim.evidence_ids,
                             reason="sop_trace 數字無法由所引 evidence 推導", kind=c.kind)
             for c in report.unverified
