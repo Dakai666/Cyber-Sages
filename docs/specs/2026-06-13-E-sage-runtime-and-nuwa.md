@@ -190,7 +190,10 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 > 證明三段機制（skill 真算 owner earnings、rules 觸發、clamp 把低信心抬到 floor、台股式資料
 > 降 not_evaluable、sop_trace 軟揭露）。手工打造全程寫成
 > `docs/specs/2026-06-14-E1-pilot-pack-handcrafting.md`（= E2 Nüwa 要自動化的規格）。
-> **剩 live NVDA/2330 質性驗證**（需 LLM API，`uv run cyber-sages analyze NVDA --sages 2`）。
+> **live NVDA/2330 驗證已完成**（2026-06-14，`--sages 4`）：兩 pilot 的 sop_trace 每步皆
+> 有 evidence 錨點（含私有 skill 衍生）；rule_conflict 不翻 stance、unverified 軟揭露、台股
+> owner_earnings not_evaluable 全在 production 兌現。詳見 pilot-pack-handcrafting 附錄。
+> **E1 驗收條件全數達成。**
 
 ## E2：Cyber-Nüwa 蒸餾引擎
 

@@ -121,6 +121,29 @@ rules / skills 引用的欄位名**必須**對上 provider 真實 emit 的 canon
 - [x] confidence clamp 生效測試（觸發 ceiling/floor 的 evidence 下 LLM 信心被收口）—
       `tests/test_pilot_packs.py` + `tests/test_sage_runtime.py`
 - [x] skill 輸出登錄為可溯源 private evidence、sop_trace 過 cite-check（軟揭露）
-- [ ] **跑 NVDA / 2330 各一 run，sop_trace 每步有 evidence 錨點** — 需 LLM API 的 live 驗證，
-      離線整合測試已以真實 Pack + mock gateway 證明三段機制正確；live 質性驗證待執行
-      （`uv run cyber-sages analyze NVDA --sages 2` / `... 2330 --sages 2`）。
+- [x] **跑 NVDA / 2330 各一 run，sop_trace 每步有 evidence 錨點** — 2026-06-14 完成
+      （`--sages 4 --no-debate --no-macro --depth quick`，含兩 pilot pack；Munger weight 1.1
+      為第 4 位，故 `--sages 4` 才同時上場）。
+
+### Live run 結果（2026-06-14）
+
+**NVDA（US）**：Buffett 6 步、Munger 5 步，**每步皆有 evidence 錨點**，含私有 skill 衍生
+`S-buffett-owner_earnings`（owner earnings ≈ 116.9B）、`S-buffett-owner_earnings_yield`
+（≈ 2.35%）。三段機制全在 production 兌現：
+- **rule_conflict 揭露 + 不翻 stance**（決議 #1）：Buffett `wide-moat` 觸發（bullish）但他判
+  neutral（現價對他不夠便宜）→ 記 `rule_conflicts`、stance 維持 neutral，未被程式硬翻。
+- **unverified 軟揭露**（決議 #3）：Munger 2 條 sop_trace 數字未過 cite-check → 標記、不 refuse。
+- 兩位結論一致主張「好生意 ≠ 好價格、owner earnings yield 偏低、安全邊際不足」——與其公開
+  風格相符，且每句錨在 evidence。
+
+**2330（TW）**：驗證 not_evaluable 與跨市場——
+- Buffett/Munger 的 `owner_earnings`/`owner_earnings_yield` skill 正確降 `not_evaluable`
+  並**列出缺哪些欄位**（台股無 `net_income_annual`/`depreciation_amortization_annual`/
+  `capex_annual`/`market_cap`）——Buffett 誠實說「算不出台積電的 owner earnings」，非假裝。
+- 多年 `roe_5y_avg` 等（PR2 台股支援）照常可評：Munger `quality-compounder` 規則觸發
+  （bullish）但他判 neutral → rule_conflict 記錄、不翻 stance。
+- 兩位 6/5 步 sop_trace 全部有 evidence 錨點。
+
+→ 結論：E1 全 stack（Pack loader / DSL / skill / 三段執行 / clamp / not_evaluable /
+sop_trace 軟揭露）在 US + TW 雙市場 live 驗證通過。runs/NVDA-2026-06-14_185644、
+runs/2330-2026-06-14_190500。

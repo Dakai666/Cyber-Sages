@@ -181,7 +181,8 @@ epoch 選 **2019**（Apple 時期）。拆三條 PR：
    舊單檔 `buffett.yaml`/`munger.yaml` 退役為目錄 Pack；共用計算放 `personas/skills_lib.py`；
    clamp 生效 + skill 可溯源 + sop_trace 軟揭露整合測試（真實 Pack 檔 + mock gateway）；
    手工過程寫成 `docs/specs/2026-06-14-E1-pilot-pack-handcrafting.md`（＝Nüwa 規格輸入）。
-   ← **開工中**（branch `feat/e1-buffett-munger-packs`）；剩 live NVDA/2330 質性驗證。
+   ← **PR #44 待 review**；live NVDA/2330 驗證已完成（sop_trace 每步錨定、rule_conflict
+   不翻 stance、台股 owner_earnings not_evaluable 全兌現）→ **E1 驗收條件全數達成**。
 
 ### Phase 4 — Spec C：陪審團結構
 
