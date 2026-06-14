@@ -1,0 +1,44 @@
+# Buffett 硬規則（DSL，程式判定、零幻覺）。欄位名對齊 Spec A canonical：
+# roe_5y_avg / gross_margin_trend_5y / earnings_stability_5y 單位為 %（28.5=28.5%），
+# 故 ROE 門檻寫 20 非 0.20（見 Spec E 附錄 PR2 落地註）。
+#
+# ⚠ 台股注意（D3）：interest_coverage 與 owner earnings 系列在台股必為 not_evaluable
+# ——TW provider 因 FinMind 現金流量是 YTD 累計、與單季混算會跨期出錯，刻意不發
+# interest_expense / capex / D&A（見 tw_stocks._derived_fundamentals 註）。故 thin-
+# interest-coverage 規則對台股不觸發、Buffett 在 SOP pass 會誠實列為「看不到」。
+# E2 Nüwa 若要對台股啟用此 rule，需另尋台股可得的替代槓桿/償債指標。
+hard_rules:
+  - id: no-leverage
+    if: {field: debt_to_equity, op: ">", value: 1.0}
+    action: cap_confidence
+    confidence_ceiling: 0.5
+    note: 槓桿過高，出我的能力圈——再好的生意也禁不起難看的資產負債表
+
+  - id: thin-interest-coverage
+    if: {field: interest_coverage, op: "<", value: 4}
+    action: cap_confidence
+    confidence_ceiling: 0.6
+    note: 利息保障倍數偏低，景氣回檔時脆弱
+
+  - id: wide-moat
+    if:
+      all:
+        - {field: roe_5y_avg, op: ">", value: 20}
+        - {field: gross_margin_trend_5y, op: ">=", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: 長期高 ROE 且毛利未走弱＝護城河寬且未變窄，這是我的甜蜜點
+
+  - id: predictable-earnings
+    if: {field: earnings_stability_5y, op: ">=", value: 0.7}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: 盈餘可預測——我寧要平穩的 15% 也不要忽高忽低的 30%
+
+exceptions:
+  - >
+    若公司具壟斷性或準壟斷市占（如 >40%）且 ROE 長期 > 20%，即使現價 P/E 偏高，
+    moat 溢價可推翻估值上的保守——但必須說明引用哪些 evidence（市占來源、ROE 序列）。
+  - >
+    owner earnings 看不到時（缺 D&A / capex，如多數非美股），改以 FCF 或營業現金流
+    近似估真實獲利，並明說這是降級判斷、信心相應下調。

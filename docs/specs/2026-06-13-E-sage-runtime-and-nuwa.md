@@ -183,6 +183,18 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 > 底，與既有 `*_annual` 同 as_of，受同一 500 天 stale 門檻、不引入新降級風險。
 - **PR3 — Buffett-2019 + Munger-2019 手工 Pack**：各 `persona.yaml`（含 `weight_rationale` + `sources` manifest）/`rules.yaml`/`sop.yaml`/`skills.py`；跑 NVDA + 2330 各一 run 驗 sop_trace 錨點 + clamp 生效測試；手工過程寫成 `docs/specs/` 附錄（= Nüwa 規格輸入）。
 
+> **PR3 落地（2026-06-14）**：兩 Pack 完成於 `personas/buffett-2019/`、`personas/munger-2019/`；
+> 舊單檔 `buffett.yaml`/`munger.yaml` 退役（migrate 成目錄 Pack，loader 無重複）。共用計算
+> （`owner_earnings`/`owner_earnings_yield`）抽到 `personas/skills_lib.py`、各 Pack 的
+> `skills.py` 只宣告 `requires` 並 import（決議 a）。整合測試以**真實 Pack 檔** + mock gateway
+> 證明三段機制（skill 真算 owner earnings、rules 觸發、clamp 把低信心抬到 floor、台股式資料
+> 降 not_evaluable、sop_trace 軟揭露）。手工打造全程寫成
+> `docs/specs/2026-06-14-E1-pilot-pack-handcrafting.md`（= E2 Nüwa 要自動化的規格）。
+> **live NVDA/2330 驗證已完成**（2026-06-14，`--sages 4`）：兩 pilot 的 sop_trace 每步皆
+> 有 evidence 錨點（含私有 skill 衍生）；rule_conflict 不翻 stance、unverified 軟揭露、台股
+> owner_earnings not_evaluable 全在 production 兌現。詳見 pilot-pack-handcrafting 附錄。
+> **E1 驗收條件全數達成。**
+
 ## E2：Cyber-Nüwa 蒸餾引擎
 
 ### 定位（issue #2 命名提案決議）
