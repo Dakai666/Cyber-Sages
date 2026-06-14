@@ -84,6 +84,15 @@ Every number you state in a step must be traceable to a cited evidence id. Your 
 stance/confidence/thesis must follow from this trace, through your philosophy."""
 
 
+# 注入 shared system 末端，讓被席大師按本次 horizon 校準（trading 看數天~數週、value 看數年）。
+_HORIZON_NOTE = {
+    "value": "\n\n# Horizon: VALUE（數年，3~10y）——以多年基本面、護城河、估值、owner "
+             "earnings 為主軸判斷；短線價格雜訊不是重點。",
+    "trading": "\n\n# Horizon: TRADING（數天~數週）——以價格趨勢、動能、籌碼/流向、波動為"
+               "主軸判斷；長期內在價值不是本次重點，重在近期不對稱與進出場時機。",
+}
+
+
 def _reports_text(reports: list[AnalystReport]) -> str:
     parts = []
     for r in reports:
@@ -147,8 +156,14 @@ async def run_council(
     gateway: LLMGateway,
     n_sages: int | None = None,
     on_signal=None,  # callback(SageSignal) — CLI 即時更新投票表
+    horizon: str = "value",
 ) -> CouncilVerdict:
-    personas = load_personas(n_sages or settings.defaults.sages)
+    # P9：按 horizon 分席——只座位適用本 horizon 的大師；越圍者 abstain（不出席、不投票，
+    # brief 揭露），不浪費 LLM 呼叫去問 Buffett 當沖。abstain ≠ absent（後者是硬失敗）。
+    everyone = load_personas()  # 全員、已按 weight 降序
+    applicable = [p for p in everyone if horizon in p.horizons]
+    abstained = [p.name for p in everyone if horizon not in p.horizons]
+    personas = applicable[: (n_sages or settings.defaults.sages)]
     # 共享前綴：證據摘要 + 分析師報告，所有大師一字不差地共用 → 走 cache_prefix 命中快取。
     # 用 .replace 而非 .format：analyst 報告 / digest 是 LLM 生成 + 數值文本，可能含字面
     # `{` `}`（如「{x}」placeholder 或一般 curly braces），.format 會 raise KeyError/
@@ -158,6 +173,7 @@ async def run_council(
         .replace("{ticker}", store.ticker)
         .replace("{reports}", _reports_text(reports))
         .replace("{digest}", store.digest())
+        + _HORIZON_NOTE[horizon]
     )
     # provider 是否支援 prompt cache：決定要不要「先暖一位再 fan-out」。MiniMax 不快取，
     # 全平行即可；Anthropic 會快取，同時併發全部會在快取寫入前每位都 miss（快取在首個
@@ -268,15 +284,17 @@ async def run_council(
             f"Council failed: only {len(signals)}/{len(personas)} sages returned a "
             f"valid signal (absent: {', '.join(absent)})"
         )
-    return tally(signals, personas, absent=absent)
+    return tally(signals, personas, absent=absent, abstained=abstained)
 
 
 def tally(
     signals: list[SageSignal],
     personas: list[Persona],
     absent: list[str] | None = None,
+    abstained: list[str] | None = None,
 ) -> CouncilVerdict:
     absent = absent or []
+    abstained = abstained or []
     weights = {p.name: p.weight for p in personas}
     counts = {"bullish": 0, "bearish": 0, "neutral": 0}
     score_num = score_den = 0.0
@@ -298,5 +316,5 @@ def tally(
     return CouncilVerdict(
         signals=signals, bullish=counts["bullish"], bearish=counts["bearish"],
         neutral=counts["neutral"], weighted_score=round(weighted, 3),
-        consensus=consensus, outliers=outliers, absent=absent,
+        consensus=consensus, outliers=outliers, absent=absent, abstained=abstained,
     )

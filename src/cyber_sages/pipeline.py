@@ -85,6 +85,7 @@ class AnalysisResult(BaseModel):
     # default_factory 於 run 結尾建構本物件時求值；秒級 run 下與開始時等價，
     # 若未來 run 長到中途可能出現新 commit，改為 run_pipeline 開頭快照
     git_commit: str | None = Field(default_factory=_git_commit)
+    horizon: str = "value"  # 本次分析時間框架（trading / value）——brief 標示、abstain 揭露依據
     store: EvidenceStore
     audit: AuditReport
     reports: list[AnalystReport]
@@ -112,6 +113,7 @@ async def run_pipeline(
     n_sages: int | None = None,
     skip_debate: bool = False,
     include_macro: bool = True,
+    horizon: str = "value",
     on_stage: StageCallback | None = None,
     on_signal=None,
 ) -> AnalysisResult:
@@ -186,12 +188,13 @@ async def run_pipeline(
 
     # [5] Council
     n = n_sages or settings.defaults.sages
-    await _emit(on_stage, "council", "running", f"{n} sages voting")
+    await _emit(on_stage, "council", "running", f"{n} sages voting ({horizon} horizon)")
     council = await run_council(store, reports, settings, gateway,
-                                n_sages=n, on_signal=on_signal)
+                                n_sages=n, on_signal=on_signal, horizon=horizon)
+    abstain_note = f"；{len(council.abstained)} 位 abstain（非本 horizon）" if council.abstained else ""
     await _emit(on_stage, "council", "done",
                 f"{council.bullish}多/{council.neutral}中/{council.bearish}空 "
-                f"weighted {council.weighted_score:+.2f}")
+                f"weighted {council.weighted_score:+.2f}{abstain_note}")
 
     # [6] Debate
     bull = bear = debate = None
@@ -205,11 +208,11 @@ async def run_pipeline(
     # [7] Synthesize + risk
     await _emit(on_stage, "synthesize", "running", "chief sage + risk officer")
     verdict, risk = await run_synthesis(store, reports, council, debate, audit,
-                                        settings, gateway)
+                                        settings, gateway, horizon=horizon)
     await _emit(on_stage, "synthesize", "done",
                 f"{verdict.stance} (conviction {verdict.conviction:.2f})")
 
     return AnalysisResult(
-        ticker=ticker, store=store, audit=audit, reports=reports, council=council,
-        bull=bull, bear=bear, debate=debate, verdict=verdict, risk=risk,
+        ticker=ticker, horizon=horizon, store=store, audit=audit, reports=reports,
+        council=council, bull=bull, bear=bear, debate=debate, verdict=verdict, risk=risk,
     )

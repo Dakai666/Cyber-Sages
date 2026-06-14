@@ -56,6 +56,9 @@ class Persona(BaseModel):
     philosophy: str
     focus: str
     voice: str
+    # 適用 horizon（Spec C v2 P9）：未宣告預設兩者皆適用（向後相容——舊 persona 照常全程出席）；
+    # 宣告後，run 的 horizon 不在此清單內則該大師 abstain（不出席、不投票，brief 揭露）。
+    horizons: list[str] = Field(default_factory=lambda: ["trading", "value"])
     # Pack 專屬（degraded 單檔留預設）
     epoch: str | int | None = None
     weight_rationale: str = ""

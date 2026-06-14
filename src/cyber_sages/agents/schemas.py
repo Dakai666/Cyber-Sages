@@ -10,6 +10,10 @@ from cyber_sages.verify.citation_check import Claim, FailureKind
 
 Stance = Literal["bullish", "bearish", "neutral"]
 
+# 分析時間框架（Spec C v2 P9）：trading＝數天~數週（技術/籌碼/動能為主）、
+# value＝數年（多年基本面/護城河/估值為主）。大師在 persona 宣告適用 horizon，越圍 abstain。
+Horizon = Literal["trading", "value"]
+
 
 class UnverifiedClaim(BaseModel):
     """cite-check 後仍未通過的 claim，保留 evidence id 與原因供 brief 直接呈現。
@@ -95,6 +99,9 @@ class CouncilVerdict(BaseModel):
     # fail-loud：被席但即便加大預算重試後 structured output 仍失敗而缺席的大師。
     # 正常情況應為空——gateway 偵測截斷會自動加大 token 重試；非空代表硬錯誤，須揭露。
     absent: list[str] = Field(default_factory=list)
+    # P9：本次 horizon 不在其適用範圍而不出席的大師（persona 級 not_evaluable）。
+    # 與 absent 不同——這是設計上的誠實退場（Buffett 不答當沖），須在 brief 揭露。
+    abstained: list[str] = Field(default_factory=list)
 
 
 class DebateArgument(BaseModel):

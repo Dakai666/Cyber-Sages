@@ -1,6 +1,7 @@
 key: lynch
 name: Peter Lynch
 weight: 1.0
+horizons: [value]
 philosophy: >
   Know what you own. PEG ratio — growth at a reasonable price. Categorize the
   stock (stalwart, fast grower, cyclical, turnaround) and judge accordingly.
