@@ -329,6 +329,22 @@ async def test_runtime_records_rule_conflict_when_floor_opposes_stance(monkeypat
     assert len(s.rule_conflicts) == 1 and "moat-premium" in s.rule_conflicts[0]
 
 
+async def test_pack_empty_sop_trace_skips_citecheck(monkeypatch):
+    # D1：LLM 回空 sop_trace → 無數字可驗，跳過 cite-check、不觸 settings.citation。
+    # 用「故意不含 citation」的 settings：若短路失效會 AttributeError 而非乾淨通過。
+    persona = _pack_persona()
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [persona])
+    settings = SimpleNamespace(
+        defaults=SimpleNamespace(sages=10),
+        roles={"sage": SimpleNamespace(provider="p")},
+        providers={"p": SimpleNamespace(has=lambda feat: False)},
+    )  # 無 .citation
+    llm = SageSignal(stance="bullish", confidence=0.3, thesis="t", what_would_change_my_mind="w")
+    council = await run_council(_levered_store(), [], settings, _gateway_returning(llm), n_sages=1)
+    [s] = council.signals
+    assert s.sop_trace == [] and s.unverified == []  # 空 trace、cite-check 被跳過、無例外
+
+
 async def test_runtime_lists_not_evaluable_when_skill_inputs_missing(monkeypatch):
     pack = PersonaPack(
         hard_rules=[HardRule.model_validate(
