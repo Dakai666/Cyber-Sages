@@ -95,7 +95,7 @@ def _reports_text(reports: list[AnalystReport]) -> str:
             + "; ".join(u.as_line() for u in r.unverified)
             if r.unverified else ""
         )
-        parts.append(f"## {r.analyst} (outlook: {r.outlook})\n{r.summary}\n{claims}{flags}")
+        parts.append(f"## {r.analyst}\n{r.summary}\n{claims}{flags}")
     return "\n\n".join(parts)
 
 

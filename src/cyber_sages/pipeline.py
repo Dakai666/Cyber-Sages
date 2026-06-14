@@ -169,10 +169,10 @@ async def run_pipeline(
                     f"clean ({warns} warning(s))" if warns else "clean")
 
     # [3] Analysts（內含 cite-check 重寫迴圈）
-    await _emit(on_stage, "analyze", "running", "4 analysts in parallel")
+    await _emit(on_stage, "analyze", "running", "analysts surfacing evidence in parallel")
     reports = await run_all_analysts(store, settings, gateway)
     await _emit(on_stage, "analyze", "done",
-                ", ".join(f"{r.analyst.split()[0]}:{r.outlook}" for r in reports))
+                ", ".join(f"{r.analyst.split()[0]}({len(r.claims)})" for r in reports))
 
     # [4] Cite-check 結果彙報
     total_claims = sum(len(r.claims) for r in reports)

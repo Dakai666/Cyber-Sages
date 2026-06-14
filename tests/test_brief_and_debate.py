@@ -36,7 +36,7 @@ def test_unverified_tag_maps_from_authoritative_kind():
 
 def test_render_analysts_shows_unverified_with_ids_and_tag():
     report = AnalystReport(
-        analyst="Valuation Analyst", summary="估值偏高", outlook="bearish",
+        analyst="Valuation Analyst", summary="估值偏高",
         claims=[Claim(text="P/E 30 倍", evidence_ids=["E001"])],
         unverified=[UnverifiedClaim(
             text="按股價 1167 計算本益比 15.7 倍", evidence_ids=["E001", "E023"],
@@ -47,6 +47,25 @@ def test_render_analysts_shows_unverified_with_ids_and_tag():
     assert "[NUM_MISMATCH]" in out          # tag 有呈現
     assert "E001 E023" in out               # evidence id 有列出
     assert "not found" in out               # 失敗原因有列出
+
+
+def test_analyst_is_neutral_data_layer_no_outlook():
+    # P8（Spec C v2）：analyst 是數據層、不下方向性立場——schema 無 outlook、render 無 stance 標。
+    report = AnalystReport(analyst="Fundamentals Analyst", summary="ROE 35%",
+                           claims=[Claim(text="ROE 35%", evidence_ids=["E001"])])
+    assert not hasattr(report, "outlook")
+    out = render_analysts(SimpleNamespace(ticker="NVDA", reports=[report]))
+    assert "方向性判斷見大師合議" in out          # 中性框架語有呈現
+    for stance in ("看多", "看空", "中性"):       # analyst 段不再出現 stance 標籤
+        assert stance not in out
+
+
+def test_analyst_system_prompt_states_neutrality_rule():
+    # P8 prompt 護欄：未來改 prompt 時不可靜默丟失「analyst 供數據非意見」鐵律。
+    from cyber_sages.agents.analysts import ANALYST_SYSTEM
+    low = ANALYST_SYSTEM.lower()
+    assert "data" in low and "not opinion" in low
+    assert "buy/sell" in low or "bullish/bearish" in low
 
 
 # ---------- Issue 3：敗方離群者需論點級反駁 ----------
@@ -267,7 +286,7 @@ async def test_run_council_survives_braces_in_reports():
     from cyber_sages.verify.citation_check import Claim
     store = EvidenceStore(ticker="2330", market="TW")
     report = AnalystReport(
-        analyst="估值分析師", summary="模板 {x} 與 {未知欄位} 都不該炸", outlook="bullish",
+        analyst="估值分析師", summary="模板 {x} 與 {未知欄位} 都不該炸",
         claims=[Claim(text="毛利率 {gross_margin} 約 50%", evidence_ids=["E001"])],
     )
     council = await run_council(

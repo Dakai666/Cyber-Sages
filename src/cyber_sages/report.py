@@ -131,9 +131,11 @@ def render_brief(result: AnalysisResult) -> str:
 # ---------- details/ ----------
 
 def render_analysts(result: AnalysisResult) -> str:
-    lines = [f"# 分析師報告 · {result.ticker}"]
+    # P8：analyst 是證據層（核實 + 標註數據），不下方向性立場——故無 stance 標示。
+    lines = [f"# 分析師核實證據 · {result.ticker}",
+             "> 分析師只提供核實過的數據與事實；方向性判斷見大師合議。"]
     for r in result.reports:
-        lines += ["", f"## {r.analyst}（{STANCE_ZH[r.outlook]}）", r.summary, ""]
+        lines += ["", f"## {r.analyst}", r.summary, ""]
         for cl in r.claims:
             lines.append(f"- {cl.text} `[{', '.join(cl.evidence_ids)}]`")
         if r.unverified:

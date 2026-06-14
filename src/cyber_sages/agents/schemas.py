@@ -33,11 +33,15 @@ class UnverifiedClaim(BaseModel):
 
 
 class AnalystReport(BaseModel):
+    """P8（Spec C v2）：analyst 是**數據函式**，不是意見方——只核實、標註、結構化證據，
+    不下 bullish/bearish 立場（方向性判斷由 sage council 獨佔）。故無 `outlook` 欄位。"""
     analyst: str = ""
-    summary: str = Field(description="2-4 sentence summary in Traditional Chinese")
-    outlook: Stance
+    summary: str = Field(
+        description="2-4 sentence NEUTRAL synthesis of what the evidence shows in "
+        "Traditional Chinese — facts, inflections, levels. NO buy/sell/bullish/bearish verdict."
+    )
     claims: list[Claim] = Field(
-        description="Each key finding as a claim citing evidence ids"
+        description="Each key finding as a neutral, evidence-cited claim (a fact, not a call)"
     )
     unverified: list[UnverifiedClaim] = Field(default_factory=list)  # cite-check 後標記
 
