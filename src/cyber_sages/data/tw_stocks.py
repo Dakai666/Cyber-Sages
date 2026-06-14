@@ -27,6 +27,7 @@ from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.finmind import days_ago, finmind_get
 from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.longterm import multiyear_fundamentals
 from cyber_sages.data.retry import to_thread_with_timeout
 
 logger = logging.getLogger(__name__)
@@ -182,9 +183,11 @@ class TWStockProvider:
         stock_id = to_stock_id(ticker)
         if is_tw_etf(stock_id):  # stock_id 已是台股純數字形式，語意直接
             return []  # ETF 無個股損益表/資產負債表/月營收，不發無謂的 FinMind 請求
+        # 損益表/資產負債表抓 ~5.5 年（多年期 roe_5y_avg 等需要）：加寬 start_date 仍是
+        # 同一個 FinMind 請求、不增配額；TTM/最新季的下游邏輯只取最近資料、不受影響。
         income, balance, month = await asyncio.gather(
-            self._fm("TaiwanStockFinancialStatements", stock_id, days_ago(550)),
-            self._fm("TaiwanStockBalanceSheet", stock_id, days_ago(550)),
+            self._fm("TaiwanStockFinancialStatements", stock_id, days_ago(2000)),
+            self._fm("TaiwanStockBalanceSheet", stock_id, days_ago(2000)),
             self._fm("TaiwanStockMonthRevenue", stock_id, days_ago(430)),
             return_exceptions=True,
         )
@@ -197,6 +200,7 @@ class TWStockProvider:
         evs += self._statement_evidence(balance, BALANCE_FIELDS, base_url,
                                         "FinMind TaiwanStockBalanceSheet")
         evs += self._derived_fundamentals(income, balance, base_url)
+        evs += self._multiyear_fundamentals(income, balance, base_url)
         if not isinstance(month, BaseException):
             evs += self._month_revenue_evidence(month, stock_id)
         return evs
@@ -299,6 +303,55 @@ class TWStockProvider:
             emit("roe_pct", ni_ttm[0] / eq * 100, "%",
                  "近四季 TTM 稅後淨利 / 股東權益 × 100", bal_as_of)
         return out
+
+    # ---------- 多年期指標（季度聚合成年度）----------
+    @staticmethod
+    def _annual_sums(rows, fm_type: str) -> dict[int, float]:
+        """{年: 該年四季合計}；只收「該年恰有四季」者（不足四季不硬湊，避免年度值偏低）。"""
+        if isinstance(rows, BaseException) or not rows:
+            return {}
+        by_year: dict[int, dict[str, float]] = {}
+        for r in rows:
+            if r["type"] == fm_type and r["value"] is not None:
+                d = date.fromisoformat(r["date"])
+                by_year.setdefault(d.year, {})[r["date"]] = float(r["value"])
+        return {y: sum(q.values()) for y, q in by_year.items() if len(q) == 4}
+
+    @staticmethod
+    def _yearend_equity(rows) -> dict[int, tuple[date, float]]:
+        """{年: (年底季別日, 股東權益)}；取該年 12 月（Q4）的權益快照。"""
+        if isinstance(rows, BaseException) or not rows:
+            return {}
+        out: dict[int, tuple[date, float]] = {}
+        for r in rows:
+            if r["type"] == "Equity" and r["value"] is not None:
+                d = date.fromisoformat(r["date"])
+                if d.month == 12:
+                    out[d.year] = (d, float(r["value"]))
+        return out
+
+    @classmethod
+    def _multiyear_fundamentals(cls, income, balance, url) -> list[Evidence]:
+        """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability）。
+
+        台股財報年度＝曆年；FinMind 損益是單季值，逐年合計四季成年度損益，ROE 以該年底
+        權益為分母（與單期 roe_pct 同口徑：年度淨利 / 年底權益）。"""
+        rev = cls._annual_sums(income, "Revenue")
+        gp = cls._annual_sums(income, "GrossProfit")
+        ni = cls._annual_sums(income, "IncomeAfterTaxes")
+        eq = cls._yearend_equity(balance)
+
+        roe_series = [(eq[y][0], ni[y] / eq[y][1] * 100)
+                      for y in sorted(ni.keys() & eq.keys()) if eq[y][1]]
+        gm_series = [(date(y, 12, 31), gp[y] / rev[y] * 100)
+                     for y in sorted(gp.keys() & rev.keys()) if rev[y]]
+        ni_series = [(date(y, 12, 31), ni[y]) for y in sorted(ni)]
+        return multiyear_fundamentals(
+            roe_pct_series=roe_series, gross_margin_pct_series=gm_series,
+            net_income_series=ni_series,
+            source="computed from FinMind TaiwanStockFinancialStatements / BalanceSheet "
+                   "(multi-year, 季度聚合)", url=url,
+        )
 
     @staticmethod
     def _month_revenue_evidence(rows: list[dict], stock_id: str) -> list[Evidence]:

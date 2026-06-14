@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-14（v6 — Phase 3 / Spec E1 設計定案：7 項實作叉路逐項拍板（見 Spec E「E1 實作決議」附錄），拆三條 PR：框架 → 多年欄位資料 → Buffett/Munger-2019 pilot Pack；PR1 框架開工中）
+**Revision**: 2026-06-14（v7 — Phase 3 / Spec E1：PR1 框架已合併（#38，191 passed）；PR2 多年欄位資料開工（`data/longterm.py`，US+TW，200 passed）；下一步 PR3 Buffett/Munger-2019 pilot Pack。B1/B3/B9 開 issue 追到 E2，見 #39/#40/#41）
 
 ## 願景
 
@@ -173,9 +173,10 @@ epoch 選 **2019**（Apple 時期）。拆三條 PR：
 
 1. **框架**（data-agnostic）：Pack loader（目錄/單檔共存）+ rules DSL evaluator +
    skill 框架 + `SageSignal.sop_trace`/`not_evaluable` + 三段執行 + clamp + 軟揭露
-   cite-check 接線；degraded 8 位走原路徑。← **開工中**（branch `feat/e1-sage-runtime-framework`）
+   cite-check 接線；degraded 8 位走原路徑。← **✅ 已合併 PR #38**
 2. **多年欄位資料**（純 Spec A 性質）：`roe_5y_avg`/`gross_margin_trend_5y`/
-   `earnings_stability` 等（SEC 多年 + TW 對齊，清單由 pilot requires 反推）。
+   `earnings_stability`（`data/longterm.py` 共享純計算；US SEC 多年 10-K + TW FinMind
+   季度聚合，單位口徑見 Spec E 附錄 PR2 落地註）。← **開工中**（branch `feat/e1-multiyear-fundamentals`）
 3. **pilot Pack**：Buffett-2019 + Munger-2019 手工 Pack，跑 NVDA/2330 驗 sop_trace
    錨點 + clamp 生效；手工過程寫成 `docs/specs/` 附錄。
 
