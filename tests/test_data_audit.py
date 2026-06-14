@@ -179,6 +179,22 @@ async def test_collector_failure_of_noncore_is_warning():
                for f in report.findings)
 
 
+async def test_collector_failure_merges_into_completeness_no_duplicate():
+    # #30：類別同時「缺」(completeness) 且「抓取失敗」(fetch_failures) 時，錯因併入
+    # completeness 那條，不另出第二條 ~重複 finding。
+    store = healthy_store()
+    store.items = [e for e in store.items if e.category != "news"]  # news 真的缺
+    settings = Settings.model_construct(audit=CFG)
+    fake = _FakeGateway(AuditorOutput(findings=[], summary="ok"))
+    report = await run_audit(store, settings, fake,  # type: ignore[arg-type]
+                             fetch_failures={"news": "feed 503"})
+    news = [f for f in report.findings if "news" in f.message]
+    assert len(news) == 1                              # 合併、不重複
+    assert news[0].check == "completeness"
+    assert "feed 503" in news[0].message               # 錯因已併入
+    assert not report.degraded                         # news 非核心，仍 warning
+
+
 async def test_llm_auditor_error_is_clamped_to_warning():
     # 稽核員幻覺把現實資料判成 error（曾因「未來日期」誤判全表）不該獨自觸發降級；
     # 降級只保留給可信的確定性閘門。
