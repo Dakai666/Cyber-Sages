@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-14（v4 — Phase 2 / Spec B 全數完成，Pillar 1 收口；下一步 Phase 3 / Spec E1）
+**Revision**: 2026-06-14（v5 — Phase 1+2 follow-up 全數清理（僅 #25 deferred），main 175 passed；下一步 Phase 3 / Spec E1）
 
 ## 願景
 
@@ -37,11 +37,11 @@
 | # | Gap | 影響 | Spec |
 |---|---|---|---|
 | W1 | 3 個 persona 招牌焦點缺資料 | Pillar 1+2 同步受傷 | A（**✅ Phase 1 完成**，PR #18/#21/#23/#24） |
-| W2 | US P/E 是 yfinance 二手值, audit 沒 cross-check | US 估值每 run 受影響 | A（**✅ Phase 1 完成**，PR #18；閾值 25%，收 10% 見 #19） |
+| W2 | US P/E 是 yfinance 二手值, audit 沒 cross-check | US 估值每 run 受影響 | A（**✅ Phase 1 完成**，PR #18；閾值已收嚴格 10%，補 `eps_ttm` 後 TTM-vs-TTM，PR #35） |
 | W3 | Council prompt cache 沒用 | 10x token 浪費 | B（**✅ Phase 0 完成**，PR #13；dormant 待 sage 上 Anthropic） |
 | W4 | cite-check 笛卡兒積過寬, 偽造可過 | 反幻覺閘門失效 | B |
 | W5 | 6 處 silent exception | schema 變更 = 整欄消失 | B（**✅ Phase 0 完成**，PR #12） |
-| W6 | 沒 retry/backoff | 高流量時段 run 不穩 | A（**✅ Phase 1 完成**，PR #16；Retry-After 見 #22） |
+| W6 | 沒 retry/backoff | 高流量時段 run 不穩 | A（**✅ Phase 1 完成**，PR #16；Retry-After + yfinance timeout 已補，PR #36） |
 | W7 | Chief thesis 整段沒 cite-check | brief 主體是 Pillar 1 唯一未驗證 | B |
 | W8 | macro 過期 4 個月只 warning | 巨集分析師拿舊資料 | B |
 | W9 | 部分 collector 失敗不觸發降級 | 髒資料當滿資料 | B |
@@ -121,8 +121,13 @@
   收回 10% 的乾淨解（補 US `eps_ttm`）見 follow-up #19。
 - issue #4 fetch 視窗 10→**35/12**（非草案的 →3），原因見上 PR #20。
 
-**衍生 follow-up issues**：#17（Retry-After header）、#19（US eps_ttm → P/E 收 10%）、
-#22（yfinance timeout/重試）、#25（Damodaran `_INDUSTRY_MAP` 擴充）。
+**衍生 follow-up issues（2026-06-14 全數清理）**：
+- ✅ #17 `with_retry` 支援 `Retry-After`（整數/小數秒 + HTTP-date）— PR #36
+- ✅ #19 US `eps_ttm`（最近四季合計，Q4 由 FY−Q1-3 反推）→ P/E cross-check 收回嚴格 10%
+  — PR #35（live 9 檔美股含 NVDA 全過閾值）
+- ✅ #22 yfinance 同步呼叫統一 `to_thread_with_timeout` 防卡死 — PR #36
+- ⏸ #25 Damodaran `_INDUSTRY_MAP` 擴充 — 標 `needs-data` defer：需累積實際分析的
+  unmapped log 素材才好補，無對映已安全降級到 market baseline。
 
 **下一步：Phase 3（Spec E1：Sage Runtime + Buffett/Munger 手工 Persona Pack 試點）。**
 
@@ -147,13 +152,12 @@
   放行，源頭該以 `market_cap` 自身 evidence 呈現。
 - W7 只做數字級驗證；chief 行內 `[E001]` 引用紀律屬 Spec D / Phase 5。
 
-**review nits（不擋合，Phase 3 順手補）**：
-- 非核心類別 collector 失敗會同時出 `completeness` + `collector_error` 兩條 warning（內容
-  ~95% 重疊）→ collector_error 迴圈可跳過 completeness 已記的 category，或併進同一 message。
-- `CORE_CATEGORIES` 目前是 dead code → 刪除，或拿來做 `CORE_CATEGORIES == 降級類別` 的
-  assertion 鎖定「核心類別 = 降級類別」決議。
-- ETF fundamentals 例外檢查散在兩處（severity + msg）→ 完全集中到 `_missing_severity`。
-- 補 `{magnitude, per_share}` 配對（淨利/EPS = shares）的迴歸測試。
+**review nits（2026-06-14 已全數補完 — PR #34）**：
+- ✅ #30 `collector_error` 與 `completeness` 去冗餘：類別同時「缺」且「抓取失敗」時錯因
+  併入 completeness 該條（並清洗 err 取首行+截斷），不再出兩條 ~重複 finding。
+- ✅ #31 `CORE_CATEGORIES` 改 import-time 不變式 assertion（鎖「核心類別 ≡ 降級類別」）。
+- ✅ #32 ETF fundamentals 例外集中到 `_etf_relaxed()` 單一真相來源（severity + msg 同源）。
+- ✅ #33 補 `{magnitude, per_share}` 配對（淨利/EPS = shares）迴歸測試。
 
 ### Phase 3 — Spec E1：Sage Runtime + 手工 Persona Pack 試點（鐵律 2 起點）
 
