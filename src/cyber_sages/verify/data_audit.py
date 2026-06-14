@@ -53,11 +53,19 @@ CATEGORY_SEVERITY: dict[str, Severity] = {
     "chips": "warning",
     "macro": "warning",
 }
+# 不變式：核心類別 ≡ 降級類別（決議 3）。鎖在 import 時，未來改分級忘了同步即炸。
+assert CORE_CATEGORIES == tuple(k for k, v in CATEGORY_SEVERITY.items() if v == "error")
+
+
+def _etf_relaxed(category: str, store: EvidenceStore) -> bool:
+    """ETF 無發行人損益表：fundamentals 缺屬預期口徑，降級與訊息都據此放寬。
+    ETF 例外的唯一真相來源——severity 與 message 都查它，不在兩處各判一次。"""
+    return category == "fundamentals" and store.instrument == "etf"
 
 
 def _missing_severity(category: str, store: EvidenceStore) -> Severity:
-    """某類別缺失/抓取失敗時的嚴重度；ETF 無個股財報故 fundamentals 例外降為 warning。"""
-    if category == "fundamentals" and store.instrument == "etf":
+    """某類別缺失/抓取失敗時的嚴重度（查分級表，ETF fundamentals 例外降 warning）。"""
+    if _etf_relaxed(category, store):
         return "warning"
     return CATEGORY_SEVERITY.get(category, "warning")
 
@@ -79,9 +87,7 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
         ("quote", ["last_price", "latest_close"], "no usable price"),
         ("history", ["sma_20"], "no price history / indicators"),
         ("news", None, "no recent news"),
-        ("fundamentals", fundamentals_fields,
-         "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"
-         if store.instrument == "etf" else "no first-hand financials"),
+        ("fundamentals", fundamentals_fields, "no first-hand financials"),
     ]
     # 台股籌碼面：缺三大法人買賣超只是警示（個股當日可能無法人進出資料）
     if store.market == "TW":
@@ -91,6 +97,9 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
         if fields is not None:
             evs = [e for e in evs if e.field in fields]
         if not evs:
+            # ETF fundamentals 例外的 severity 與訊息都源自 _etf_relaxed，集中一處
+            if _etf_relaxed(category, store):
+                msg = "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"
             findings.append(AuditFinding(
                 severity=_missing_severity(category, store), check="completeness",
                 message=f"Missing {category} data: {msg}",
@@ -241,11 +250,19 @@ async def run_audit(
     findings = deterministic_checks(store, settings.audit)
     # W9 — collector 抓取失敗顯式入帳（completeness 只知「缺」，這裡記「為何缺」）。
     # 嚴重度同分級表：核心類別抓取失敗即降級，而非靜默少一塊資料。
+    # 若 completeness 已對同一類別記了「缺」，把錯因併入該條，避免兩條 ~重複 finding（#30）。
     for category, err in (fetch_failures or {}).items():
-        findings.append(AuditFinding(
-            severity=_missing_severity(category, store), check="collector_error",
-            message=f"{category} 來源抓取失敗：{err}",
-        ))
+        reason = err.split("\n")[0][:200]  # 取首行並截斷：避免多行/超長錯誤破壞 brief 渲染
+        existing = next(
+            (f for f in findings if f.check == "completeness"
+             and f.message.startswith(f"Missing {category} data:")), None)
+        if existing:
+            existing.message += f"（來源抓取失敗：{reason}）"
+        else:
+            findings.append(AuditFinding(
+                severity=_missing_severity(category, store), check="collector_error",
+                message=f"{category} 來源抓取失敗：{reason}",
+            ))
     summary = ""
     try:
         out = await gateway.structured(

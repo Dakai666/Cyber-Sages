@@ -87,6 +87,17 @@ def test_derived_ratio_verified():
     assert check_claim(claim, store, CFG).verified
 
 
+def test_derive_shares_from_net_income_over_eps():
+    # #33：{magnitude, per_share} 白名單配對——淨利 / EPS = 流通股數，正確衍生不該被誤判
+    store = EvidenceStore(ticker="TEST")
+    store.add(Evidence(category="fundamentals", field="net_income_annual",
+                       value=112_010_000_000, unit="USD", source="edgar"))
+    store.add(Evidence(category="fundamentals", field="eps_diluted_annual",
+                       value=7.46, unit="USD", source="edgar"))
+    claim = Claim(text="流通股數約 15.0B 股", evidence_ids=["E001", "E002"])
+    assert check_claim(claim, store, CFG).verified
+
+
 def test_derived_margin_pct_verified():
     store = EvidenceStore(ticker="TEST")
     store.add(Evidence(category="fundamentals", field="net_income_annual",
