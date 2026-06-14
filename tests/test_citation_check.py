@@ -166,6 +166,31 @@ def test_tampered_ratio_still_caught():
     assert not check_claim(claim, store, CFG).verified
 
 
+def test_change_pct_symmetry_verified():
+    # W4 符號對稱：股價自高點下跌，真實變動率為負；LLM 寫「下跌 5%」抽出 +5，
+    # 必須對得上由兩價格值衍生的 ±5% 變動率（中文漲/跌措辭天生帶號）。
+    store = EvidenceStore(ticker="TEST")
+    store.add(Evidence(category="quote", field="last_price", value=95.0,
+                       unit="USD", source="yfinance"))
+    store.add(Evidence(category="history", field="high_52w", value=100.0,
+                       unit="USD", source="computed"))
+    claim = Claim(text="股價自 52 週高點下跌 5%", evidence_ids=["E001", "E002"])
+    assert check_claim(claim, store, CFG).verified
+
+
+def test_cartesian_convergence_rejects_cross_kind_fabrication():
+    # W4 笛卡兒積收斂：price × magnitude 不是合理配對（市值該由自身 evidence 呈現）。
+    # 舊版會衍生 100/2000*100 = 5.0 這種無意義跨類值，讓偽造的「5.0x」矇混；
+    # 白名單收斂後此配對不衍生，捏造數字必須被擋下。
+    store = EvidenceStore(ticker="TEST")
+    store.add(Evidence(category="quote", field="last_price", value=100.0,
+                       unit="USD", source="yfinance"))
+    store.add(Evidence(category="fundamentals", field="revenue_annual",
+                       value=2000.0, unit="USD", source="edgar"))
+    claim = Claim(text="神秘指標為 5.0x", evidence_ids=["E001", "E002"])
+    assert not check_claim(claim, store, CFG).verified
+
+
 def test_report_aggregation():
     store = make_store()
     report = check_claims(

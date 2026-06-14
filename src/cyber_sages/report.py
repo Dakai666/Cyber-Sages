@@ -109,6 +109,7 @@ def render_brief(result: AnalysisResult) -> str:
     dq = "⚠️ 降級（信心已封頂 0.5）" if result.audit.degraded else \
         f"✅ 通過（{len(result.audit.findings)} 項提示）" if result.audit.findings else "✅ 乾淨"
     flat = [(r.analyst, u) for r in result.reports for u in r.unverified]
+    flat += [("首席 brief", u) for u in v.unverified]  # W7：chief 主體未過驗證的數字
     uv = f" · {len(flat)} 條 claim 未過引用驗證" if flat else ""
     lines += [
         "",
@@ -258,6 +259,10 @@ def build_agent_payload(result: AnalysisResult) -> dict:
                 {"analyst": r.analyst, "text": u.text, "tag": u.tag,
                  "evidence_ids": u.evidence_ids, "reason": u.reason}
                 for r in result.reports for u in r.unverified
+            ] + [
+                {"analyst": "首席 brief", "text": u.text, "tag": u.tag,
+                 "evidence_ids": u.evidence_ids, "reason": u.reason}
+                for u in result.verdict.unverified  # W7
             ],
         },
         "note_to_judge": (
