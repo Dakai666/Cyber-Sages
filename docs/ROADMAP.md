@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-14（v8 — Phase 3 / Spec E1：PR1 框架（#38）+ PR2 多年欄位（#42）已合併；PR3 Buffett/Munger-2019 手工 Pack 開工（210 passed），手工過程附錄＝Nüwa 規格輸入。剩 live NVDA/2330 質性驗證。B1/B3/B9/C3-4 開 issue 追到 E2，見 #39/#40/#41/#43）
+**Revision**: 2026-06-14（v9 — **Phase 3 / Spec E1 全數完成（#38/#42/#44 合併、live 雙市場驗收通過）**。Phase 4 / Spec C **v2 大改寫**：DK 把 P4 擴大為「analyst 降級為數據源 + horizon(trading/value) 分流 + 大師為主體 + 陪審團結構」四條 PR；E2 量產延到「更後面」——先手工擴充大師（按類型）。E2 前置 issue #39/#40/#41/#43/#45）
 
 ## 願景
 
@@ -48,11 +48,13 @@
 | W10 | 252 天年化用於 TW | 略高估 TW 波動率 | A（**✅ Phase 1 完成**，PR #16） |
 | — | 測試覆蓋洞（us_stocks / indicators / gateway / macro / finmind / report） | 後續改動無保護 | A + B（A 部分：✅ us_stocks / indicators / finmind / estimates / damodaran，PR #16/#18/#21/#24） |
 
-### 7 個 Pillar 2 結構性弱點（P1–P7）
+### 9 個 Pillar 2 結構性弱點（P1–P9；P8/P9 為 2026-06-14 DK 追加）
 
 | # | Gap | 影響 | Spec |
 |---|---|---|---|
-| P1 | persona 只有語氣沒有行為規則 | mode collapse 溫床 | **E**（Persona Pack） |
+| P8 | analyst 下 outlook，與 sage 意見競爭 | 主體錯位（應 analyst 供數據、大師為主體）| C v2 |
+| P9 | horizon 只是輸出視角、非分析模式 | 當沖與長期混為「全面分析」 | C v2 |
+| P1 | persona 只有語氣沒有行為規則 | mode collapse 溫床 | **E**（Persona Pack，✅ E1 完成）|
 | P2 | Council 同 model 統計稀釋不成立 | 10 個相似答案 | C |
 | P3 | Debate 不對稱（bull 看不到 bear） | 結構性偏袒空方 | C |
 | P4 | Chief + Judge prompt 不要求 evidence id | 裁定 / brief 可瞎掰 | D |
@@ -66,7 +68,7 @@
 |---|---|---|---|
 | A | Pillar 1 資料層擴充 | W1, W2, W6, W10 + issue #4 + 測試 | Phase 0 護欄 |
 | B | Pillar 1 管線硬化 | W4, W7, W8, W9（W3/W5 前置） | A |
-| C | Pillar 2 陪審團結構 | P2, P3, P6, P7（P1 移入 E） | A + E1 |
+| C | Pillar 2 分析主體 + Horizon 分流 + 陪審團結構 | **P8（analyst 降級）, P9（horizon 分流）**, P2, P3, P6, P7（P1 移入 E） | A + E1 |
 | D | Pillar 2 決策結構 | P4, P5 | A + C |
 | **E** | **Sage Runtime + Cyber-Nüwa 蒸餾引擎** | P1 + issue #2 全部 | E1 依賴 A+B；E2 依賴 C |
 
@@ -181,26 +183,44 @@ epoch 選 **2019**（Apple 時期）。拆三條 PR：
    舊單檔 `buffett.yaml`/`munger.yaml` 退役為目錄 Pack；共用計算放 `personas/skills_lib.py`；
    clamp 生效 + skill 可溯源 + sop_trace 軟揭露整合測試（真實 Pack 檔 + mock gateway）；
    手工過程寫成 `docs/specs/2026-06-14-E1-pilot-pack-handcrafting.md`（＝Nüwa 規格輸入）。
-   ← **PR #44 待 review**；live NVDA/2330 驗證已完成（sop_trace 每步錨定、rule_conflict
+   ← **✅ 全數合併（#38/#42/#44）**；live NVDA/2330 驗證完成（sop_trace 每步錨定、rule_conflict
    不翻 stance、台股 owner_earnings not_evaluable 全兌現）→ **E1 驗收條件全數達成**。
 
-### Phase 4 — Spec C：陪審團結構
+### Phase 4 — Spec C v2：分析主體 + Horizon 分流 + 陪審團結構
 
-兩階段 Council（cheap scout → deep representative）、Debate 雙盲對稱化、
-outlier 雙邊規則、neutral 獨立訊號（區分「訊號不足」與「意見分歧」）。
-在新 Runtime 之上實作，避免做兩次。
+> 2026-06-14 DK 把 P4 從「修陪審團機制」擴大為「梳理整條分析流程」。見 Spec C v2。
+
+兩個上層重構 + 原機制（四條 PR）：
+
+1. **Analyst 降級**（P8）：`AnalystReport` 去 `outlook` → 中性 findings（仍過 cite-check）；
+   方向性判斷由 sage 獨佔——「analyst 只供數據、**大師才是主體**」。
+2. **Horizon 分流**（P9）：`--horizon trading|value` 旗標（預設 value）；persona 宣告
+   `horizons`、越圍 abstain；證據重心與 action plan 口徑隨 horizon。當沖（數天~數週）與
+   長期價值（3~10y）不再混為「全面分析」。
+3. **交易型 Pack 試點**：Livermore 升級 Pack + 手工新增 1~2 位短線大師讓 trading council
+   成立（暫時手工補位；**未來 roster 按類型/原型 curate**）。
+4. **陪審團結構**（P2/P3/P6/P7）：兩階段 Council（scout→deep）、Debate 雙盲對稱、outlier
+   雙邊、neutral 獨立訊號——全部 horizon-aware，建在新 council 之上。
+
+### Phase 4.5 — 手工擴充大師（按類型/原型 curate）
+
+DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手工做更多大師、累積足夠面向，
+才能提供更完善的蒸餾方法**。手工樣本不足就量產只會固化不成熟規格。此階段逐步補齊各原型
+（價值/成長/動能/宏觀/風險/事件…）的代表大師，每位仍走 E1 手工 Pack 流程。
 
 ### Phase 5 — Spec D：決策結構
 
 Chief / Judge 強制 evidence id 引用（行內 `[E001]`）、risk officer 雙向
 `[-0.3, +0.2]`、chief↔risk 固定 1 輪迭代。
 
-### Phase 6 — Spec E2：Cyber-Nüwa 蒸餾引擎 + 全員遷移
+### Phase 6 — Spec E2：Cyber-Nüwa 蒸餾引擎 + 全員遷移（**延後到手工大師夠多之後**）
 
 `cyber-sages distil` 蒸餾管線（ingest → extract（每條附原文出處）→ consolidate
-跨源一致性 → emit pack → validate）。其餘 8 位大師遷移為 Persona Pack。
+跨源一致性 → emit pack → validate）。其餘大師遷移為 Persona Pack。
 **最小重放工具**（歷史時點截斷 evidence 重跑）在此 Phase 落地，
 同時補 Spec D 驗收的回測條件與 persona 品質分數。
+前置 issue（E2 開工前須解）：#39（skill 沙盒）/#40（skill 例外）/#41（sop_trace 必填）/
+#43（非曆年制）/#45（sop_trace step id 契約）。
 
 ## 未來 Roadmap（out of current scope，僅作 placeholder）
 

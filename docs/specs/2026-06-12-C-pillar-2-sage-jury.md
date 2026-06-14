@@ -1,119 +1,144 @@
-# Spec C — Pillar 2 陪審團品質
+# Spec C — Pillar 2 分析主體 + Horizon 分流 + 陪審團結構
 
-**Status**: accepted（2026-06-13 決議定案，見文末）
-**Date**: 2026-06-12
-**Dependencies**: A + B + **E1（Sage Runtime）**——council 結構在新 Runtime 之上實作，避免做兩次
-**範圍變更**: 2026-06-13 — C-1（hard_rules）與 C-2（weight_rationale）**移入 Spec E**
-（persona 行為規則屬 Persona Pack 的一部分，格式已在 E 定案為受限 DSL）。本 spec 剩 C-3 ~ C-6（P2/P3/P6/P7）。
+**Status**: accepted（2026-06-13 機制定案 + **2026-06-14 v2 大改寫**，見文末決議）
+**Date**: 2026-06-12（v2 修訂 2026-06-14）
+**Dependencies**: A + B + **E1（Sage Runtime，已完成 PR #38/#42/#44）**——council 結構在新 Runtime 之上實作。
+**範圍變更**:
+- 2026-06-13 — C-1（hard_rules）與 C-2（weight_rationale）移入 Spec E（已於 E1 落地）。
+- **2026-06-14（v2）— DK 把 P4 從「修陪審團機制」擴大為「重新定義分析主體 + horizon 分流」。**
+  原 C-3~C-6（P2/P3/P6/P7 機制）保留，但改在 horizon-aware council 之上做。
 
 ## 背景
 
-Pillar 2 的「健全有意義」靠兩件事：每位大師有清楚的行為準則（不是含糊的語氣描述）、陪審團結構鼓勵實質分歧。Audit 發現 10 個 yaml 都只有 `philosophy` / `focus` / `voice` / `weight` 四到五欄（buffett 9 行、taleb 9 行、damodaran 9 行、wood 9 行），沒有任何硬門檻；Council 用同一個 model 跑 10 個相似 prompt，統計稀釋幻覺的論點在實務上不成立（mode collapse 風險）；Debate 結構讓 bull 看不到 bear 的反駁，系統性偏袒空方。
+Pillar 2 的「健全有意義」原本聚焦兩件事：每位大師有清楚行為準則、陪審團結構鼓勵實質分歧
+（→ E1 的 Persona Pack 已解 P1；本 spec 剩機制面 P2/P3/P6/P7）。**2026-06-14 DK 再點出兩個
+更上層的結構問題**，使 P4 的本質從「修機制」升級為「梳理整條分析流程」：
 
-這條 spec 把「語氣區分」升級到「行為區分」，並把陪審團結構對稱化。
+1. **analyst 與 sage 角色重疊（P8）**：analyst 現在不只供數據，還各自下 `outlook`
+   （bullish/bearish）+ claims——等於有兩層意見在競爭。專案定位是「analyst 只提供數據、
+   **大師專家才是主體**」，現況沒做到。
+2. **horizon 被混為一談（P9）**：technical analyst 給 short/mid/long 三段讀數、synthesis 輸出
+   三個 `HorizonView`，但**整條管線、選哪些大師、action plan 都是同一套「全面分析」**。
+   當沖（數天）與長期價值（3~10 年）是**本質不同的買賣行為**，用同一批大師、同一份證據權重、
+   同一個進出場計劃會把兩者搞混。
 
 ## 涵蓋的 Gaps
 
-- **P1**：persona 只有語氣沒有行為規則（`src/cyber_sages/personas/*.yaml`）
-- **P2**：Council 同 model 統計稀釋論點不成立（`config.yaml:21` 全 sage 走同 model）
-- **P3**：Debate 不對稱（`src/cyber_sages/agents/debate.py:90-108` 是 bull → bear → judge 順序，bull 看不到 bear）
-- **P6**：Outlier 強制逐點反駁只在「敗方有 outlier」時觸發（`debate.py:35-42`）
-- **P7**：4 個 neutral 大師被算進 consensus 卻不被視為 outlier（`src/cyber_sages/agents/council.py:123-129`）
+| # | Gap | 位置 |
+|---|---|---|
+| **P8** | analyst 下 outlook，與 sage 意見競爭（analyst 應只供數據） | `agents/analysts.py` `AnalystReport.outlook` |
+| **P9** | horizon 只是輸出視角、非分析模式；當沖與長期混為「全面分析」 | `agents/synthesis.py` `HorizonView`；無 horizon 選大師/權重/計劃 |
+| P2 | Council 同 model 統計稀釋論點不成立 | `config.yaml` 全 sage 同 model |
+| P3 | Debate 不對稱（bull 看不到 bear） | `agents/debate.py` |
+| P6 | Outlier 逐點反駁只在「敗方有 outlier」時觸發 | `debate.py` |
+| P7 | neutral 大師被算進 consensus 卻不被視為 outlier | `council.py` tally |
 
-## 範圍
+（P1 已由 E1 Persona Pack 解決；P4/P5 屬 Spec D。）
 
-### In scope
+## 設計定案（2026-06-14，DK 逐項拍板）
 
-#### C-1. Persona 行為規則化
+| # | 決議 | 拍板 |
+|---|------|------|
+| 1 | horizon 切分機制 | **`--horizon trading\|value` 旗標、單模式一跑**，驅動「選哪些大師 + 證據權重 + action plan 口徑」。預設 `value`（專案核心：能不能買進長抱）。 |
+| 2 | horizon 分級 | **二分 trading / value**（trading＝數天~數週、value＝數年）。day/swing 先合為 trading；純當沖 intraday 留未來資料層擴充（現抓日線，trading=數天~數週剛好夠用）。 |
+| 3 | analyst 定位 | **降為中性 findings、不表態**：去 `outlook`，只負責「核實 + 標註 + 結構化數據」（仍過 cite-check 當數據護欄）；**所有方向性判斷由 sage 獨佔**。 |
+| 4 | sage × horizon | **Pack 宣告適用 `horizons`；越圍則 abstain**（persona 級 not_evaluable）。Buffett 不答當沖、Livermore 不答 10 年長持——延伸 E1「看不到就誠實說」哲學到 persona 層。 |
+| 5 | 交易型 roster | **先用現有 Livermore+Druckenmiller + 手工新增 1~2 位短線大師**讓 trading council 成立；大擴充延後。 |
+| 6 | roster 長期方針 | 這兩位是**暫時手工補位**；**未來大師選定按「類型/原型」curate**——每個面向（價值/成長/動能/宏觀/風險/事件…）都有代表，覆蓋完整方法面。 |
 
-每個 yaml 加 `hard_rules` 區塊，列該大師硬擋的數值條件與信心調整項：
+## Horizon taxonomy
 
-```yaml
-hard_rules:
-  - if: "pe_ratio > 25 and growth_rate_5y < 5%"
-    action: "bearish"
-    confidence_floor: 0.6
-  - if: "debt_to_equity > 1.0"
-    action: "bearish"
-    confidence_ceiling: 0.5
-  - if: "margin_of_safety > 30%"
-    action: "bullish"
-    confidence_floor: 0.7
-exceptions:
-  - "if company has dominant market share (>40%) and ROE > 20%, override P/E rules"
+| mode | 期間 | 主體大師（暫定）| 證據重心 | action plan 口徑 |
+|---|---|---|---|---|
+| `value`（預設）| 數年（3~10y）| Buffett/Munger（Pack）、Graham/Damodaran/Lynch/Burry/Taleb/Wood | 多年基本面、護城河、owner earnings、估值 | 分批建倉、寬停損、長期翻盤條件 |
+| `trading` | 數天~數週 | Livermore/Druckenmiller + 手工新增 1~2 位 | 技術面、籌碼/即時流向、動能、波動 | 緊停損、明確進出場、短線失效訊號 |
+
+純當沖（intraday）out of scope——需 tick/分鐘級資料，現況只抓日線；二分法刻意繞過、先可用。
+
+## Analyst 降級的下游影響清單（P8 落地需一併改）
+
+- `AnalystReport.outlook`（schema）移除；`claims` 改為中性 finding（描述事實 + 引用，不帶方向）。
+- analyst prompts：去除「judge bullish/bearish」語氣，改「surface & annotate，不下結論」。
+- `council.py` `_reports_text`：sage 看到的是中性 findings，不再看 analyst 立場。
+- `debate.py` / `synthesis.py`：凡讀 `report.outlook` 處改為不依賴 analyst 方向（方向只從 sage council 來）。
+- brief 渲染：analyst 段退為「已核實證據摘要」，sage council 升為主體論述。
+- 測試：既有測 analyst outlook 的 case 調整。
+
+## PR 拆分（P4 = 一個 Phase，四條 PR）
+
+1. **Analyst 降級**（P8）：`AnalystReport` 去 outlook → 中性 findings；更新 prompts + 上述下游；brief 重排（sage 為主體）。可獨立先行（不依賴 horizon）。
+2. **Horizon 框架**（P9 + 決議 1/2/4）：`--horizon` 旗標；persona 加 `horizons` 欄（Pack 與 legacy 都標）；council 按 horizon abstain + quorum 調整；action plan 口徑隨 horizon；evidence 重心隨 horizon（哪些 analyst/類別進 digest）。
+3. **交易型 Pack 試點**（決議 5）：Livermore 升級為 Pack + 手工新增 1~2 位短線大師（rules/sop/skills 比照 E1）；trading council 跑通 NVDA/2330 各一 run。
+4. **陪審團結構**（P2/P3/P6/P7）：兩階段 council（scout→deep）、debate 雙盲對稱、outlier 雙邊、neutral 獨立訊號——全部 horizon-aware，建在新 council 之上、不做兩次。
+
+## 陪審團機制（C-3 ~ C-6，保留，改 horizon-aware）
+
+#### C-3. Council model 多樣化（P2）
+兩階段：(1) cheap scout（同 model、small prompt）全員產粗 stance + 信心區間；(2) deep sampler
+只挑 consensus + outlier representatives 各 ~3 位深入。**horizon-aware**：scout/deep 只跑該
+horizon 適用、未 abstain 的大師。
+
+#### C-4. Debate 對稱化雙盲（P3）
+bull 與 bear 同時收到「council 意見 + 對手是誰」、互不可見對手論點；出完後互餵對手論點做 1 輪
+反駁；裁判看完整版（決議 3）。
+
+#### C-5. Outlier 規則雙邊（P6）
+無論 winner 是誰，任一方有 outlier，敗方 outlier 必須逐點反駁（5B/4N/1S 時 bear 的 1 個 outlier
+也得被守住）。
+
+#### C-6. Neutral 獨立訊號（P7）
+`SageSignal` 加 `neutral_reason` enum（`out_of_circle` / `insufficient_signal` /
+`balanced_forces`）；tally 分開計數、brief 分開呈現。**注意與 horizon abstain 區分**：abstain＝
+「這題不在我的 horizon」（persona 級 not_evaluable，不計入 council），neutral＝「在我 horizon 內
+但我判中性」。
+
+## 排程（2026-06-14 DK 定調）
+
+```
+P4（本 spec）：analyst 降級 + horizon 分流 + 交易試點 + 陪審團結構
+   ↓
+擴充手工大師（按類型/原型 curate，逐步補齊各面向）   ← DK：先手工做更多大師
+   ↓                                                   累積出更完善的方法面向
+Spec D（Phase 5）：決策結構（chief/judge evidence id、risk 雙向）
+   ↓
+E2 Cyber-Nüwa（更後面的後面）：有足夠手工樣本後才談量產蒸餾
 ```
 
-> 規則語法是草案，brainstorm 階段決定（DSL? 純 LLM 自然語言?）。
+> **DK 2026-06-14 定調**：E2 量產延到「更後面的後面」——**得先手工製作更多大師、累積足夠
+> 面向，才能提供更完善的蒸餾方法**。手工樣本不足就量產，只會固化不成熟的規格。
 
-#### C-2. Weight rationale 寫進 yaml
+## 驗收條件（v2）
 
-每個 yaml 加 `weight_rationale: "<一句話解釋為何這個 weight>"`，後人改 weight 不會無據可循。
+- [ ] `--horizon trading|value` 旗標可用，預設 value；錯誤值 fail-loud。
+- [ ] analyst 不再輸出 outlook；sage 為唯一方向性來源；brief 以 sage council 為主體。
+- [ ] persona 宣告 `horizons`；越圍大師於該 horizon abstain、不計入 council，並揭露。
+- [ ] trading council 成立（≥ 足夠主體大師），NVDA/2330 各跑一 `--horizon trading` run。
+- [ ] value run 與 trading run 的 action plan 口徑明顯不同（停損/進出場/翻盤條件）。
+- [ ] 兩階段 council 跑通、token 成本下降 ≥ 30%。
+- [ ] debate 雙盲：bull/bear 第一輪互不可見對手論點。
+- [ ] outlier 規則覆蓋 5B/4N/1S；neutral 三類 `neutral_reason` 分開呈現、與 abstain 區分。
 
-#### C-3. Council model 多樣化
+## 決議（2026-06-13，DK 授權按最優解定案；機制層，仍有效）
 
-兩階段策略：
-1. **Cheap classifier**（同 model，small prompt）給每個 sage 跑一次，產粗 stance（bullish/bearish/neutral）+ 信心區間
-2. **Deep sampler**（M3 / Claude）只挑出 consensus + outlier 兩組的 representative 各 3 位深入跑
-
-> 理由：10 個大師全 deep 是奢侈；2 階段讓 70% 成本節省用在 outlier 深度攻防。
-
-#### C-4. Debate 對稱化（雙盲）
-
-順序改成：(a) bull 與 bear 同時收到「council 意見 + 對手是誰」，互不可見對手論點；(b) 兩方出完後，把對手論點餵給對方做 1 輪反駁；(c) 裁判看完整版。
-
-> Trade-off：雙盲讓第一輪 bear 不知道 bull 具體論點，裁判判定難度提升。brainstorm 時要討論權衡。
-
-#### C-5. Outlier 規則放寬到雙邊
-
-`debate.py:_outliers_needing_rebuttal` 改成：無論 winner 是誰，**只要任一方有 outlier，敗方的 outlier 必須逐點反駁**。當 5B/4N/1S（贏方壓倒性）時，bear 的 1 個 outlier 也得被 bear 守住。
-
-#### C-6. Neutral 保留為獨立訊號類別
-
-Council tally：consensus 只看 bull vs bear，neutral 計入「無人敢表態」指標，brief 顯示 `neutral: 4 (基本面訊號不足或意見分歧)`。`outliers` 定義擴大為「非 consensus 立場」，中性可列入。
-
-### Out of scope
-
-- Chief / Judge prompt 重寫（Spec D）
-- Prompt cache 設定（Spec B）
-- 新增 persona（純資料新增，零程式碼，但留給未來）
-
-## 驗收條件（草案）
-
-- [ ] 10 個 persona yaml 都有 `hard_rules` + `exceptions` 區塊
-- [ ] 每個 yaml 都有 `weight_rationale`
-- [ ] Council 兩階段架構跑通，token 成本下降 ≥ 30%
-- [ ] Debate 雙盲：bull / bear 第一輪互不可見對手論點
-- [ ] Outlier 規則覆蓋 5B/4N/1S 場景
-- [ ] Neutral 計入「無人敢表態」獨立指標
-- [ ] 不同 model 在相同 evidence 下結論相關性 < 0.7（測 mode collapse）
-
-## 決議（2026-06-13，DK 授權按最優解定案）
-
-1. **hard_rules 用受限 DSL + 自然語言 exceptions**（移至 Spec E 定案）：
-   `field/op/value` 三元組 + `all`/`any` 巢狀，程式對 evidence 求值零幻覺；
-   彈性由 exceptions（LLM 裁量但強制引用 evidence）補回。
-2. **cheap classifier 不綁定特定 model**：config.yaml 加 `sage_scout` role，
-   由部署者指定（預設指向當前最便宜可用端點）。模型選擇是 config 的事，
-   不進 code——與 gateway 的 role 路由哲學一致。
-3. **雙盲裁判看完整版**：雙方兩輪的完整論點（含第一輪、含對 outlier 的反駁）
-   都給裁判。裁判 token 成本上升換裁定品質，值得；裁判只跑一次，成本可控。
-4. **兩階段 Council 各階段內部平行**：scout 全員平行 → 程式分組（consensus /
-   outlier representatives）→ deep 組內平行。總 latency ≈ 兩個串行 LLM 往返，
-   可接受；不做 scout/deep 交錯的複雜編排。
-5. **neutral 細分**：`SageSignal` 加 `neutral_reason` enum——
-   `out_of_circle`（能力圈外，SOP 第一步觸發）/ `insufficient_signal`（關鍵
-   evidence 缺失或 not_evaluable 過多）/ `balanced_forces`（多空證據相當）。
-   tally 分開計數，brief 分開呈現——「4 位看不懂」與「4 位認為多空拉鋸」是
-   完全不同的訊號。
+1. **hard_rules 用受限 DSL + 自然語言 exceptions**（已於 E1 落地）。
+2. **cheap classifier 不綁定特定 model**：config.yaml 加 `sage_scout` role，由部署者指定。
+3. **雙盲裁判看完整版**：雙方兩輪完整論點都給裁判；裁判只跑一次，成本可控。
+4. **兩階段 Council 各階段內部平行**：scout 全員平行 → 程式分組 → deep 組內平行。
+5. **neutral 細分**：`neutral_reason` enum（`out_of_circle` / `insufficient_signal` /
+   `balanced_forces`），tally 分開計數、brief 分開呈現。
 
 ## 相關檔案
 
-- `src/cyber_sages/personas/*.yaml`（10 個檔案）
-- `src/cyber_sages/agents/council.py:32-39, 111-134`
-- `src/cyber_sages/agents/debate.py:35-42, 78-108`
-- `config.yaml:21`
+- `src/cyber_sages/agents/analysts.py`（P8 降級）
+- `src/cyber_sages/agents/council.py`（horizon abstain、兩階段、tally、neutral）
+- `src/cyber_sages/agents/debate.py`（雙盲、outlier 雙邊）
+- `src/cyber_sages/agents/synthesis.py`（action plan 口徑隨 horizon）
+- `src/cyber_sages/personas/*`（persona 加 `horizons`；交易型新 Pack）
+- `src/cyber_sages/cli.py` / `pipeline.py`（`--horizon` 旗標貫穿）
+- `config.yaml`（`sage_scout` role）
 
 ## 參考
 
-- 2026-06-12 全專案 audit 紀錄
-- Issue #2：Cyber-Nüwa 蒸餾引擎（persona 設計的更高層次）
+- 2026-06-12 全專案 audit 紀錄；2026-06-14 DK P4 方向定調對話
+- Spec E（Persona Pack / Sage Runtime，E1 已完成）
+- Issue #2 / E2：Cyber-Nüwa（排在手工擴充大師之後的後面）
