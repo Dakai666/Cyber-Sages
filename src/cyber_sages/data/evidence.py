@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 Category = Literal[
     "quote", "fundamentals", "history", "news", "profile", "chips", "macro",
-    "estimate", "reference"
+    "estimate", "reference", "derived"
 ]
 # chips = 台股籌碼面（三大法人買賣超 / 融資融券）+ 美股 short interest
 # macro = 總經（利率/通膨/殖利率曲線/就業），全市場共用、非個股
@@ -21,6 +21,8 @@ Category = Literal[
 #            標 (estimate) 來源、不做 freshness error、brief 與事實欄位視覺區隔
 # reference = 外部產業/市場 benchmark（Damodaran 產業 multiples），二手年度聚合，
 #             供相對估值比較；同 estimate 不做 freshness error、非必要類別
+# derived = Sage Runtime 的 sage-private skill 輸出（owner_earnings 等），id 為 S-<key>-###、
+#           帶公式與輸入 ids；只在該大師的 SOP pass + cite-check 視圖內可見，不入共享 digest
 
 
 class Evidence(BaseModel):

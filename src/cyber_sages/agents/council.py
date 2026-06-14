@@ -2,41 +2,41 @@
 
 統計性抗幻覺：單一 agent 的幻覺/偏誤在足夠多的獨立視角投票下被稀釋；
 離群者意見不被丟棄，原文送進辯論階段。
+
+兩條執行路徑（Spec E）：
+- **Persona Pack**（目錄格式）：Sage Runtime 三段執行 skill→rule→SOP(LLM)→clamp，
+  讓大師「針對性地處理前面階段的資料」——流程本身就是視角。
+- **degraded**（舊單檔 yaml）：原本的單發 prompt，向後相容，漸進遷移。
+
+`load_personas` / `Persona` 由 `personas.pack` 提供，這裡 re-export 維持既有 import 路徑。
 """
 
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
-import yaml
 from pydantic import BaseModel
 
-from cyber_sages.agents.schemas import AnalystReport, CouncilVerdict, SageSignal, Stance
+from cyber_sages.agents.schemas import (
+    AnalystReport,
+    CouncilVerdict,
+    SageSignal,
+    SopStepResult,
+    Stance,
+    UnverifiedClaim,
+)
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
+from cyber_sages.personas.pack import Persona, load_personas
+from cyber_sages.personas.rules import clamp_confidence, evaluate_rules, rule_values
+from cyber_sages.personas.skill import run_skills
+from cyber_sages.verify.citation_check import Claim, check_claims
 
-PERSONA_DIR = Path(__file__).resolve().parent.parent / "personas"
+__all__ = ["Persona", "load_personas", "run_council", "tally"]
 
-
-class Persona(BaseModel):
-    key: str
-    name: str
-    weight: float = 1.0
-    philosophy: str
-    focus: str
-    voice: str
-
-
-def load_personas(limit: int | None = None) -> list[Persona]:
-    personas = []
-    for path in sorted(PERSONA_DIR.glob("*.yaml")):
-        with open(path, encoding="utf-8") as f:
-            personas.append(Persona.model_validate(yaml.safe_load(f)))
-    # weight 高者優先出席（--sages N 截斷時）
-    personas.sort(key=lambda p: -p.weight)
-    return personas[:limit] if limit else personas
+# sop_trace 過 cite-check 的重試次數（E1 實作決議 #3：軟揭露，比照 PR #27 chief brief）。
+_SOP_RECHECK_RETRIES = 1
 
 
 # 合議庭通用框架 + 證據摘要——所有 sage 共用，故當作 prompt-cache 的「共享前綴」。
@@ -74,6 +74,15 @@ Your philosophy: {philosophy}
 You focus on: {focus}
 Your voice: {voice}"""
 
+# Pack 專屬：在身分之後加上 SOP 紀律——逐步作答、每步引用 evidence id 或 skill 輸出。
+SAGE_SOP_DISCIPLINE = """\
+
+You follow YOUR OWN decision SOP (below). Work through it step by step. For EACH step,
+record a SopStepResult in `sop_trace`: the step id, your conclusion in your voice (繁體中文),
+and the evidence ids that anchor it (shared E### ids, or your private S-### skill outputs).
+Every number you state in a step must be traceable to a cited evidence id. Your final
+stance/confidence/thesis must follow from this trace, through your philosophy."""
+
 
 def _reports_text(reports: list[AnalystReport]) -> str:
     parts = []
@@ -88,6 +97,47 @@ def _reports_text(reports: list[AnalystReport]) -> str:
         )
         parts.append(f"## {r.analyst} (outlook: {r.outlook})\n{r.summary}\n{claims}{flags}")
     return "\n\n".join(parts)
+
+
+def _persona_system(p: Persona) -> str:
+    base = (SAGE_PERSONA
+            .replace("{name}", p.name).replace("{philosophy}", p.philosophy)
+            .replace("{focus}", p.focus).replace("{voice}", p.voice))
+    return base + SAGE_SOP_DISCIPLINE if p.is_pack else base
+
+
+def _sop_prompt(
+    p: Persona, private_digest: str, triggered: list[str], not_evaluable: list[str]
+) -> str:
+    """Pack SOP pass 的 user prompt：skill 輸出 + 觸發規則 + 看不到的東西 + SOP 步驟 + exceptions。"""
+    steps = "\n".join(
+        f"{i + 1}. [{s.step}] {s.ask}"
+        + (f" — 用 skill `{s.use_skill}`" if s.use_skill else "")
+        + (f"（看 {', '.join(s.look_at)}）" if s.look_at else "")
+        + (f"\n   on_fail: {s.on_fail}" if s.on_fail else "")
+        for i, s in enumerate(p.pack.sop)
+    )
+    exceptions = "\n".join(f"- {e}" for e in p.pack.exceptions)
+    return (
+        "# 你的 skill 算出的 private evidence（確定性、可引用）\n"
+        f"{private_digest or '（無——本次缺輸入欄位，見下方 not_evaluable）'}\n\n"
+        "# 你的硬規則觸發結果（已由程式判定）\n"
+        f"{chr(10).join(triggered) or '（無規則觸發）'}\n\n"
+        "# 本次無法評估的規則/技能（你平常會看、這次看不到的東西——納入判斷並誠實揭露）\n"
+        f"{chr(10).join('- ' + n for n in not_evaluable) or '（無）'}\n\n"
+        "# 你的 exceptions（自然語言裁量，動用時務必引用 evidence 說明）\n"
+        f"{exceptions or '（無）'}\n\n"
+        "# 你的決策 SOP（逐步走，每步寫進 sop_trace）\n"
+        f"{steps}\n\n"
+        "依你的 SOP 逐步作答，最後按你的哲學下結論。"
+    )
+
+
+def _sop_claims(trace: list[SopStepResult]) -> list[Claim]:
+    return [
+        Claim(text=s.conclusion, evidence_ids=s.evidence_ids)
+        for s in trace if s.conclusion and s.conclusion.strip()
+    ]
 
 
 async def run_council(
@@ -114,16 +164,70 @@ async def run_council(
     # 回應開始後才可讀），故先跑一位把共享前綴寫進快取，其餘再平行讀取。
     sage_caches = settings.providers[settings.roles["sage"].provider].has("cache_control")
 
-    async def one(p: Persona) -> SageSignal:
-        signal = await gateway.structured(
-            "sage",
-            system=(SAGE_PERSONA
-                    .replace("{name}", p.name).replace("{philosophy}", p.philosophy)
-                    .replace("{focus}", p.focus).replace("{voice}", p.voice)),
-            prompt="Deliver your signal now.",
-            schema=SageSignal,
-            cache_prefix=shared_system,
+    async def _degraded(p: Persona) -> SageSignal:
+        """舊單檔 persona：原本的單發 prompt（無 skill/rule/SOP）。"""
+        return await gateway.structured(
+            "sage", system=_persona_system(p), prompt="Deliver your signal now.",
+            schema=SageSignal, cache_prefix=shared_system,
         )
+
+    async def _pack(p: Persona) -> SageSignal:
+        """Persona Pack：Sage Runtime 三段執行 skill→rule→SOP(LLM)→clamp。"""
+        # 1. skill pass（程式）→ sage-private derived evidence
+        private, skill_ne = run_skills(p.pack.skills, store, p.key)
+        sage_store = EvidenceStore(
+            ticker=store.ticker, market=store.market, instrument=store.instrument,
+            items=[*store.items, *private],
+        )
+        private_digest = "\n".join(e.digest_line() for e in private)
+        # 2. rule pass（程式）→ triggered / not_evaluable（規則可引用 private derived 欄位）
+        outcomes = evaluate_rules(p.pack.hard_rules, rule_values(sage_store))
+        triggered = [
+            f"- [{o.rule_id}] {o.action}"
+            + (f" ceiling={o.confidence_ceiling}" if o.confidence_ceiling is not None else "")
+            + (f" floor={o.confidence_floor}" if o.confidence_floor is not None else "")
+            + (f"（{o.note}）" if o.note else "")
+            for o in outcomes if o.triggered
+        ]
+        not_evaluable = skill_ne + [
+            f"rule:{o.rule_id}" + (f"（{o.note}）" if o.note else "")
+            for o in outcomes if o.not_evaluable
+        ]
+        # 3. SOP pass（LLM）
+        system = _persona_system(p)
+        prompt = _sop_prompt(p, private_digest, triggered, not_evaluable)
+        signal = await gateway.structured(
+            "sage", system=system, prompt=prompt, schema=SageSignal, cache_prefix=shared_system,
+        )
+        # sop_trace 過 cite-check（軟揭露：retry 後仍對不上 → 標 unverified，不 refuse）
+        for attempt in range(_SOP_RECHECK_RETRIES + 1):
+            report = check_claims(_sop_claims(signal.sop_trace), sage_store, settings.citation)
+            if report.all_verified:
+                break
+            if attempt < _SOP_RECHECK_RETRIES:
+                failures = "\n".join(f'- "{c.claim.text}" -> {c.reason}'
+                                     for c in report.unverified)
+                signal = await gateway.structured(
+                    "sage", system=system,
+                    prompt=(f"{prompt}\n\n# 你上一版 sop_trace 有數字無法由所引 evidence 推導\n"
+                            f"{failures}\n\n重走 SOP：修正或刪除這些對不上 evidence 的數字，"
+                            "或補上正確的 evidence id。"),
+                    schema=SageSignal, cache_prefix=shared_system,
+                )
+        signal.unverified = [
+            UnverifiedClaim(text=c.claim.text, evidence_ids=c.claim.evidence_ids,
+                            reason="sop_trace 數字無法由所引 evidence 推導", kind=c.kind)
+            for c in report.unverified
+        ]
+        # 4. clamp（程式）：confidence 受觸發規則的 floor/ceiling 約束；directional 衝突揭露
+        signal.confidence, signal.rule_conflicts = clamp_confidence(
+            signal.stance, signal.confidence, outcomes
+        )
+        signal.not_evaluable = not_evaluable
+        return signal
+
+    async def one(p: Persona) -> SageSignal:
+        signal = await (_pack(p) if p.is_pack else _degraded(p))
         signal.sage = p.name
         signal.confidence = max(0.0, min(1.0, signal.confidence))
         if on_signal:
