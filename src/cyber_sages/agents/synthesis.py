@@ -83,7 +83,7 @@ async def run_synthesis(
         f"weighted {council.weighted_score:+.2f}, consensus {council.consensus}, "
         f"outliers: {', '.join(council.outliers) or 'none'}"
     )
-    analyst_text = "\n".join(f"- {r.analyst} ({r.outlook}): {r.summary}" for r in reports)
+    analyst_text = "\n".join(f"- {r.analyst}: {r.summary}" for r in reports)
 
     prompt = (
         f"Stock: {store.ticker}\n\n"

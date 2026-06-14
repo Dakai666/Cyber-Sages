@@ -39,7 +39,7 @@ class FakeGateway:
             return schema(findings=[], summary="資料無異常")
         if name == "AnalystReport":
             return AnalystReport(
-                summary="基本面穩健。", outlook="bullish",
+                summary="基本面穩健。",
                 claims=[Claim(text="獲利能力強勁", evidence_ids=["E001"])],
             )
         if name == "SageSignal":

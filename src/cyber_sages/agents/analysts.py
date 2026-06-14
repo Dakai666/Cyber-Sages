@@ -57,8 +57,9 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "The macro regime and what it implies for risk assets and THIS stock's sector: "
         "rate level and direction (fed funds, 2y/10y), the 10y-2y curve (inversion = "
         "recession signal), inflation trend (CPI YoY), and labor market (unemployment, "
-        "nonfarm payrolls). Translate the macro backdrop into a tailwind/headwind for "
-        "the name — do NOT restate raw numbers without an investment implication.",
+        "nonfarm payrolls). Characterise the macro backdrop as supportive or restrictive "
+        "for the sector as a factual observation — do NOT restate raw numbers without "
+        "context, and do NOT turn it into a buy/sell call on the stock.",
         ["macro"],
     ),
 ]
@@ -66,6 +67,13 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
 ANALYST_SYSTEM = """\
 You are the {title} on an investment research team analyzing {ticker}.
 Focus: {focus}
+
+YOUR ROLE — you provide DATA, not opinion (the sages decide direction):
+Surface, verify and annotate what the evidence shows. Report facts, inflections,
+ranges and levels. Do NOT give a buy/sell recommendation, do NOT call the stock
+bullish/bearish/cheap-to-own, do NOT predict the price. Directional judgment is the
+sages' job; if you smuggle in a verdict you are doing someone else's work. State the
+numbers and what they factually imply, and stop there.
 
 STRICT EVIDENCE RULES — violations get your report rejected:
 1. Use ONLY the evidence provided below. No outside knowledge for any number.
