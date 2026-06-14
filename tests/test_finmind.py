@@ -11,7 +11,12 @@ import pytest
 
 from cyber_sages.data import retry as retry_mod
 from cyber_sages.data.finmind import days_ago, finmind_get
-from cyber_sages.data.retry import is_retryable, with_retry
+from cyber_sages.data.retry import (
+    get_retry_after,
+    is_retryable,
+    to_thread_with_timeout,
+    with_retry,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -139,3 +144,76 @@ async def test_with_retry_recovers_after_transient():
 
     assert await with_retry(fn, what="t") == 42
     assert calls["n"] == 2
+
+
+# ---------- #17 Retry-After ----------
+
+def _http_error_ra(status: int, retry_after: str) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://example.com")
+    resp = httpx.Response(status, request=request, headers={"Retry-After": retry_after})
+    return httpx.HTTPStatusError("e", request=request, response=resp)
+
+
+def test_get_retry_after_parses_seconds():
+    assert get_retry_after(_http_error_ra(429, "2")) == 2.0
+    assert get_retry_after(_http_error_ra(429, "1.5")) == 1.5   # 實務上偶有小數秒
+    assert get_retry_after(_http_error_ra(429, "inf")) is None  # 惡意非有限值擋掉
+
+
+def test_get_retry_after_parses_http_date_future():
+    from email.utils import format_datetime
+    from datetime import datetime, timedelta, timezone
+    future = datetime.now(timezone.utc) + timedelta(seconds=30)
+    secs = get_retry_after(_http_error_ra(503, format_datetime(future)))
+    assert secs is not None and 20 <= secs <= 31  # ~30s（容寬執行時間）
+
+
+def test_get_retry_after_none_when_absent_or_wrong_type():
+    assert get_retry_after(_http_error(503)) is None          # 無 header
+    assert get_retry_after(httpx.ConnectError("x")) is None    # 非 HTTPStatusError
+
+
+async def test_with_retry_honors_retry_after(monkeypatch):
+    slept: list[float] = []
+    async def _capture(d): slept.append(d)
+    monkeypatch.setattr(retry_mod.asyncio, "sleep", _capture)
+    calls = {"n": 0}
+
+    async def fn():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _http_error_ra(429, "2")
+        return "ok"
+
+    assert await with_retry(fn, what="t") == "ok"
+    assert slept == [2.0]                       # 用了 server 指定秒數，非指數退避
+
+
+async def test_with_retry_caps_malicious_retry_after(monkeypatch):
+    slept: list[float] = []
+    async def _capture(d): slept.append(d)
+    monkeypatch.setattr(retry_mod.asyncio, "sleep", _capture)
+    calls = {"n": 0}
+
+    async def fn():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _http_error_ra(429, "99999")  # 惡意/誤填大值
+        return "ok"
+
+    assert await with_retry(fn, what="t", retry_after_cap=60.0) == "ok"
+    assert slept == [60.0]                       # 夾在上限內
+
+
+# ---------- #22 to_thread_with_timeout ----------
+
+async def test_to_thread_timeout_returns_value():
+    out = await to_thread_with_timeout(lambda: ["ok"], what="t", timeout=1.0, default=[])
+    assert out == ["ok"]
+
+
+async def test_to_thread_timeout_degrades_to_default():
+    import time
+    out = await to_thread_with_timeout(
+        lambda: (time.sleep(0.3), ["x"])[1], what="t", timeout=0.01, default=[])
+    assert out == []                             # 逾時 graceful 降級

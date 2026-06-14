@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from datetime import date, datetime, timedelta, timezone
@@ -19,7 +18,7 @@ from cyber_sages.data.damodaran import industry_benchmark_evidence
 from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.indicators import compute_indicator_evidence
-from cyber_sages.data.retry import with_retry
+from cyber_sages.data.retry import to_thread_with_timeout, with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,8 @@ class USStockProvider:
     # ---------- quote ----------
 
     async def get_quote(self, ticker: str) -> list[Evidence]:
-        return await asyncio.to_thread(self._quote_sync, ticker)
+        return await to_thread_with_timeout(
+            lambda: self._quote_sync(ticker), what=f"yfinance quote {ticker}", default=[])
 
     def _quote_sync(self, ticker: str) -> list[Evidence]:
         import yfinance as yf
@@ -187,7 +187,8 @@ class USStockProvider:
     # ---------- history + 確定性技術指標 ----------
 
     async def get_history(self, ticker: str) -> list[Evidence]:
-        return await asyncio.to_thread(self._history_sync, ticker)
+        return await to_thread_with_timeout(
+            lambda: self._history_sync(ticker), what=f"yfinance history {ticker}", default=[])
 
     def _history_sync(self, ticker: str) -> list[Evidence]:
         import yfinance as yf
@@ -380,10 +381,11 @@ class USStockProvider:
     # ---------- estimates（分析師前瞻共識，estimate 類別）----------
 
     async def get_estimates(self, ticker: str) -> list[Evidence]:
-        return await asyncio.to_thread(
-            fetch_estimates, [ticker], currency="USD",
-            url=f"https://finance.yahoo.com/quote/{ticker}/analysis",
-        )
+        return await to_thread_with_timeout(
+            lambda: fetch_estimates(
+                [ticker], currency="USD",
+                url=f"https://finance.yahoo.com/quote/{ticker}/analysis"),
+            what=f"yfinance estimates {ticker}", default=[])
 
     # ---------- news ----------
 
@@ -395,7 +397,8 @@ class USStockProvider:
             except Exception as e:
                 logger.warning("US finnhub news failed for %s, falling back to yfinance: %s",
                                ticker, e)
-        return await asyncio.to_thread(self._yf_news_sync, ticker)
+        return await to_thread_with_timeout(
+            lambda: self._yf_news_sync(ticker), what=f"yfinance news {ticker}", default=[])
 
     async def _finnhub_news(self, ticker: str, key: str) -> list[Evidence]:
         to = date.today()
