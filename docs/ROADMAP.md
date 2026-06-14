@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-14（v3 — Phase 1 / Spec A 全數完成；下一步 Phase 2 / Spec B 剩餘）
+**Revision**: 2026-06-14（v4 — Phase 2 / Spec B 全數完成，Pillar 1 收口；下一步 Phase 3 / Spec E1）
 
 ## 願景
 
@@ -124,13 +124,36 @@
 **衍生 follow-up issues**：#17（Retry-After header）、#19（US eps_ttm → P/E 收 10%）、
 #22（yfinance timeout/重試）、#25（Damodaran `_INDUSTRY_MAP` 擴充）。
 
-**下一步：Phase 2（Spec B 剩餘：W4/W7/W8/W9 管線硬化）。**
+**下一步：Phase 3（Spec E1：Sage Runtime + Buffett/Munger 手工 Persona Pack 試點）。**
 
-### Phase 2 — Spec B 剩餘：管線硬化（鐵律 1 的「分析有意義」）
+### Phase 2 — Spec B 剩餘：管線硬化（鐵律 1 的「分析有意義」）✅ **全數完成（2026-06-14）**
 
-W4 cite-check 笛卡兒積收斂 + 符號對稱、W7 chief thesis 過 cite-check、
-W8 macro freshness、W9 缺核心類別觸發降級。做完這個 Phase，
-**Pillar 1 收口**——之後燒給專家的每一個 token 都站在可信資料與硬閘門上。
+兩條 PR 全部合併進 `main`（測試基線：main **160 passed**，自 Phase 1 的 149 起算）。
+做完這個 Phase，**Pillar 1 收口**——之後燒給專家的每一個 token 都站在可信資料與硬閘門上。
+
+1. ✅ **W4 + W7**：cite-check 笛卡兒積收斂（`_kind` 欄位語意分類 + `_PAIR_OPS` 手列配對
+   白名單，決議 2）+ 符號對稱（僅變動率%放寬，讓中文「下跌 5%」對得上 -5% 真值）；
+   chief brief 主體（thesis / key_risks / what_would_change_my_mind）過 cite-check，
+   retry 1 次仍失敗則標 `unverified` 揭露不 refuse（決議 5）— PR #27
+2. ✅ **W8 + W9**：macro freshness 45→60；缺漏分級抽成模組常數 `CATEGORY_SEVERITY`
+   （決議 3），`history` 由 warning 升 error（核心三類），collector 抓取失敗經
+   `fetch_failures` 顯式入帳（`collector_error` finding，核心類別失敗即降級）— PR #28
+
+**偏離 / 決策留痕**：
+- W4 符號對稱用了 `abs()`，**超出 spec 字面**「`(a-b)/b` 與 `(b-a)/a`」：兩式對 95 vs 100
+  只得 `{-5, +5.26}`，仍對不上「下跌 5%」抽出的 `+5`，必須再加絕對值；已嚴格限縮在
+  變動率% 一種運算（比率/利潤率符號有意義，不放寬）。reviewer 同意無更縮解。
+- W4 `price × magnitude` 配對刻意排除：市值=股價×股數這類鏈式衍生不再由驗證層拼湊
+  放行，源頭該以 `market_cap` 自身 evidence 呈現。
+- W7 只做數字級驗證；chief 行內 `[E001]` 引用紀律屬 Spec D / Phase 5。
+
+**review nits（不擋合，Phase 3 順手補）**：
+- 非核心類別 collector 失敗會同時出 `completeness` + `collector_error` 兩條 warning（內容
+  ~95% 重疊）→ collector_error 迴圈可跳過 completeness 已記的 category，或併進同一 message。
+- `CORE_CATEGORIES` 目前是 dead code → 刪除，或拿來做 `CORE_CATEGORIES == 降級類別` 的
+  assertion 鎖定「核心類別 = 降級類別」決議。
+- ETF fundamentals 例外檢查散在兩處（severity + msg）→ 完全集中到 `_missing_severity`。
+- 補 `{magnitude, per_share}` 配對（淨利/EPS = shares）的迴歸測試。
 
 ### Phase 3 — Spec E1：Sage Runtime + 手工 Persona Pack 試點（鐵律 2 起點）
 
