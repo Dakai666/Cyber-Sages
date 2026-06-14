@@ -96,8 +96,11 @@ def run_skills(
             not_evaluable.append(f"skill:{sk.name} (non-finite)")
             continue
         inputs = result.inputs or accessor.touched_ids
+        # id 用 skill 名而非流水號（B4）：流水號會在某 skill not_evaluable 被跳過時產生
+        # gap、且隨「哪些 skill 算得出」重排——sop_trace 引用的 id 會跨 run/配置漂移。
+        # 以 skill 名為 id 則穩定、自我說明（一個 Pack 內 skill 名天生唯一）。
         ev = Evidence(
-            id=f"S-{key}-{len(private) + 1:03d}",
+            id=f"S-{key}-{sk.name}",
             category="derived",
             field=sk.name,
             value=val,

@@ -112,10 +112,40 @@ def test_skill_pass_registers_traceable_private_evidence():
     private, not_eval = run_skills([owner_earnings], store, key="buffett")
     assert not_eval == []
     [ev] = private
-    assert ev.id == "S-buffett-001" and ev.value == 1500.0 and ev.category == "derived"
+    assert ev.id == "S-buffett-owner_earnings" and ev.value == 1500.0 and ev.category == "derived"
     assert "NI + D&A - CapEx" in ev.note
     # inputs 由 accessor 自動回填為實際讀到的 evidence ids（不需手寫 E-id）
     assert all(eid in ev.note for eid in ("E001", "E002", "E003"))
+
+
+def test_skill_id_is_stable_under_reorder_and_skips(monkeypatch):
+    # B4：id 用 skill 名 → 某 skill not_evaluable 被跳過、或 skills 順序改變，
+    # 都不影響其餘 skill 的 private evidence id（不再隨流水號漂移）。
+    store = EvidenceStore(ticker="X")
+    store.add_all([_fund("net_income_annual", 1000.0),
+                   _fund("depreciation_amortization", 600.0),
+                   _fund("capex", 100.0)])  # 缺 shares → needs_missing 一定降級
+    # needs_missing 排在前面被跳過，owner_earnings 仍得到穩定 id（非 S-x-002）
+    private, not_eval = run_skills([needs_missing, owner_earnings], store, key="buffett")
+    assert len(not_eval) == 1 and [e.id for e in private] == ["S-buffett-owner_earnings"]
+    # 改變順序，id 不變
+    private2, _ = run_skills([owner_earnings, needs_missing], store, key="buffett")
+    assert [e.id for e in private2] == ["S-buffett-owner_earnings"]
+
+
+def test_hardrule_rejects_typo_action_and_missing_bound():
+    # B2 fail-loud：action typo（非 Literal）載入即報錯
+    with pytest.raises(Exception):
+        HardRule.model_validate({"id": "x", "if": {"field": "a", "op": ">", "value": 1},
+                                 "action": "cap_confdence", "confidence_ceiling": 0.5})
+    # cap_confidence 缺 ceiling → 報錯（否則永遠靜默不作用）
+    with pytest.raises(ValueError, match="confidence_ceiling"):
+        HardRule.model_validate({"id": "x", "if": {"field": "a", "op": ">", "value": 1},
+                                 "action": "cap_confidence"})
+    # bullish_floor 缺 floor → 報錯
+    with pytest.raises(ValueError, match="confidence_floor"):
+        HardRule.model_validate({"id": "x", "if": {"field": "a", "op": ">", "value": 1},
+                                 "action": "bullish_floor"})
 
 
 def test_skill_missing_requires_is_not_evaluable():
@@ -219,6 +249,18 @@ def _gateway_returning(signal: SageSignal):
     return G()
 
 
+def _gateway_sequence(signals: list[SageSignal]):
+    """依序回傳每次 structured() 呼叫的 signal（測 retry 路徑）。"""
+    class G:
+        def __init__(self):
+            self.calls = 0
+        async def structured(self, role, *, system, prompt, schema, **kw):
+            sig = signals[min(self.calls, len(signals) - 1)]
+            self.calls += 1
+            return sig.model_copy(deep=True)
+    return G()
+
+
 async def test_runtime_clamps_confidence_to_ceiling(monkeypatch):
     # 驗收條件：構造觸發 ceiling 的 evidence，LLM 給 0.9 也被壓到 0.5
     persona = _pack_persona()
@@ -226,7 +268,7 @@ async def test_runtime_clamps_confidence_to_ceiling(monkeypatch):
     # owner_earnings = 1000 + 600 - 100 = 1500 → sop_trace 引用 private S-buffett-001
     llm = SageSignal(stance="bullish", confidence=0.9, thesis="t", what_would_change_my_mind="w",
                      sop_trace=[SopStepResult(step="verdict", conclusion="owner earnings 約 1,500",
-                                              evidence_ids=["S-buffett-001"])])
+                                              evidence_ids=["S-buffett-owner_earnings"])])
     council = await run_council(_levered_store(), [], _runtime_settings(),
                                 _gateway_returning(llm), n_sages=1)
     [s] = council.signals
@@ -241,12 +283,29 @@ async def test_runtime_soft_flags_unverifiable_sop_trace(monkeypatch):
     # sop_trace 宣稱 owner earnings 是 9,999（對不上 private 的 1,500）→ retry 後仍標 unverified
     llm = SageSignal(stance="bullish", confidence=0.3, thesis="t", what_would_change_my_mind="w",
                      sop_trace=[SopStepResult(step="verdict", conclusion="owner earnings 約 9,999",
-                                              evidence_ids=["S-buffett-001"])])
+                                              evidence_ids=["S-buffett-owner_earnings"])])
     council = await run_council(_levered_store(), [], _runtime_settings(),
                                 _gateway_returning(llm), n_sages=1)
     [s] = council.signals
     assert len(s.unverified) == 1 and s.unverified[0].kind == "num_mismatch"
     assert s.stance == "bullish"  # 不 refuse，仍出訊號
+
+
+async def test_runtime_retry_fixes_unverifiable_sop_trace(monkeypatch):
+    # retry 成功路徑：首版 trace 數字對不上 → 餵回失敗後第二版修對 → unverified 清空
+    persona = _pack_persona()
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [persona])
+    bad = SageSignal(stance="bullish", confidence=0.3, thesis="t", what_would_change_my_mind="w",
+                     sop_trace=[SopStepResult(step="verdict", conclusion="owner earnings 約 9,999",
+                                              evidence_ids=["S-buffett-owner_earnings"])])
+    good = bad.model_copy(deep=True)
+    good.sop_trace = [SopStepResult(step="verdict", conclusion="owner earnings 約 1,500",
+                                    evidence_ids=["S-buffett-owner_earnings"])]
+    gw = _gateway_sequence([bad, good])
+    council = await run_council(_levered_store(), [], _runtime_settings(), gw, n_sages=1)
+    [s] = council.signals
+    assert gw.calls == 2 and s.unverified == []  # 重試一次後修好
+    assert s.sop_trace[0].conclusion == "owner earnings 約 1,500"
 
 
 async def test_runtime_records_rule_conflict_when_floor_opposes_stance(monkeypatch):

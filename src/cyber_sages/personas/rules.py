@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import operator
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 _OPS: dict[str, Callable[[float, float], bool]] = {
     ">": operator.gt, ">=": operator.ge,
@@ -29,19 +29,32 @@ _OPS: dict[str, Callable[[float, float], bool]] = {
     "==": operator.eq, "!=": operator.ne,
 }
 
-_Action = ("cap_confidence", "bullish_floor", "bearish_floor")
+Action = Literal["cap_confidence", "bullish_floor", "bearish_floor"]
 
 
 class HardRule(BaseModel):
-    """rules.yaml 的一條硬規則。`if` 是 Python 關鍵字，故以 alias 對應 yaml 的 `if:`。"""
+    """rules.yaml 的一條硬規則。`if` 是 Python 關鍵字，故以 alias 對應 yaml 的 `if:`。
+
+    fail-loud（B2，反 silent-failure 一貫哲學）：`action` 是 Literal，typo 直接驗證失敗；
+    `cap_confidence` 必須帶 `confidence_ceiling`、directional floor 必須帶 `confidence_floor`，
+    否則該規則永遠靜默不作用——載入時即報錯，不讓壞規則溜進 Pack。
+    """
     id: str
     if_: dict[str, Any] = Field(alias="if")
-    action: str
+    action: Action
     confidence_ceiling: float | None = None
     confidence_floor: float | None = None
     note: str = ""
 
     model_config = {"populate_by_name": True}
+
+    @model_validator(mode="after")
+    def _require_matching_bound(self) -> "HardRule":
+        if self.action == "cap_confidence" and self.confidence_ceiling is None:
+            raise ValueError(f"rule {self.id}: action=cap_confidence 需要 confidence_ceiling")
+        if self.action in ("bullish_floor", "bearish_floor") and self.confidence_floor is None:
+            raise ValueError(f"rule {self.id}: action={self.action} 需要 confidence_floor")
+        return self
 
 
 @dataclass

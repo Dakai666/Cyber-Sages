@@ -156,7 +156,13 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 | 6 | PR 拆分 | **三條：框架 → 多年欄位資料 → pilot Pack** | 三個關注點各自乾淨可獨立回溯；資料層擴充屬純 Spec A 性質可先合。 |
 | 7 | epoch 年代 | **Buffett-2019 / Munger-2019** | Apple 時期的 Buffett（對科技更開放、已調整「不懂科技」立場），最貼近當代 NVDA 類標的；lookahead bias 由未來 `replay` 報告固定揭露（見 E2 Q2）。 |
 
-兩項由實作端預設、可隨時推翻：(a) `skills.py` 每 Pack 各一份（符合 spec 目錄結構），共用計算（`owner_earnings`/`margin_of_safety`）放框架當 importable helper；(b) private evidence id 採 `S-<key>-NNN`。
+兩項由實作端預設、可隨時推翻：(a) `skills.py` 每 Pack 各一份（符合 spec 目錄結構），共用計算（`owner_earnings`/`margin_of_safety`）放框架當 importable helper；(b) private evidence id 採 `S-<key>-<skill_name>`（如 `S-buffett-owner_earnings`）。
+
+> **PR1 review 後修訂（2026-06-14，B4）**：private evidence id 由原訂流水號 `S-<key>-NNN`
+> 改為 **`S-<key>-<skill_name>`**。流水號會在某 skill `not_evaluable` 被跳過時產生 gap、
+> 並隨「哪些 skill 算得出」重排，使 sop_trace 引用的 id 跨 run/配置漂移；以 skill 名為 id
+> 則穩定、自我說明（單一 Pack 內 skill 名天生唯一）。其餘 PR1 review 修正（B2 HardRule
+> action fail-loud 驗證、B6/B7 清理）見 PR #38；B1/B3/B9 開 issue 追到 E2 開工前。
 
 **三條 PR 範圍**：
 

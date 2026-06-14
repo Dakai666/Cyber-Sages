@@ -136,7 +136,7 @@ def _sop_prompt(
 def _sop_claims(trace: list[SopStepResult]) -> list[Claim]:
     return [
         Claim(text=s.conclusion, evidence_ids=s.evidence_ids)
-        for s in trace if s.conclusion and s.conclusion.strip()
+        for s in trace if s.conclusion.strip()
     ]
 
 
@@ -166,10 +166,14 @@ async def run_council(
 
     async def _degraded(p: Persona) -> SageSignal:
         """舊單檔 persona：原本的單發 prompt（無 skill/rule/SOP）。"""
-        return await gateway.structured(
+        signal = await gateway.structured(
             "sage", system=_persona_system(p), prompt="Deliver your signal now.",
             schema=SageSignal, cache_prefix=shared_system,
         )
+        # degraded 無 clamp 階段，LLM 的 confidence 在此收進 [0,1]（pack 路徑已由
+        # clamp_confidence 收口，故不在 one() 重複夾一次——B7）。
+        signal.confidence = max(0.0, min(1.0, signal.confidence))
+        return signal
 
     async def _pack(p: Persona) -> SageSignal:
         """Persona Pack：Sage Runtime 三段執行 skill→rule→SOP(LLM)→clamp。"""
@@ -229,7 +233,6 @@ async def run_council(
     async def one(p: Persona) -> SageSignal:
         signal = await (_pack(p) if p.is_pack else _degraded(p))
         signal.sage = p.name
-        signal.confidence = max(0.0, min(1.0, signal.confidence))
         if on_signal:
             result = on_signal(signal)
             if asyncio.iscoroutine(result):
