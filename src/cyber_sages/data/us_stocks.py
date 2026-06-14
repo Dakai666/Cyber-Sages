@@ -18,6 +18,7 @@ from cyber_sages.data.damodaran import industry_benchmark_evidence
 from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.longterm import multiyear_fundamentals
 from cyber_sages.data.retry import to_thread_with_timeout, with_retry
 
 logger = logging.getLogger(__name__)
@@ -268,6 +269,7 @@ class USStockProvider:
                     note=f"{quarterly.get('fy')}{quarterly.get('fp', '')} {quarterly['_concept']}",
                 ))
         evs += cls._derived_fundamentals(annual_vals, annual_as_of, filing_base)
+        evs += cls._multiyear_fundamentals(gaap, filing_base)
 
         # eps_ttm（issue #19）：最近四季合計，讓 P/E 與 yfinance trailing 同口徑（TTM-vs-TTM）
         ttm = cls._eps_ttm(gaap)
@@ -312,6 +314,45 @@ class USStockProvider:
                 url=url, as_of=as_of, note=f"確定性衍生：{formula}",
             ))
         return out
+
+    @staticmethod
+    def _annual_map(gaap: dict, concepts: list[str], unit: str) -> dict[str, float]:
+        """逐年度的 {fiscal-year-end(iso): val}（跨候選概念合併、全年 10-K）。
+
+        companyfacts 已聚合多年（一份 10-K 含 3 年比較期），故 dedup by end 即得多年序列；
+        流量科目（含 start）只收 ~全年 duration，排除季/半年累計；資產負債科目（無 start）全收。
+        同一 end 多筆修訂後寫覆蓋（取較新申報的最終值）。"""
+        out: dict[str, float] = {}
+        for concept in concepts:
+            for e in gaap.get(concept, {}).get("units", {}).get(unit, []):
+                if not e.get("form", "").startswith("10-K") or "end" not in e or "val" not in e:
+                    continue
+                if "start" in e:
+                    dur = (date.fromisoformat(e["end"]) - date.fromisoformat(e["start"])).days
+                    if dur < 300:
+                        continue
+                out[e["end"]] = float(e["val"])
+        return out
+
+    @classmethod
+    def _multiyear_fundamentals(cls, gaap: dict, url: str) -> list[Evidence]:
+        """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability_5y）。"""
+        concepts = {field: c for field, c, _unit in GAAP_FIELDS}
+        ni = cls._annual_map(gaap, ["NetIncomeLoss"], "USD")
+        eq = cls._annual_map(gaap, ["StockholdersEquity"], "USD")
+        gp = cls._annual_map(gaap, concepts["gross_profit"], "USD")
+        rev = cls._annual_map(gaap, concepts["revenue"], "USD")
+
+        roe_series = [(date.fromisoformat(end), ni[end] / eq[end] * 100)
+                      for end in sorted(ni.keys() & eq.keys()) if eq[end]]
+        gm_series = [(date.fromisoformat(end), gp[end] / rev[end] * 100)
+                     for end in sorted(gp.keys() & rev.keys()) if rev[end]]
+        ni_series = [(date.fromisoformat(end), ni[end]) for end in sorted(ni)]
+        return multiyear_fundamentals(
+            roe_pct_series=roe_series, gross_margin_pct_series=gm_series,
+            net_income_series=ni_series,
+            source="computed from SEC EDGAR companyfacts (10-K, multi-year)", url=url,
+        )
 
     async def _resolve_cik(self, client: httpx.AsyncClient, ticker: str) -> int | None:
         async def _fetch() -> httpx.Response:
