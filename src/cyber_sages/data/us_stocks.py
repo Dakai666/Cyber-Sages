@@ -268,6 +268,16 @@ class USStockProvider:
                 ))
         evs += cls._derived_fundamentals(annual_vals, annual_as_of, filing_base)
 
+        # eps_ttm（issue #19）：最近四季合計，讓 P/E 與 yfinance trailing 同口徑（TTM-vs-TTM）
+        ttm = cls._eps_ttm(gaap)
+        if ttm:
+            val, as_of, note = ttm
+            evs.append(Evidence(
+                category="fundamentals", field="eps_ttm", value=val, unit="USD/shares",
+                source="computed from SEC EDGAR companyfacts (10-K/10-Q)",
+                url=filing_base, as_of=as_of, note=note,
+            ))
+
         dei = facts.get("facts", {}).get("dei", {})
         shares = dei.get("EntityCommonStockSharesOutstanding", {}).get("units", {}).get("shares", [])
         latest_shares = cls._latest(shares, form_prefix="10-")
@@ -313,6 +323,44 @@ class USStockProvider:
             if entry["ticker"].upper() == ticker.upper():
                 return int(entry["cik_str"])
         return None
+
+    @staticmethod
+    def _eps_ttm(gaap: dict) -> tuple[float, date, str] | None:
+        """US trailing-12-month 稀釋 EPS：確定性合計最近四季（issue #19）。
+
+        SEC 不發 Q4 的 10-Q：fiscal Q4 EPS = FY 年報(10-K) − (Q1+Q2+Q3)。10-Q 同時報
+        「單季」與「YTD 累計」，用 duration(~一季) 篩出單季值、排除 6/9 個月累計。
+        回 (eps_ttm, as_of=最近一季 end, note)，季度不足或四季不相鄰則回 None（寧缺勿錯）。"""
+        entries = gaap.get("EarningsPerShareDiluted", {}).get("units", {}).get("USD/shares", [])
+        quarters: dict[str, float] = {}   # end(iso) → 單季 EPS（後寫覆蓋＝取較新修訂）
+        annuals: list[dict] = []
+        for e in entries:
+            if "start" not in e or "end" not in e or "val" not in e:
+                continue  # 時點值/缺欄位，EPS 本該是 duration 型
+            dur = (date.fromisoformat(e["end"]) - date.fromisoformat(e["start"])).days
+            if 60 <= dur <= 100:
+                quarters[e["end"]] = float(e["val"])
+            elif 350 <= dur <= 380:
+                annuals.append(e)
+        # 用 FY 反推缺漏的 fiscal Q4：FY − 該會計年度區間內已知的三個單季
+        recon: set[str] = set()
+        for a in annuals:
+            if a["end"] in quarters:
+                continue  # 該季已有單季值（少見），不覆蓋
+            within = [v for end, v in quarters.items() if a["start"] < end < a["end"]]
+            if len(within) == 3:
+                quarters[a["end"]] = float(a["val"]) - sum(within)
+                recon.add(a["end"])
+        if len(quarters) < 4:
+            return None
+        last4 = sorted(quarters.items())[-4:]            # 取 end 最新的四季
+        ends = [date.fromisoformat(k) for k, _ in last4]
+        if any(not 80 <= (ends[i + 1] - ends[i]).days <= 100 for i in range(3)):
+            return None  # 四季不相鄰（中間缺季），TTM 不可靠
+        ttm = sum(v for _, v in last4)
+        q4_note = "；fiscal Q4 由 FY−(Q1+Q2+Q3) 反推" if recon & {k for k, _ in last4} else ""
+        note = f"trailing-12M = Σ最近四季 ({last4[0][0]}…{last4[-1][0]}){q4_note}"
+        return round(ttm, 4), ends[-1], note
 
     @staticmethod
     def _latest(entries: list[dict], form_prefix: str, min_duration_days: int | None = None) -> dict | None:
