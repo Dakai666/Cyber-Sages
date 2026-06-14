@@ -175,7 +175,7 @@ epoch 選 **2019**（Apple 時期）。拆三條 PR：
    skill 框架 + `SageSignal.sop_trace`/`not_evaluable` + 三段執行 + clamp + 軟揭露
    cite-check 接線；degraded 8 位走原路徑。← **✅ 已合併 PR #38**
 2. **多年欄位資料**（純 Spec A 性質）：`roe_5y_avg`/`gross_margin_trend_5y`/
-   `earnings_stability`（`data/longterm.py` 共享純計算；US SEC 多年 10-K + TW FinMind
+   `earnings_stability_5y`（`data/longterm.py` 共享純計算；US SEC 多年 10-K + TW FinMind
    季度聚合，單位口徑見 Spec E 附錄 PR2 落地註）。← **開工中**（branch `feat/e1-multiyear-fundamentals`）
 3. **pilot Pack**：Buffett-2019 + Munger-2019 手工 Pack，跑 NVDA/2330 驗 sop_trace
    錨點 + clamp 生效；手工過程寫成 `docs/specs/` 附錄。

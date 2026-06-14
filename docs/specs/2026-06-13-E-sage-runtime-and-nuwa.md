@@ -47,7 +47,7 @@ hard_rules:
     confidence_ceiling: 0.5
     note: "槓桿過高出我的能力圈"
   - id: moat-premium
-    if: {all: [{field: roe_5y_avg, op: ">", value: 0.20},
+    if: {all: [{field: roe_5y_avg, op: ">", value: 20},     # roe_5y_avg 單位為 %（28.5=28.5%），故 20 非 0.20
                {field: gross_margin_trend_5y, op: ">=", value: 0}]}
     action: bullish_floor
     confidence_floor: 0.6
@@ -152,7 +152,7 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 | 2 | skill private evidence 儲存 | **獨立命名空間掛 sage 名下**（`S-<key>-NNN`） | 不混入共享 `E001…` 序列；每位 sage 只看自己的 private + 共享 store。避免 10 位各算各的污染 digest、破壞 E-id 穩定性與 cache 前綴不變性。cite-check 驗證時組「共享 items + 該 sage private items」暫時 store view 複用既有 `check_claims`，零改動 citation_check.py。 |
 | 3 | sop_trace cite-check 強制度 | **軟揭露**（比照 PR #27 chief brief） | sop_trace 數字過 cite-check，失敗步驟標 `unverified` 並揭露，retry 1 次、不 refuse。sage 推理貴，逐 sage 硬重跑會爆 token。 |
 | 4 | epoch 機制 | **目錄帶 epoch、loader 多版本選取延後 E2** | 目錄名即 `<key>-<epoch>/`、`persona.yaml` 帶 `epoch`，示範 Nüwa 最終格式；但「同 key 取最新 epoch」的選取邏輯 E1 不做（單一 epoch）。 |
-| 5 | 多年衍生欄位 | **E1 補齊 pilot 規則所需多年欄位** | Buffett/Munger 招牌規則需 `roe_5y_avg`/`gross_margin_trend_5y`/`earnings_stability` 等多年訊號（SEC companyfacts 多年原料已在、TW 對齊）。Pack 規則才有「護城河變寬變窄」的真實內涵。 |
+| 5 | 多年衍生欄位 | **E1 補齊 pilot 規則所需多年欄位** | Buffett/Munger 招牌規則需 `roe_5y_avg`/`gross_margin_trend_5y`/`earnings_stability_5y` 等多年訊號（SEC companyfacts 多年原料已在、TW 對齊）。Pack 規則才有「護城河變寬變窄」的真實內涵。 |
 | 6 | PR 拆分 | **三條：框架 → 多年欄位資料 → pilot Pack** | 三個關注點各自乾淨可獨立回溯；資料層擴充屬純 Spec A 性質可先合。 |
 | 7 | epoch 年代 | **Buffett-2019 / Munger-2019** | Apple 時期的 Buffett（對科技更開放、已調整「不懂科技」立場），最貼近當代 NVDA 類標的；lookahead bias 由未來 `replay` 報告固定揭露（見 E2 Q2）。 |
 
@@ -167,7 +167,7 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 **三條 PR 範圍**：
 
 - **PR1 — Sage Runtime 框架（data-agnostic 純機制）**：Pack loader（目錄 `<key>-<epoch>/` 與舊單檔共存、`--sages N` 截斷不變）；rules DSL evaluator（純函式 + 完整測試，`field/op/value` + `all`/`any` 巢狀、`not_evaluable`、clamp）；skill 框架（`@skill(requires=...)`、`SkillResult(value, formula, inputs)`、缺欄位降級、輸出登錄為可溯源 private evidence）；`SageSignal` 加 `sop_trace`/`not_evaluable`/規則衝突揭露；三段執行 + clamp 取代 council 單發 prompt；degraded 8 位舊 yaml 走原路徑；sop_trace 軟揭露 cite-check 接線。
-- **PR2 — 多年衍生欄位**：SEC 多年 annual → `roe_5y_avg`/`gross_margin_trend_5y`/`earnings_stability`（最終清單由 pilot 的 rules+skills `requires` 聯集反推）；TW FinMind 對齊；確定性計算、canonical 命名；audit 不列必需。
+- **PR2 — 多年衍生欄位**：SEC 多年 annual → `roe_5y_avg`/`gross_margin_trend_5y`/`earnings_stability_5y`（最終清單由 pilot 的 rules+skills `requires` 聯集反推）；TW FinMind 對齊；確定性計算、canonical 命名；audit 不列必需。
 
 > **PR2 落地（2026-06-14）**：共享純模組 `data/longterm.py` 算三個多年指標，
 > US（SEC companyfacts 多年 10-K，dedup by fiscal-year-end）與 TW（FinMind 季度聚合成
@@ -176,7 +176,7 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 > - `roe_5y_avg` 單位 **`%`**（如 `28.5` = 28.5%，與單期 `roe_pct` 一致）——故 Buffett
 >   moat 規則應寫 `roe_5y_avg > 20`，**非** spec 草圖的 `> 0.20`。
 > - `gross_margin_trend_5y` 單位 **`%/yr`**（OLS 線性斜率，%點/年；`>= 0` = 毛利未走弱）。
-> - `earnings_stability` 無單位、值域 **[0,1]**（`max(0, 1 − σ/μ)`，1=最穩；μ≤0 記 0）。
+> - `earnings_stability_5y` 無單位、值域 **[0,1]**（`max(0, 1 − σ/μ)`，1=最穩；μ≤0 記 0）。
 >
 > 寧缺勿錯：序列 < 3 年該指標不發 → 下游 rule/skill 記 `not_evaluable`（2330 早年資料
 > 不足時 Buffett 會誠實說「看不到台積電的 5 年趨勢」）。多年欄位 `as_of` = 最新會計年度

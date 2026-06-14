@@ -332,7 +332,7 @@ class TWStockProvider:
 
     @classmethod
     def _multiyear_fundamentals(cls, income, balance, url) -> list[Evidence]:
-        """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability）。
+        """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability_5y）。
 
         台股財報年度＝曆年；FinMind 損益是單季值，逐年合計四季成年度損益，ROE 以該年底
         權益為分母（與單期 roe_pct 同口徑：年度淨利 / 年底權益）。"""

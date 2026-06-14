@@ -29,7 +29,7 @@ def test_multiyear_metrics_arithmetic():
     assert evs["gross_margin_trend_5y"].value == 1.0  # 完美線性 +1%點/年
     assert evs["gross_margin_trend_5y"].unit == "%/yr"
     # 穩定度 = 1 − σ/μ；σ(200..240)=14.14, μ=220 → ≈0.936
-    assert evs["earnings_stability"].value == 0.936
+    assert evs["earnings_stability_5y"].value == 0.936
     assert evs["roe_5y_avg"].as_of == date(2024, 12, 31)
 
 
@@ -44,7 +44,7 @@ def test_earnings_stability_zero_when_mean_not_positive():
     [st] = [e for e in multiyear_fundamentals(
         roe_pct_series=[], gross_margin_pct_series=[],
         net_income_series=_series([100, -200, 50]), source="t", url=None)
-        if e.field == "earnings_stability"]
+        if e.field == "earnings_stability_5y"]
     assert st.value == 0.0  # μ≤0 視為不穩
 
 
@@ -53,6 +53,28 @@ def test_below_min_years_emits_nothing():
         roe_pct_series=_series([20, 21]),  # 只有 2 年 < MIN_YEARS(3)
         gross_margin_pct_series=_series([40, 41]),
         net_income_series=_series([200, 210]), source="t", url=None) == []
+
+
+def test_exactly_min_years_emits():
+    # MIN_YEARS=3 邊界：恰 3 年就發（C6）
+    evs = {e.field for e in multiyear_fundamentals(
+        roe_pct_series=_series([20, 22, 24]), gross_margin_pct_series=_series([40, 41, 42]),
+        net_income_series=_series([200, 210, 220]), source="t", url=None)}
+    assert evs == {"roe_5y_avg", "gross_margin_trend_5y", "earnings_stability_5y"}
+
+
+def test_non_finite_year_is_dropped(monkeypatch):
+    # C2：某年 inf/nan 不得污染指標——壞年當缺年丟棄，剩 2 年 < MIN_YEARS → 不發
+    assert multiyear_fundamentals(
+        roe_pct_series=_series([20, float("inf"), 24]),
+        gross_margin_pct_series=_series([40, float("nan"), 44]),
+        net_income_series=_series([200, float("inf"), 240]), source="t", url=None) == []
+    # 壞年丟掉後仍有 3 個有限年 → 正常發，且不含壞值
+    [roe] = [e for e in multiyear_fundamentals(
+        roe_pct_series=_series([20, 22, float("inf"), 24, 26]),
+        gross_margin_pct_series=[], net_income_series=[], source="t", url=None)
+        if e.field == "roe_5y_avg"]
+    assert roe.value == 23.0  # mean(20,22,24,26)，inf 已剔除
 
 
 def test_takes_only_most_recent_five_years():
@@ -105,6 +127,15 @@ def test_us_annual_map_dedup_and_duration_filter():
     ]}}}
     m = USStockProvider._annual_map(g, ["NetIncomeLoss"], "USD")
     assert m == {"2023-12-31": 200.0, "2024-12-31": 210.0}  # 季值與 10-Q 都被濾掉
+
+
+def test_us_annual_map_same_end_date_revision_overrides(monkeypatch):
+    # C6：同一 fiscal-year-end 多筆（修訂）→ 後寫覆蓋（取較新申報的最終值）
+    g = {"NetIncomeLoss": {"units": {"USD": [
+        _annual(200, "2024-12-31"),   # 初報
+        _annual(215, "2024-12-31"),   # 修訂 → 覆蓋
+    ]}}}
+    assert USStockProvider._annual_map(g, ["NetIncomeLoss"], "USD") == {"2024-12-31": 215.0}
 
 
 # ---------- TW：FinMind 季度聚合成年度 ----------

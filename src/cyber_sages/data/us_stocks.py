@@ -336,7 +336,7 @@ class USStockProvider:
 
     @classmethod
     def _multiyear_fundamentals(cls, gaap: dict, url: str) -> list[Evidence]:
-        """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability）。"""
+        """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability_5y）。"""
         concepts = {field: c for field, c, _unit in GAAP_FIELDS}
         ni = cls._annual_map(gaap, ["NetIncomeLoss"], "USD")
         eq = cls._annual_map(gaap, ["StockholdersEquity"], "USD")

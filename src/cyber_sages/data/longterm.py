@@ -1,4 +1,4 @@
-"""多年期基本面衍生欄位（roe_5y_avg / gross_margin_trend_5y / earnings_stability）。
+"""多年期基本面衍生欄位（roe_5y_avg / gross_margin_trend_5y / earnings_stability_5y）。
 
 跨市場共用的**純計算**：各 provider 自行從第一手來源抽出「逐年對齊」的序列——US 由 SEC
 companyfacts 的多年 10-K、TW 由 FinMind 季度聚合成年度——再交給此處算出多年指標，emit 為
@@ -15,6 +15,7 @@ companyfacts 的多年 10-K、TW 由 FinMind 季度聚合成年度——再交�
 
 from __future__ import annotations
 
+import math
 import statistics
 from datetime import date
 
@@ -27,7 +28,11 @@ Series = list[tuple[date, float]]
 
 
 def _recent(series: Series) -> Series:
-    return sorted(series)[-MAX_YEARS:]
+    # 先濾掉 NaN/Inf（C2）：上游某年壞值（除零殘留、髒資料）不能混進平均/斜率/σ——
+    # 否則 earnings_stability_5y 會假報 1.0 等危險訊號，與「寧缺勿錯」相反。壞年當缺年丟棄，
+    # 剩餘不足 MIN_YEARS 則該指標不發（→ 下游 not_evaluable）。
+    finite = [(d, v) for d, v in series if math.isfinite(v)]
+    return sorted(finite)[-MAX_YEARS:]
 
 
 def _ols_slope(ys: list[float]) -> float:
@@ -83,7 +88,7 @@ def multiyear_fundamentals(
         stability = 0.0 if mean <= 0 else max(0.0, 1 - statistics.pstdev(vals) / mean)
         detail = ", ".join(f"{d.year}={v:,.0f}" for d, v in ni)
         out.append(Evidence(
-            category="fundamentals", field="earnings_stability", value=round(stability, 3),
+            category="fundamentals", field="earnings_stability_5y", value=round(stability, 3),
             unit=None, source=source, url=url, as_of=ni[-1][0],
             note=f"近{len(ni)}年淨利穩定度 = max(0, 1 − σ/μ)（1=最穩）（{_span(ni)}）：{detail}",
         ))
