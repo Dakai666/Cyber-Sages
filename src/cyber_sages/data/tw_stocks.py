@@ -27,6 +27,7 @@ from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.finmind import days_ago, finmind_get
 from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.retry import to_thread_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,8 @@ class TWStockProvider:
             ))
 
         # 第二條路徑：yfinance .TW fast_info，供 audit 跨源比對（best-effort）
-        live = await asyncio.to_thread(self._yf_last_price, stock_id)
+        live = await to_thread_with_timeout(
+            lambda: self._yf_last_price(stock_id), what=f"yfinance .TW price {stock_id}")
         if live is not None:
             evs.append(Evidence(
                 category="quote", field="last_price", value=round(live, 2),
@@ -467,10 +469,11 @@ class TWStockProvider:
         if is_tw_etf(stock_id):
             return []  # ETF 無個股盈餘共識
         # yfinance 對台股以 .TW / .TWO 兩種字尾掛牌，依序試（同 _yf_last_price 範式）
-        return await asyncio.to_thread(
-            fetch_estimates, [f"{stock_id}.TW", f"{stock_id}.TWO"], currency="TWD",
-            url=f"https://finance.yahoo.com/quote/{stock_id}.TW/analysis",
-        )
+        return await to_thread_with_timeout(
+            lambda: fetch_estimates(
+                [f"{stock_id}.TW", f"{stock_id}.TWO"], currency="TWD",
+                url=f"https://finance.yahoo.com/quote/{stock_id}.TW/analysis"),
+            what=f"yfinance estimates {stock_id}", default=[])
 
     # ---------- news ----------
 
