@@ -186,6 +186,20 @@ def test_eps_ttm_none_when_quarters_not_contiguous():
     assert USStockProvider._eps_ttm(gaap) is None
 
 
+def test_eps_ttm_picks_revised_value():
+    # 同一季 end 出現多筆（10-Q/A、10-K restated 修訂常見）→ 後寫覆蓋＝取較新修訂值。
+    # 此處 Q4'24 先 0.8、後修訂為 0.85，TTM 應採修訂值。
+    gaap = _eps_entries([
+        ("2024-01-01", "2024-03-31", 0.5, "10-Q"),
+        ("2024-04-01", "2024-06-30", 0.6, "10-Q"),
+        ("2024-07-01", "2024-09-30", 0.7, "10-Q"),
+        ("2024-10-01", "2024-12-31", 0.8, "10-Q"),    # Q4 原值
+        ("2024-10-01", "2024-12-31", 0.85, "10-Q/A"),  # Q4 修訂（同 end）
+    ])
+    val, _, _ = USStockProvider._eps_ttm(gaap)
+    assert val == 0.5 + 0.6 + 0.7 + 0.85           # 採修訂後 0.85，非 0.8
+
+
 def test_eps_ttm_emitted_as_evidence():
     # 四季齊全（含 FY 反推 Q4）→ _facts_to_evidence 應發 eps_ttm 欄位
     facts = _facts()
