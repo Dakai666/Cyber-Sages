@@ -38,7 +38,7 @@ class AuditConfig(BaseModel):
     max_price_divergence_pct: float = 2.0
     max_quote_age_days: int = 5
     max_fundamentals_age_days: int = 120
-    max_macro_age_days: int = 45      # 總經多為月頻，一個月+緩衝
+    max_macro_age_days: int = 60      # 總經多為月頻，一個月+緩衝（W8：45→60，發布落後常見）
     # W2：yfinance 二手 trailing P/E 與 SEC 第一手年報 EPS 反算的 implied P/E 偏離上限。
     # 注意口徑差：yfinance trailing 用 TTM、implied 用最近年報（FY），高成長股年度<TTM
     # 會自然偏離，故閾值放寬到 25%（>此視為 yfinance 二手值可疑 → error）。

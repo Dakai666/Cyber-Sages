@@ -41,6 +41,27 @@ class AuditReport(BaseModel):
         return len(self.errors) > 0
 
 
+# W9 — 缺漏分級表（Spec B 決議 3，模組常數，不散落在 if 裡）。
+# 核心三類缺 → error → 管線降級（信心封頂 0.5）；其餘 → warning + brief 強制揭露。
+# 唯一情境例外（在 _missing_severity 處理）：ETF 無發行人損益表，fundamentals 降為 warning。
+CORE_CATEGORIES: tuple[str, ...] = ("quote", "history", "fundamentals")
+CATEGORY_SEVERITY: dict[str, Severity] = {
+    "quote": "error",
+    "history": "error",
+    "fundamentals": "error",
+    "news": "warning",
+    "chips": "warning",
+    "macro": "warning",
+}
+
+
+def _missing_severity(category: str, store: EvidenceStore) -> Severity:
+    """某類別缺失/抓取失敗時的嚴重度；ETF 無個股財報故 fundamentals 例外降為 warning。"""
+    if category == "fundamentals" and store.instrument == "etf":
+        return "warning"
+    return CATEGORY_SEVERITY.get(category, "warning")
+
+
 def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFinding]:
     findings: list[AuditFinding] = []
     today = date.today()
@@ -48,33 +69,30 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     def field_evs(category: str, field: str):
         return [e for e in store.items if e.category == category and e.field == field]
 
-    # 1. 必要資料齊全（財報欄位名隨市場不同：美股年報 / 台股季報口徑）
+    # 1. 必要資料齊全。嚴重度查 CATEGORY_SEVERITY（決議 3：核心三類缺即降級）；
+    #    財報欄位名隨市場不同（美股年報 / 台股季報口徑）。
     if store.market == "TW":
         fundamentals_fields = ["revenue_latest_quarter", "net_income_latest_quarter", "eps_latest_quarter"]
     else:
         fundamentals_fields = ["revenue_annual", "net_income_annual"]
     required = [
-        ("quote", ["last_price", "latest_close"], "error", "no usable price"),
-        ("history", ["sma_20"], "warning", "no price history / indicators"),
-        ("news", None, "warning", "no recent news"),
+        ("quote", ["last_price", "latest_close"], "no usable price"),
+        ("history", ["sma_20"], "no price history / indicators"),
+        ("news", None, "no recent news"),
+        ("fundamentals", fundamentals_fields,
+         "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"
+         if store.instrument == "etf" else "no first-hand financials"),
     ]
-    # ETF 無個股損益表，要求基本面是錯的口徑；個股才強制第一手財報。
-    if store.instrument == "etf":
-        required.append(("fundamentals", fundamentals_fields, "warning",
-                         "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"))
-    else:
-        required.append(("fundamentals", fundamentals_fields, "error",
-                         "no first-hand financials"))
     # 台股籌碼面：缺三大法人買賣超只是警示（個股當日可能無法人進出資料）
     if store.market == "TW":
-        required.append(("chips", None, "warning", "no institutional/margin (籌碼) data"))
-    for category, fields, severity, msg in required:
+        required.append(("chips", None, "no institutional/margin (籌碼) data"))
+    for category, fields, msg in required:
         evs = store.by_category(category)  # type: ignore[arg-type]
         if fields is not None:
             evs = [e for e in evs if e.field in fields]
         if not evs:
             findings.append(AuditFinding(
-                severity=severity, check="completeness",
+                severity=_missing_severity(category, store), check="completeness",
                 message=f"Missing {category} data: {msg}",
             ))
 
@@ -217,9 +235,17 @@ list is the correct answer for clean data. Reference evidence ids."""
 
 
 async def run_audit(
-    store: EvidenceStore, settings: Settings, gateway: LLMGateway
+    store: EvidenceStore, settings: Settings, gateway: LLMGateway,
+    *, fetch_failures: dict[str, str] | None = None,
 ) -> AuditReport:
     findings = deterministic_checks(store, settings.audit)
+    # W9 — collector 抓取失敗顯式入帳（completeness 只知「缺」，這裡記「為何缺」）。
+    # 嚴重度同分級表：核心類別抓取失敗即降級，而非靜默少一塊資料。
+    for category, err in (fetch_failures or {}).items():
+        findings.append(AuditFinding(
+            severity=_missing_severity(category, store), check="collector_error",
+            message=f"{category} 來源抓取失敗：{err}",
+        ))
     summary = ""
     try:
         out = await gateway.structured(
