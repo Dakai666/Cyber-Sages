@@ -145,3 +145,6 @@ class FinalVerdict(BaseModel):
     key_risks: list[str] = Field(default_factory=list)
     what_would_change_my_mind: str = ""
     dissent_summary: str = Field(default="", description="Honest summary of minority view")
+    # W7：thesis / key_risks / what_would_change_my_mind 內的數字過 cite-check 後，
+    # 重試額度用完仍對不上 evidence 的，由 synthesis 程式回填於此（LLM 不填）供 brief 揭露。
+    unverified: list[UnverifiedClaim] = Field(default_factory=list)

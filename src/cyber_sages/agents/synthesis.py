@@ -8,11 +8,18 @@ from cyber_sages.agents.schemas import (
     DebateVerdict,
     FinalVerdict,
     RiskNote,
+    UnverifiedClaim,
 )
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
+from cyber_sages.verify.citation_check import Claim, check_claims
 from cyber_sages.verify.data_audit import AuditReport
+
+# W7：chief brief 主體（thesis / 風險 / 翻盤條件）過 cite-check 的重試次數。
+# 決議 5：retry 1 次（驗證錯誤回饋進 prompt，與 analyst 階段同機制）→ 仍失敗則標
+# unverified 並在 brief 揭露，不 refuse（degraded-but-disclosed 一貫優於整條報廢）。
+_CHIEF_RECHECK_RETRIES = 1
 
 CHIEF_SYSTEM = """\
 You are the Chief of Staff of an investment council, writing the decision brief
@@ -95,8 +102,31 @@ async def run_synthesis(
         "thesis, risks, invalidation."
     )
 
+    # W7 — chief brief 主體過 cite-check：thesis / key_risks / what_would_change_my_mind
+    # 內的數字必須能由 evidence 推導，否則回饋重寫一次；仍失敗則標 unverified 揭露。
+    all_ids = [e.id for e in store.items]
     verdict = await gateway.structured("chief", system=CHIEF_SYSTEM, prompt=prompt,
                                        schema=FinalVerdict)
+    for attempt in range(_CHIEF_RECHECK_RETRIES + 1):
+        report = check_claims(_chief_claims(verdict, all_ids), store, settings.citation)
+        if report.all_verified:
+            break
+        if attempt < _CHIEF_RECHECK_RETRIES:
+            failures = "\n".join(f'- "{c.claim.text}" -> {c.reason}'
+                                 for c in report.unverified)
+            verdict = await gateway.structured(
+                "chief", system=CHIEF_SYSTEM,
+                prompt=(f"{prompt}\n\n# 你上一版 brief 有數字無法由 evidence 推導\n"
+                        f"{failures}\n\n重寫 brief：修正或刪除 thesis / key_risks / "
+                        "what_would_change_my_mind 內這些對不上 evidence 的數字。"),
+                schema=FinalVerdict,
+            )
+    verdict.unverified = [
+        # 引用全 store 檢查，故不回填冗長的 id 清單；要旨是「此數字無 evidence 可溯」。
+        UnverifiedClaim(text=c.claim.text, evidence_ids=[],
+                        reason="brief 內數字無法由 evidence 推導", kind=c.kind)
+        for c in report.unverified
+    ]
     _flag_unanchored_levels(verdict, store)
 
     risk = await gateway.structured(
@@ -118,6 +148,14 @@ async def run_synthesis(
         verdict.conviction = round(min(verdict.conviction, 0.5), 2)  # 髒資料封頂
         verdict.key_risks.insert(0, "資料品質降級（audit gate 有 error），信心上限 0.5")
     return verdict, risk
+
+
+def _chief_claims(verdict: FinalVerdict, all_ids: list[str]) -> list[Claim]:
+    """把 chief brief 主體拆成可驗的 claim：thesis / 翻盤條件 / 每條風險。
+    chief 不逐句標 evidence id（行內引用紀律屬 Spec D / Phase 5），故引用全 store——
+    本階段只驗「數字可由某筆 evidence 推導」，攔截幻覺數字。"""
+    texts = [verdict.thesis, verdict.what_would_change_my_mind, *verdict.key_risks]
+    return [Claim(text=t, evidence_ids=all_ids) for t in texts if t and t.strip()]
 
 
 def _flag_unanchored_levels(verdict: FinalVerdict, store: EvidenceStore) -> None:
