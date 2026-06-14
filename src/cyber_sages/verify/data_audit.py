@@ -252,15 +252,16 @@ async def run_audit(
     # 嚴重度同分級表：核心類別抓取失敗即降級，而非靜默少一塊資料。
     # 若 completeness 已對同一類別記了「缺」，把錯因併入該條，避免兩條 ~重複 finding（#30）。
     for category, err in (fetch_failures or {}).items():
+        reason = err.split("\n")[0][:200]  # 取首行並截斷：避免多行/超長錯誤破壞 brief 渲染
         existing = next(
             (f for f in findings if f.check == "completeness"
              and f.message.startswith(f"Missing {category} data:")), None)
         if existing:
-            existing.message += f"（來源抓取失敗：{err}）"
+            existing.message += f"（來源抓取失敗：{reason}）"
         else:
             findings.append(AuditFinding(
                 severity=_missing_severity(category, store), check="collector_error",
-                message=f"{category} 來源抓取失敗：{err}",
+                message=f"{category} 來源抓取失敗：{reason}",
             ))
     summary = ""
     try:
