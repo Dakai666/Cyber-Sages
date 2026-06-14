@@ -141,6 +141,35 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 - [ ] 手工打造過程寫成 `docs/specs/` 附錄（= Nüwa 自動化規格的輸入）
 - [ ] confidence clamp 生效測試：構造觸發 ceiling 的 evidence，LLM 給 0.9 也被壓到 ceiling
 
+## E1 實作決議（2026-06-14 DK 定案）
+
+設計層 spec（上）定方向；下列七項定**實作叉路**，由 DK 逐項拍板，作為 Phase 3
+三條 PR 的施工依據。
+
+| # | 決議 | 拍板 | 理由 |
+|---|---|---|---|
+| 1 | rules directional floor 語意 | **只夾 confidence、不翻 stance** | `cap_confidence`（ceiling）一律程式硬收；`bullish_floor`/`bearish_floor` 只在 LLM 已同向表態時套 confidence floor，反向時保留 LLM 的 stance、把「規則 vs LLM 衝突」記入 signal 揭露。維持「LLM 推理為主、程式收口為輔」，避免程式硬翻 stance 製造假確定性。 |
+| 2 | skill private evidence 儲存 | **獨立命名空間掛 sage 名下**（`S-<key>-NNN`） | 不混入共享 `E001…` 序列；每位 sage 只看自己的 private + 共享 store。避免 10 位各算各的污染 digest、破壞 E-id 穩定性與 cache 前綴不變性。cite-check 驗證時組「共享 items + 該 sage private items」暫時 store view 複用既有 `check_claims`，零改動 citation_check.py。 |
+| 3 | sop_trace cite-check 強制度 | **軟揭露**（比照 PR #27 chief brief） | sop_trace 數字過 cite-check，失敗步驟標 `unverified` 並揭露，retry 1 次、不 refuse。sage 推理貴，逐 sage 硬重跑會爆 token。 |
+| 4 | epoch 機制 | **目錄帶 epoch、loader 多版本選取延後 E2** | 目錄名即 `<key>-<epoch>/`、`persona.yaml` 帶 `epoch`，示範 Nüwa 最終格式；但「同 key 取最新 epoch」的選取邏輯 E1 不做（單一 epoch）。 |
+| 5 | 多年衍生欄位 | **E1 補齊 pilot 規則所需多年欄位** | Buffett/Munger 招牌規則需 `roe_5y_avg`/`gross_margin_trend_5y`/`earnings_stability` 等多年訊號（SEC companyfacts 多年原料已在、TW 對齊）。Pack 規則才有「護城河變寬變窄」的真實內涵。 |
+| 6 | PR 拆分 | **三條：框架 → 多年欄位資料 → pilot Pack** | 三個關注點各自乾淨可獨立回溯；資料層擴充屬純 Spec A 性質可先合。 |
+| 7 | epoch 年代 | **Buffett-2019 / Munger-2019** | Apple 時期的 Buffett（對科技更開放、已調整「不懂科技」立場），最貼近當代 NVDA 類標的；lookahead bias 由未來 `replay` 報告固定揭露（見 E2 Q2）。 |
+
+兩項由實作端預設、可隨時推翻：(a) `skills.py` 每 Pack 各一份（符合 spec 目錄結構），共用計算（`owner_earnings`/`margin_of_safety`）放框架當 importable helper；(b) private evidence id 採 `S-<key>-<skill_name>`（如 `S-buffett-owner_earnings`）。
+
+> **PR1 review 後修訂（2026-06-14，B4）**：private evidence id 由原訂流水號 `S-<key>-NNN`
+> 改為 **`S-<key>-<skill_name>`**。流水號會在某 skill `not_evaluable` 被跳過時產生 gap、
+> 並隨「哪些 skill 算得出」重排，使 sop_trace 引用的 id 跨 run/配置漂移；以 skill 名為 id
+> 則穩定、自我說明（單一 Pack 內 skill 名天生唯一）。其餘 PR1 review 修正（B2 HardRule
+> action fail-loud 驗證、B6/B7 清理）見 PR #38；B1/B3/B9 開 issue 追到 E2 開工前。
+
+**三條 PR 範圍**：
+
+- **PR1 — Sage Runtime 框架（data-agnostic 純機制）**：Pack loader（目錄 `<key>-<epoch>/` 與舊單檔共存、`--sages N` 截斷不變）；rules DSL evaluator（純函式 + 完整測試，`field/op/value` + `all`/`any` 巢狀、`not_evaluable`、clamp）；skill 框架（`@skill(requires=...)`、`SkillResult(value, formula, inputs)`、缺欄位降級、輸出登錄為可溯源 private evidence）；`SageSignal` 加 `sop_trace`/`not_evaluable`/規則衝突揭露；三段執行 + clamp 取代 council 單發 prompt；degraded 8 位舊 yaml 走原路徑；sop_trace 軟揭露 cite-check 接線。
+- **PR2 — 多年衍生欄位**：SEC 多年 annual → `roe_5y_avg`/`gross_margin_trend_5y`/`earnings_stability`（最終清單由 pilot 的 rules+skills `requires` 聯集反推）；TW FinMind 對齊；確定性計算、canonical 命名；audit 不列必需。
+- **PR3 — Buffett-2019 + Munger-2019 手工 Pack**：各 `persona.yaml`（含 `weight_rationale` + `sources` manifest）/`rules.yaml`/`sop.yaml`/`skills.py`；跑 NVDA + 2330 各一 run 驗 sop_trace 錨點 + clamp 生效測試；手工過程寫成 `docs/specs/` 附錄（= Nüwa 規格輸入）。
+
 ## E2：Cyber-Nüwa 蒸餾引擎
 
 ### 定位（issue #2 命名提案決議）
@@ -209,6 +238,13 @@ validate     見 Q2
 - 常駐線上演化（自動監聽大師新聞觸發 re-distil）——未來
 - 跨資產 persona（crypto 大師等）——未來
 - 完整回測器（勝率統計）——只做最小重放
+
+## 未來點子（記錄，不在 E1/E2 範圍）
+
+- **跨 epoch 同人對決**（DK 2026-06-14）：`buffett-2008/` vs `buffett-2019/` 同席合議
+  或辯論——同一位大師、兩個成熟期，看金融海嘯前後的判準差異如何裁同一支股。
+  這是 Q3「同 key 多 epoch 並存 + git 版本機制」的殺手級應用，等 E2 Nüwa 能量產
+  多 epoch Pack、且 loader 的多版本選取/指定邏輯落地後才開。
 
 ## 相關檔案
 

@@ -1,6 +1,6 @@
 # Cyber-Sages Roadmap
 
-**Revision**: 2026-06-14（v5 — Phase 1+2 follow-up 全數清理（僅 #25 deferred），main 175 passed；下一步 Phase 3 / Spec E1）
+**Revision**: 2026-06-14（v6 — Phase 3 / Spec E1 設計定案：7 項實作叉路逐項拍板（見 Spec E「E1 實作決議」附錄），拆三條 PR：框架 → 多年欄位資料 → Buffett/Munger-2019 pilot Pack；PR1 框架開工中）
 
 ## 願景
 
@@ -165,6 +165,19 @@ Persona Pack 格式（persona.yaml + rules.yaml + sop.yaml + skills.py）+ Runti
 三段執行（skill pass 程式算 → rule pass 程式判 → SOP pass LLM 按專屬工作流走）。
 **Buffett + Munger 兩位手工打造**為試點——手工過程的步驟紀錄，就是 Phase 6
 Nüwa 要自動化的規格。其餘 8 位以舊格式向後相容運行，漸進遷移。
+
+**設計定案（2026-06-14，7 項實作決議見 Spec E「E1 實作決議」附錄）**：directional
+floor 只夾 confidence 不翻 stance；skill private evidence 獨立命名空間（`S-<key>-NNN`）；
+sop_trace 軟揭露 cite-check；目錄帶 epoch 但多版本選取延後 E2；補齊多年衍生欄位；
+epoch 選 **2019**（Apple 時期）。拆三條 PR：
+
+1. **框架**（data-agnostic）：Pack loader（目錄/單檔共存）+ rules DSL evaluator +
+   skill 框架 + `SageSignal.sop_trace`/`not_evaluable` + 三段執行 + clamp + 軟揭露
+   cite-check 接線；degraded 8 位走原路徑。← **開工中**（branch `feat/e1-sage-runtime-framework`）
+2. **多年欄位資料**（純 Spec A 性質）：`roe_5y_avg`/`gross_margin_trend_5y`/
+   `earnings_stability` 等（SEC 多年 + TW 對齊，清單由 pilot requires 反推）。
+3. **pilot Pack**：Buffett-2019 + Munger-2019 手工 Pack，跑 NVDA/2330 驗 sop_trace
+   錨點 + clamp 生效；手工過程寫成 `docs/specs/` 附錄。
 
 ### Phase 4 — Spec C：陪審團結構
 

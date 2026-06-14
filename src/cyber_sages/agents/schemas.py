@@ -42,6 +42,19 @@ class AnalystReport(BaseModel):
     unverified: list[UnverifiedClaim] = Field(default_factory=list)  # cite-check 後標記
 
 
+class SopStepResult(BaseModel):
+    """SOP pass 中大師逐步作答的單步紀錄——步驟名 + 結論 + 引用 evidence id。
+
+    每步的結論文字裡的數字會過 cite-check（軟揭露：對不上標 unverified，不 refuse）。
+    """
+    step: str = Field(description="The SOP step id this conclusion answers")
+    conclusion: str = Field(description="This step's finding in Traditional Chinese, in voice")
+    evidence_ids: list[str] = Field(
+        default_factory=list,
+        description="Evidence ids (shared E### or this sage's private S-<key>-###) anchoring it",
+    )
+
+
 class SageSignal(BaseModel):
     sage: str = ""
     stance: Stance
@@ -49,6 +62,22 @@ class SageSignal(BaseModel):
     thesis: str = Field(description="3-5 sentences in Traditional Chinese, in this sage's voice")
     key_evidence_ids: list[str] = Field(default_factory=list)
     what_would_change_my_mind: str
+    # 以下為 Persona Pack（Sage Runtime）專屬；degraded 舊單檔 persona 留空。
+    # sop_trace 由 SOP pass 的 LLM 填；其餘三項由 Runtime 程式回填（LLM 不可信，程式收口）。
+    sop_trace: list[SopStepResult] = Field(
+        default_factory=list, description="Per-step reasoning trace following this sage's SOP"
+    )
+    not_evaluable: list[str] = Field(
+        default_factory=list,
+        description="Rules/skills this sage normally applies but couldn't (missing fields)",
+    )
+    rule_conflicts: list[str] = Field(
+        default_factory=list,
+        description="Hard-rule directional floors that disagreed with the LLM's stance",
+    )
+    unverified: list[UnverifiedClaim] = Field(
+        default_factory=list, description="sop_trace steps whose numbers failed cite-check"
+    )
 
 
 class CouncilVerdict(BaseModel):
