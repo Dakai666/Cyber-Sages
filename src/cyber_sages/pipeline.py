@@ -132,18 +132,21 @@ async def run_pipeline(
         provider.get_quote(ticker), provider.get_history(ticker),
         provider.get_fundamentals(ticker), provider.get_news(ticker),
     ]
+    labels = ["quote", "history", "fundamentals", "news"]
     if isinstance(provider, ChipsProvider):
-        collectors.append(provider.get_chips(ticker))
+        collectors.append(provider.get_chips(ticker)); labels.append("chips")
     if isinstance(provider, EstimateProvider):
-        collectors.append(provider.get_estimates(ticker))
+        collectors.append(provider.get_estimates(ticker)); labels.append("estimate")
     if macro_provider is not None:
-        collectors.append(macro_provider.get_macro())
+        collectors.append(macro_provider.get_macro()); labels.append("macro")
 
     results = await asyncio.gather(*collectors, return_exceptions=True)
     fetch_errors = []
-    for r in results:
+    fetch_failures: dict[str, str] = {}  # W9：類別→錯誤訊息，交給 audit 顯式入帳/分級
+    for label, r in zip(labels, results):
         if isinstance(r, BaseException):
-            fetch_errors.append(str(r))
+            fetch_errors.append(f"{label}: {r}")
+            fetch_failures[label] = str(r)
         else:
             store.add_all(r)
     if not store.items:
@@ -156,7 +159,7 @@ async def run_pipeline(
 
     # [2] Audit gate
     await _emit(on_stage, "audit", "running", "deterministic checks + LLM auditor")
-    audit = await run_audit(store, settings, gateway)
+    audit = await run_audit(store, settings, gateway, fetch_failures=fetch_failures)
     if audit.degraded:
         await _emit(on_stage, "audit", "warn",
                     f"DEGRADED — {len(audit.errors)} error(s)，信心將封頂 0.5")
