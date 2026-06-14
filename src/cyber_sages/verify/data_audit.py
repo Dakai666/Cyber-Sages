@@ -174,15 +174,17 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
             ))
 
     # 6. W2 — US trailing P/E cross-check：yfinance 的 trailing_pe 是它自算的二手值，
-    # 用 SEC 第一手年報 EPS 反算 implied P/E 比對，偏離過大代表二手值可疑 → error。
+    # 用 SEC 第一手 EPS 反算 implied P/E 比對，偏離過大代表二手值可疑 → error。
     # 僅 US：trailing_pe 由 yfinance info 提供，TW 端不發此欄位。
+    # issue #19：改用 eps_ttm（最近四季合計）→ 與 yfinance trailing 同口徑（TTM-vs-TTM），
+    # 閾值收回嚴格 10%。eps_ttm 缺（季度不足）時不退回年報——寧可不比，也不在錯口徑上誤報。
     if store.market == "US":
         pe = field_evs("quote", "trailing_pe")
-        eps_a = field_evs("fundamentals", "eps_diluted_annual")
+        eps_ttm = field_evs("fundamentals", "eps_ttm")
         price = field_evs("quote", "last_price") or field_evs("quote", "latest_close")
-        if pe and eps_a and price and float(eps_a[0].value) > 0:
+        if pe and eps_ttm and price and float(eps_ttm[0].value) > 0:
             yf_pe = float(pe[0].value)
-            implied_pe = float(price[0].value) / float(eps_a[0].value)
+            implied_pe = float(price[0].value) / float(eps_ttm[0].value)
             if yf_pe > 0:
                 # 分母用 yf_pe（非 max）：度量「yfinance 二手值偏離 SEC 第一手真相的相對誤差」，
                 # 刻意不對稱——與既有 internal_consistency 的 |implied-reported|/reported 同風格。
@@ -191,9 +193,9 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                     findings.append(AuditFinding(
                         severity="error", check="cross_source",
                         message=f"P/E divergence {div:.0f}%: yfinance trailing P/E {yf_pe:.1f} "
-                                f"vs SEC-implied (price/EPS_annual) {implied_pe:.1f} "
-                                f"(max {cfg.max_pe_divergence_pct:.0f}%; 口徑差: TTM vs FY 年報)",
-                        evidence_ids=[pe[0].id, eps_a[0].id, price[0].id],
+                                f"vs SEC-implied (price/eps_ttm) {implied_pe:.1f} "
+                                f"(max {cfg.max_pe_divergence_pct:.0f}%; TTM-vs-TTM 口徑對齊)",
+                        evidence_ids=[pe[0].id, eps_ttm[0].id, price[0].id],
                     ))
     return findings
 

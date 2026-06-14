@@ -129,27 +129,98 @@ def test_latest_form_prefix_routes_annual_vs_quarterly():
     assert annual["val"] == 200 and quarterly["val"] == 60
 
 
+# ---------- eps_ttm（最近四季合計，issue #19）----------
+
+def _eps_entries(items):
+    """items: list of (start, end, val, form) → companyfacts gaap dict for EPS only。"""
+    return {"EarningsPerShareDiluted": {"units": {"USD/shares": [
+        {"form": form, "start": s, "end": e, "val": v} for s, e, v, form in items]}}}
+
+
+def test_eps_ttm_reconstructs_q4_from_fy_minus_q123():
+    # 最近期是 Q1'25（10-Q）→ TTM = Q1'25 + Q4'24 + Q3'24 + Q2'24。
+    # Q4'24 無 10-Q，須由 FY'24 − (Q1'24+Q2'24+Q3'24) 反推。
+    gaap = _eps_entries([
+        ("2024-01-01", "2024-03-31", 0.5, "10-Q"),   # Q1'24
+        ("2024-04-01", "2024-06-30", 0.6, "10-Q"),   # Q2'24
+        ("2024-07-01", "2024-09-30", 0.7, "10-Q"),   # Q3'24
+        ("2024-01-01", "2024-12-31", 2.6, "10-K"),   # FY'24 → Q4'24 = 2.6-1.8 = 0.8
+        ("2025-01-01", "2025-03-31", 0.9, "10-Q"),   # Q1'25
+    ])
+    val, as_of, note = USStockProvider._eps_ttm(gaap)
+    # 最近四季 = Q2'24 0.6 + Q3'24 0.7 + Q4'24 0.8 + Q1'25 0.9 = 3.0
+    assert val == 3.0
+    assert as_of == date(2025, 3, 31)
+    assert "反推" in note
+
+
+def test_eps_ttm_ignores_ytd_cumulative_entries():
+    # 10-Q 同時報單季與 YTD 累計（6/9 個月）；只算單季，YTD 須被 duration 篩掉。
+    gaap = _eps_entries([
+        ("2024-01-01", "2024-03-31", 0.5, "10-Q"),    # Q1 單季
+        ("2024-04-01", "2024-06-30", 0.6, "10-Q"),    # Q2 單季
+        ("2024-01-01", "2024-06-30", 1.1, "10-Q"),    # 上半年 YTD（須忽略）
+        ("2024-07-01", "2024-09-30", 0.7, "10-Q"),    # Q3 單季
+        ("2024-01-01", "2024-09-30", 1.8, "10-Q"),    # 前三季 YTD（須忽略）
+        ("2024-01-01", "2024-12-31", 2.6, "10-K"),    # FY → Q4 = 0.8
+    ])
+    val, _, _ = USStockProvider._eps_ttm(gaap)
+    # 全年四季（Q1+Q2+Q3+Q4）= FY = 2.6；若誤納 YTD 會爆掉
+    assert val == 2.6
+
+
+def test_eps_ttm_none_when_insufficient_quarters():
+    # 只有一個 FY、無單季 → 無法合計四季 → None（寧缺勿錯）
+    gaap = _eps_entries([("2024-01-01", "2024-12-31", 2.6, "10-K")])
+    assert USStockProvider._eps_ttm(gaap) is None
+
+
+def test_eps_ttm_none_when_quarters_not_contiguous():
+    # 四季中間缺一季（Q2 缺）→ 不相鄰 → None，不把不連續季硬加
+    gaap = _eps_entries([
+        ("2024-01-01", "2024-03-31", 0.5, "10-Q"),   # Q1
+        ("2024-07-01", "2024-09-30", 0.7, "10-Q"),   # Q3（缺 Q2）
+        ("2024-10-01", "2024-12-31", 0.8, "10-Q"),   # Q4
+        ("2025-01-01", "2025-03-31", 0.9, "10-Q"),   # Q1'25
+    ])
+    assert USStockProvider._eps_ttm(gaap) is None
+
+
+def test_eps_ttm_emitted_as_evidence():
+    # 四季齊全（含 FY 反推 Q4）→ _facts_to_evidence 應發 eps_ttm 欄位
+    facts = _facts()
+    facts["facts"]["us-gaap"]["EarningsPerShareDiluted"] = _eps_entries([
+        ("2024-01-01", "2024-03-31", 0.5, "10-Q"),
+        ("2024-04-01", "2024-06-30", 0.6, "10-Q"),
+        ("2024-07-01", "2024-09-30", 0.7, "10-Q"),
+        ("2024-01-01", "2024-12-31", 2.6, "10-K"),
+    ])["EarningsPerShareDiluted"]
+    m = {e.field: e for e in USStockProvider._facts_to_evidence(facts, "http://x")}
+    assert "eps_ttm" in m and m["eps_ttm"].value == 2.6
+    assert m["eps_ttm"].unit == "USD/shares"
+
+
 # ---------- W2 P/E cross-check ----------
 
-def _us_store(trailing_pe: float, eps_annual: float = 2.0, price: float = 20.0) -> EvidenceStore:
+def _us_store(trailing_pe: float, eps_ttm: float = 2.0, price: float = 20.0) -> EvidenceStore:
     store = EvidenceStore(ticker="TEST", market="US")
     store.add_all([
         Evidence(category="quote", field="last_price", value=price, unit="USD", source="yf"),
         Evidence(category="quote", field="trailing_pe", value=trailing_pe, source="yfinance info (derived)"),
-        Evidence(category="fundamentals", field="eps_diluted_annual", value=eps_annual,
+        Evidence(category="fundamentals", field="eps_ttm", value=eps_ttm,
                  unit="USD/shares", source="SEC", as_of=date.today()),
     ])
     return store
 
 
 def test_pe_crosscheck_passes_when_aligned():
-    # price 20 / eps 2 = implied P/E 10；yfinance 11 → 偏離 ~9% < 25%，無 finding
+    # price 20 / eps_ttm 2 = implied P/E 10；yfinance 11 → 偏離 ~9% < 10%，無 finding
     findings = deterministic_checks(_us_store(trailing_pe=11.0), AuditConfig())
     assert not [f for f in findings if f.check == "cross_source" and "P/E" in f.message]
 
 
 def test_pe_crosscheck_errors_on_large_divergence():
-    # implied 10 vs yfinance 30 → 偏離 ~67% > 25% → error
+    # implied 10 vs yfinance 30 → 偏離 ~67% > 10% → error
     findings = deterministic_checks(_us_store(trailing_pe=30.0), AuditConfig())
     pe = [f for f in findings if f.check == "cross_source" and "P/E" in f.message]
     assert len(pe) == 1 and pe[0].severity == "error"
@@ -169,8 +240,8 @@ def _has_pe_finding(store: EvidenceStore) -> bool:
 
 
 def test_pe_crosscheck_skips_negative_eps():
-    # 虧損公司 EPS_annual < 0 → P/E 無意義，須早退不發 finding（即便數值上偏離很大）
-    assert not _has_pe_finding(_us_store(trailing_pe=30.0, eps_annual=-2.0))
+    # 虧損公司 eps_ttm < 0 → P/E 無意義，須早退不發 finding（即便數值上偏離很大）
+    assert not _has_pe_finding(_us_store(trailing_pe=30.0, eps_ttm=-2.0))
 
 
 def test_pe_crosscheck_skips_nonpositive_yf_pe():
@@ -183,7 +254,7 @@ def test_pe_crosscheck_skips_when_eps_missing():
     store.add_all([
         Evidence(category="quote", field="last_price", value=20.0, unit="USD", source="yf"),
         Evidence(category="quote", field="trailing_pe", value=30.0, source="yfinance info (derived)"),
-        # 無 eps_diluted_annual
+        # 無 eps_ttm → 不做比對（不退回年報，避免錯口徑誤報）
     ])
     assert not _has_pe_finding(store)
 
