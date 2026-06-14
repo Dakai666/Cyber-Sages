@@ -48,8 +48,8 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "category (forward_eps, target_mean_price, *_growth_est) — label these as "
         "analyst consensus / forward estimates, never as realised first-hand figures. "
         "When industry/market benchmarks are present (reference category: industry_pe_*, "
-        "market_pe_trailing — Damodaran industry aggregates), compare this stock's multiple "
-        "to its industry and the market to judge relative cheapness/richness.",
+        "market_pe_trailing — Damodaran industry aggregates), report this stock's multiple "
+        "and the gap to its industry and the market — leave the cheap/rich judgment to the sages.",
         ["fundamentals", "quote", "profile", "estimate", "reference"],
     ),
     (
@@ -57,9 +57,11 @@ ANALYSTS: list[tuple[str, str, str, list[Category]]] = [
         "The macro regime and what it implies for risk assets and THIS stock's sector: "
         "rate level and direction (fed funds, 2y/10y), the 10y-2y curve (inversion = "
         "recession signal), inflation trend (CPI YoY), and labor market (unemployment, "
-        "nonfarm payrolls). Characterise the macro backdrop as supportive or restrictive "
-        "for the sector as a factual observation — do NOT restate raw numbers without "
-        "context, and do NOT turn it into a buy/sell call on the stock.",
+        "nonfarm payrolls). Explain how the current regime bears on the sector through "
+        "concrete channels (rate level -> discount rate / financing cost; 2y/10y curve -> "
+        "cycle stage; CPI -> input/margin pressure) as factual context — do NOT restate raw "
+        "numbers without context, and do NOT turn it into a buy/sell or supportive/restrictive "
+        "verdict on the stock (the sages weigh the net effect).",
         ["macro"],
     ),
 ]

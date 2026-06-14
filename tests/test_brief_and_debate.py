@@ -60,6 +60,14 @@ def test_analyst_is_neutral_data_layer_no_outlook():
         assert stance not in out
 
 
+def test_analyst_system_prompt_states_neutrality_rule():
+    # P8 prompt 護欄：未來改 prompt 時不可靜默丟失「analyst 供數據非意見」鐵律。
+    from cyber_sages.agents.analysts import ANALYST_SYSTEM
+    low = ANALYST_SYSTEM.lower()
+    assert "data" in low and "not opinion" in low
+    assert "buy/sell" in low or "bullish/bearish" in low
+
+
 # ---------- Issue 3：敗方離群者需論點級反駁 ----------
 
 def _council() -> CouncilVerdict:
