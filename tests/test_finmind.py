@@ -156,6 +156,8 @@ def _http_error_ra(status: int, retry_after: str) -> httpx.HTTPStatusError:
 
 def test_get_retry_after_parses_seconds():
     assert get_retry_after(_http_error_ra(429, "2")) == 2.0
+    assert get_retry_after(_http_error_ra(429, "1.5")) == 1.5   # 實務上偶有小數秒
+    assert get_retry_after(_http_error_ra(429, "inf")) is None  # 惡意非有限值擋掉
 
 
 def test_get_retry_after_parses_http_date_future():

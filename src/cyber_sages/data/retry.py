@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
@@ -43,9 +44,10 @@ def is_retryable(exc: Exception) -> bool:
 def get_retry_after(exc: Exception) -> float | None:
     """從 HTTP 回應的 `Retry-After` header 解析 server 要求的等待秒數（#17，禮貌用戶）。
 
-    支援兩種格式：純秒數（`Retry-After: 2`）與 HTTP-date（`Retry-After: Wed, 21 Oct ...`）。
-    EDGAR 對 429、FRED 偶發 503 會回此 header；尊重它可避免過早重試又踩限流。
-    無 header / 非 HTTPStatusError / 解析失敗則回 None（退回預設指數退避）。
+    支援兩種格式：秒數（`Retry-After: 2`，RFC 僅定整數，但實務上偶有送 `1.5`，一併接受）
+    與 HTTP-date（`Retry-After: Wed, 21 Oct ...`）。EDGAR 對 429、FRED 偶發 503 會回此
+    header；尊重它可避免過早重試又踩限流。
+    無 header / 非 HTTPStatusError / 解析失敗 / 非有限值則回 None（退回預設指數退避）。
     """
     if not isinstance(exc, httpx.HTTPStatusError):
         return None
@@ -53,8 +55,12 @@ def get_retry_after(exc: Exception) -> float | None:
     if not raw:
         return None
     raw = raw.strip()
-    if raw.isdigit():
-        return float(raw)
+    try:
+        secs = float(raw)              # "2" / "1.5" 皆可；HTTP-date 會拋 ValueError 走下一段
+    except ValueError:
+        pass
+    else:
+        return max(0.0, secs) if math.isfinite(secs) else None  # 擋 inf/nan（惡意值）
     try:
         dt = parsedate_to_datetime(raw)
     except (TypeError, ValueError):
