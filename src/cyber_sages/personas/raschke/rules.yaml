@@ -1,0 +1,46 @@
+# Raschke 硬規則（DSL，程式判定、零幻覺）：短線動能順勢 + 過熱/超賣的均值回歸收口。
+# 技術欄位由 data/indicators.py 確定性產出：sma_* / rsi_14 / macd_histogram。
+# trend_alignment_score / pullback_depth_to_sma20 為本 Pack skill 的 private derived 欄位。
+#
+# ⚠ 需 ~30+ 交易日歷史；不足時規則記 not_evaluable（誠實揭露），Raschke 會說節奏還讀不出來。
+hard_rules:
+  - id: momentum-with-trend
+    if:
+      all:
+        - {field: trend_alignment_score, op: ">=", value: 1}
+        - {field: macd_histogram, op: ">", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: 短均上行且 MACD 動能為正——順節奏做多的窗口，動能先於價格
+
+  - id: momentum-against-trend
+    if:
+      all:
+        - {field: trend_alignment_score, op: "<=", value: -1}
+        - {field: macd_histogram, op: "<", value: 0}
+    action: bearish_floor
+    confidence_floor: 0.55
+    note: 短均下行且動能轉負——節奏偏空，反彈是減碼/放空點而非進場
+
+  - id: overbought-exhaustion
+    if: {field: rsi_14, op: ">", value: 75}
+    action: cap_confidence
+    confidence_ceiling: 0.55
+    note: RSI 過熱、短線易見均值回歸——別追，等回測 20MA 的節奏點再說
+
+  - id: oversold-snapback-watch
+    if: {field: rsi_14, op: "<", value: 25}
+    action: cap_confidence
+    confidence_ceiling: 0.6
+    note: 超賣易現反抽（first-cross 反轉）——無論多空，此處信心都先收口
+
+exceptions:
+  - >
+    進場前先定停損與第一目標：沒有明確出場點就不交易。動用方向判斷時要引用 evidence
+    說明停損錨在哪（SMA20/前低）、波動（volatility_30d_annualized_pct）容許多大部位。
+  - >
+    Holy-Grail 進場只在「強勢趨勢回測 20MA 的小乖離」成立時——若 pullback_depth_to_sma20
+    乖離過大（追高）或已跌破短均（趨勢轉弱），誠實說「節奏不對、這把不做」。
+  - >
+    機率優先於預測：單筆對錯不重要。若盤面訊號互相矛盾（趨勢與動能背離），寧可判
+    neutral 等更清楚的節奏，而非硬湊一個方向。

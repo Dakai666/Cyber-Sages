@@ -1,0 +1,22 @@
+# Livermore 決策工作流——流程本身就是視角：讀盤 → 最小阻力線 → 關鍵點 → 停損/加碼 →
+# 結論。SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: read-the-tape
+    ask: 近期價格與動能在說什麼？多空誰握有主動權？這是趨勢盤還是糾結盤？
+    look_at: [history.return_1m_pct, history.return_3m_pct, history.macd_histogram, history.rsi_14]
+
+  - step: line-of-least-resistance
+    ask: 最小阻力線是向上還是向下？均線排列是否一致地支持這個方向？
+    use_skill: trend_alignment_score
+
+  - step: pivotal-point
+    ask: 現價離關鍵點（52 週高/前高）多遠？是正在突破，還是還在醞釀？
+    look_at: [history.pct_below_52w_high, history.high_52w, quote.last_price]
+    on_fail: 關鍵點未到就別預設立場——寧可錯過起步，也不要猜頭猜底
+
+  - step: stop-and-pyramid
+    ask: 若我錯了，停損錨在哪（前低 low_52w / 均線）？順勢的話金字塔加碼的條件是什麼？
+    look_at: [history.low_52w, history.sma_50, history.volatility_30d_annualized_pct]
+
+  - step: verdict
+    ask: 綜合盤面——順著最小阻力線，這是進場、續抱坐穩、還是退場觀望？

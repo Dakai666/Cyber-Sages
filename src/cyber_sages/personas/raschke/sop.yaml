@@ -1,0 +1,22 @@
+# Raschke 決策工作流——流程本身就是視角：市場節奏 → 趨勢方向 → 回檔進場 → 停損/目標 →
+# 結論。SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: market-rhythm
+    ask: 現在是順勢推進、還是過熱/超賣的轉折節奏？動能領先價格說了什麼？
+    look_at: [history.macd_histogram, history.rsi_14, history.return_1m_pct]
+
+  - step: trend-direction
+    ask: 短期趨勢的方向為何？我只順著節奏的方向做，不逆勢猜轉折。
+    use_skill: trend_alignment_score
+
+  - step: pullback-entry
+    ask: 強勢是否回測 20MA 形成 Holy-Grail 進場點？乖離過大就不追、跌破短均就不做。
+    use_skill: pullback_depth_to_sma20
+    on_fail: 節奏點還沒到就空手等待——機率不站在我這邊時，不交易就是最好的交易
+
+  - step: stop-and-target
+    ask: 進場前先定停損與第一目標——波動多大？風險報酬比是否值得這一把？
+    look_at: [history.volatility_30d_annualized_pct, history.sma_20, history.low_52w]
+
+  - step: verdict
+    ask: 依市場節奏與機率——這是順勢進場、空手觀望、還是反向？

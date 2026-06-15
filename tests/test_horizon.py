@@ -40,6 +40,7 @@ def test_roster_horizon_tags():
     by = {p.name: p.horizons for p in load_personas()}
     assert by["Warren Buffett"] == ["value"] and by["Charlie Munger"] == ["value"]
     assert by["Jesse Livermore"] == ["trading"]
+    assert by["Mark Minervini"] == ["trading"] and by["Linda Raschke"] == ["trading"]
     assert "trading" in by["Stanley Druckenmiller"] and "value" in by["Stanley Druckenmiller"]
 
 
@@ -56,8 +57,11 @@ async def test_trading_horizon_seats_only_trading_sages():
     council = await run_council(EvidenceStore(ticker="NVDA", market="US"), [],
                                _settings(), _gw(), horizon="trading", n_sages=10)
     seated = {s.sage for s in council.signals}
-    # 只有 trading 適用者出席（現 roster：Livermore / Druckenmiller / Taleb）
-    assert seated <= {"Jesse Livermore", "Stanley Druckenmiller", "Nassim Taleb"}
+    # 只有 trading 適用者出席（PR3 roster：Livermore / Minervini / Raschke 純交易 +
+    # Druckenmiller / Taleb 兼職）。純價值大師一律 abstain。
+    assert seated <= {"Jesse Livermore", "Mark Minervini", "Linda Raschke",
+                      "Stanley Druckenmiller", "Nassim Taleb"}
+    assert {"Jesse Livermore", "Mark Minervini", "Linda Raschke"} <= seated  # 純交易者皆出席
     assert "Warren Buffett" in council.abstained      # 價值大師對短線 abstain
     assert "Charlie Munger" in council.abstained
 

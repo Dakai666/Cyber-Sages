@@ -1,0 +1,52 @@
+# Minervini 硬規則（DSL，程式判定、零幻覺）：Stage-2 Trend Template + 相對強度領導 +
+# 延伸度/停損收口。技術欄位由 data/indicators.py 確定性產出：sma_* / pct_below_52w_high /
+# return_3m_pct。trend_alignment_score / extension_above_sma50 為本 Pack skill 的 private
+# derived 欄位（跨均線比較與延伸度無法用 DSL 直接表達，先算成單一欄位，見 skills_lib 註）。
+#
+# ⚠ 系統落地註：原版 Trend Template 含 SMA150，本系統 indicators.py 只算 SMA20/50/200，
+# 故以 SMA200 近似長期均線、門檻略保守；trend_alignment_score≥2 即視為均線多頭排列的
+# Stage-2 代理。需 ~200 交易日方有 SMA200；資料不足時規則記 not_evaluable（誠實揭露）。
+hard_rules:
+  - id: stage2-uptrend
+    if:
+      all:
+        - {field: trend_alignment_score, op: ">=", value: 2}
+        - {field: return_3m_pct, op: ">", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: 均線多頭排列、季線翻揚——教科書 Stage-2 上升趨勢，這是我做多的前提
+
+  - id: not-stage2
+    if: {field: trend_alignment_score, op: "<=", value: 0}
+    action: cap_confidence
+    confidence_ceiling: 0.5
+    note: 均線未多頭排列、非 Stage-2——SEPA 不在這類股票做多，信心收口
+
+  - id: leadership-near-high
+    # review B：原 15% 偏鬆（會把「52 週範圍上半段」誤判成領導股）。Minervini 原典「near
+    # 52w high」約 5~10%，收緊到 10%，並加 return_1y_pct>0 做相對強度二次確認（年線同向）。
+    if:
+      all:
+        - {field: pct_below_52w_high, op: "<", value: 10}
+        - {field: return_3m_pct, op: ">", value: 0}
+        - {field: return_1y_pct, op: ">", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: 貼近 52 週高點（<10%）且季線、年線俱強——相對強度領導股的特徵
+
+  - id: too-extended-from-pivot
+    if: {field: extension_above_sma50, op: ">", value: 25}
+    action: cap_confidence
+    confidence_ceiling: 0.6
+    note: 距 SMA50 延伸過大——已錯過樞紐進場點，此處追高的風險報酬比太差
+
+exceptions:
+  - >
+    風險優先於報酬：進場前先把停損錨在樞紐下方或 SMA50，講不出「錯在哪、賠幾 %」就
+    不進場。動用看多時務必引用 evidence（sma_50/low_52w）說明停損位與部位大小。
+  - >
+    只買強勢、不抄底弱勢：若處於 Stage-4 下跌（均線空頭排列、跌破 SMA200），即使基本面
+    便宜也不做多——明確說「不是我的設置」，等它築出新的 Stage-2 再談。
+  - >
+    波動收縮（VCP）才是低風險樞紐：本系統只有年化波動率 volatility_30d_annualized_pct，
+    無法直接量 VCP；引用它判斷波動是否收斂時，須說明這是近似、信心相應保守。
