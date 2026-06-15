@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from cyber_sages.agents.council import _HORIZON_NOTE, run_council
+import pytest
+
+from cyber_sages.agents.council import _HORIZON_NOTE, run_council, tally
+from cyber_sages.agents.schemas import SageSignal
 from cyber_sages.agents.synthesis import _HORIZON_PLAN
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.personas.pack import Persona, load_personas
@@ -57,6 +60,34 @@ async def test_trading_horizon_seats_only_trading_sages():
     assert seated <= {"Jesse Livermore", "Stanley Druckenmiller", "Nassim Taleb"}
     assert "Warren Buffett" in council.abstained      # 價值大師對短線 abstain
     assert "Charlie Munger" in council.abstained
+
+
+async def test_zero_applicable_horizon_fails_loud(monkeypatch):
+    # review C：某 horizon 無任何適用大師時 fail-loud，不可靜默產出「0 席、中性共識」。
+    only_value = [Persona(key="b", name="B", philosophy="p", focus="f", voice="v",
+                          horizons=["value"])]
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas",
+                        lambda limit=None: only_value)
+    with pytest.raises(RuntimeError, match="沒有任何適用大師"):
+        await run_council(EvidenceStore(ticker="X", market="US"), [], _settings(),
+                          _gw(), horizon="trading")
+
+
+def test_tally_three_way_tie_yields_neutral_zero():
+    # review D：trading run 可能 3 席 1B/1S/1N——consensus 留 neutral、weighted 0.0、不 crash。
+    sigs = [
+        SageSignal(sage="A", stance="bullish", confidence=0.6, thesis="t",
+                   what_would_change_my_mind="w"),
+        SageSignal(sage="B", stance="bearish", confidence=0.6, thesis="t",
+                   what_would_change_my_mind="w"),
+        SageSignal(sage="C", stance="neutral", confidence=0.6, thesis="t",
+                   what_would_change_my_mind="w"),
+    ]
+    personas = [Persona(key=k, name=k, philosophy="p", focus="f", voice="v")
+                for k in ("A", "B", "C")]
+    v = tally(sigs, personas)
+    assert v.consensus == "neutral" and v.weighted_score == 0.0
+    assert v.bullish == 1 and v.bearish == 1 and v.neutral == 1
 
 
 def test_horizon_guidance_constants_distinct():

@@ -56,13 +56,16 @@ Write concerns in Traditional Chinese."""
 
 
 # action plan 口徑隨 horizon（Spec C v2 P9）：同一支股，當沖與長持的進出場紀律本質不同。
+# 注意命名撞詞（review A）：`horizons` 三段＝brief 內 short/mid/long 三個子時間軸（HorizonView），
+# 與本 run 的 trading/value 投資框架是不同概念——下方「horizons 三段」指前者。
 _HORIZON_PLAN = {
     "value": "# Action-plan 口徑：VALUE（數年）——分批建倉、較寬的停損（容忍多年波動）、"
              "進場錨在估值/長期支撐，invalidation 是長期論點翻盤（護城河受損 / 成長失速），"
-             "position_hint 偏長期分批。horizons 三段以「持有數年」的角度寫。",
+             "position_hint 偏長期分批。brief 的 short/mid/long 三段以「持有數年」的角度寫。",
     "trading": "# Action-plan 口徑：TRADING（數天~數週）——明確進場區與緊停損（按近期波動/"
                "結構）、清楚的獲利目標與短線失效訊號（跌破關鍵均線/動能轉弱），invalidation 是"
-               "短線結構破壞，position_hint 偏快進快出。horizons 三段以「數天~數週」的角度寫。",
+               "短線結構破壞，position_hint 偏快進快出。brief 的 short/mid/long 三段以「數天~數週」"
+               "的角度寫。",
 }
 
 

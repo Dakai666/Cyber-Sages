@@ -188,7 +188,9 @@ async def run_pipeline(
 
     # [5] Council
     n = n_sages or settings.defaults.sages
-    await _emit(on_stage, "council", "running", f"{n} sages voting ({horizon} horizon)")
+    # running 階段不寫死 n（trading horizon 多數大師會 abstain，寫「10 sages」會誤導——
+    # 實際席數待 council 分席後才知；done 階段以真實多/中/空 + abstain 數呈現，review B）。
+    await _emit(on_stage, "council", "running", f"sages voting ({horizon} horizon)")
     council = await run_council(store, reports, settings, gateway,
                                 n_sages=n, on_signal=on_signal, horizon=horizon)
     abstain_note = f"；{len(council.abstained)} 位 abstain（非本 horizon）" if council.abstained else ""

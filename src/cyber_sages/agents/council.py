@@ -164,6 +164,12 @@ async def run_council(
     applicable = [p for p in everyone if horizon in p.horizons]
     abstained = [p.name for p in everyone if horizon not in p.horizons]
     personas = applicable[: (n_sages or settings.defaults.sages)]
+    # fail-loud（review C）：該 horizon 無任何適用大師時不可靜默產出「0 席、中性共識」的詭異
+    # brief——quorum 條件 0<0 為 False 不會擋。PR3 改 trading roster 時這是高風險路徑。
+    if not personas:
+        raise RuntimeError(
+            f"Council failed: horizon={horizon} 沒有任何適用大師——檢查 persona horizons 標記"
+        )
     # 共享前綴：證據摘要 + 分析師報告，所有大師一字不差地共用 → 走 cache_prefix 命中快取。
     # 用 .replace 而非 .format：analyst 報告 / digest 是 LLM 生成 + 數值文本，可能含字面
     # `{` `}`（如「{x}」placeholder 或一般 curly braces），.format 會 raise KeyError/
