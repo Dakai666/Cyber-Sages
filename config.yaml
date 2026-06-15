@@ -49,4 +49,7 @@ defaults:
   debate_rounds: 1
   max_tokens: 8192
   include_macro: true               # 帶入 FRED 總經背景（需 FRED_API_KEY；--no-macro 可關）
-  deep_budget: 6                    # P2：房間 > 此數才走兩階段 council（scout→只深入代表）
+  # P2：房間 > 此數才走兩階段 council（scout→只深入代表）。DK 2026-06-15 定調：推理完整性
+  # 優先於省 token，故設高讓全員深入（兩階段在 N≈9 反而更貴且把重量級大師降成 scout 淺層）。
+  # 未來 N≫此數、且 scout 換便宜小模型 + prompt 瘦身後再下調重啟兩階段（見 issue #55）。
+  deep_budget: 999
