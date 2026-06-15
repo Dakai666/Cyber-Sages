@@ -190,17 +190,19 @@ epoch 選 **2019**（Apple 時期）。拆三條 PR：
 
 > 2026-06-14 DK 把 P4 從「修陪審團機制」擴大為「梳理整條分析流程」。見 Spec C v2。
 
-兩個上層重構 + 原機制（四條 PR）：
+兩個上層重構 + 原機制（四條 PR，**機制全數合併、實機驗證**）：
 
-1. **Analyst 降級**（P8）：`AnalystReport` 去 `outlook` → 中性 findings（仍過 cite-check）；
-   方向性判斷由 sage 獨佔——「analyst 只供數據、**大師才是主體**」。
-2. **Horizon 分流**（P9）：`--horizon trading|value` 旗標（預設 value）；persona 宣告
-   `horizons`、越圍 abstain；證據重心與 action plan 口徑隨 horizon。當沖（數天~數週）與
+1. ✅ **Analyst 降級**（P8，PR1 #46）：`AnalystReport` 去 `outlook` → 中性 findings（仍過
+   cite-check）；方向性判斷由 sage 獨佔——「analyst 只供數據、**大師才是主體**」。
+2. ✅ **Horizon 分流**（P9，PR2 #48）：`--horizon trading|value` 旗標（預設 value）；persona
+   宣告 `horizons`、越圍 abstain；證據重心與 action plan 口徑隨 horizon。當沖（數天~數週）與
    長期價值（3~10y）不再混為「全面分析」。
-3. **交易型 Pack 試點**：Livermore 升級 Pack + 手工新增 1~2 位短線大師讓 trading council
-   成立（暫時手工補位；**未來 roster 按類型/原型 curate**）。
-4. **陪審團結構**（P2/P3/P6/P7）：兩階段 Council（scout→deep）、Debate 雙盲對稱、outlier
-   雙邊、neutral 獨立訊號——全部 horizon-aware，建在新 council 之上。
+3. ✅ **交易型 Pack 試點**（PR3 #50）：Livermore 升級 Pack + 手工新增 Minervini/Raschke，
+   trading council 成立 5 席；NVDA `--horizon trading` 實機通過（**未來 roster 按類型 curate**）。
+4. **陪審團結構**（P2/P3/P6/P7，PR4a #52 + PR4b #54）：Debate 雙盲對稱（P3）、outlier 雙邊
+   反駁（P6）、neutral 三類獨立訊號（P7）——✅ 機制合併 + NVDA 實機驗證正常；兩階段 Council
+   scout→deep（P2）✅ 機制合併，但 **token ≥30% 下降未達標**（實機 N=9 反而更貴，→ issue #55：
+   scout 需瘦身 prompt + 便宜小模型才划算）。
 
 ### Phase 4.5 — 手工擴充大師（按類型/原型 curate）
 

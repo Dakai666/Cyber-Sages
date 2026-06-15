@@ -109,14 +109,18 @@ E2 Cyber-Nüwa（更後面的後面）：有足夠手工樣本後才談量產蒸
 
 ## 驗收條件（v2）
 
-- [ ] `--horizon trading|value` 旗標可用，預設 value；錯誤值 fail-loud。
-- [ ] analyst 不再輸出 outlook；sage 為唯一方向性來源；brief 以 sage council 為主體。
-- [ ] persona 宣告 `horizons`；越圍大師於該 horizon abstain、不計入 council，並揭露。
-- [ ] trading council 成立（≥ 足夠主體大師），NVDA/2330 各跑一 `--horizon trading` run。
-- [ ] value run 與 trading run 的 action plan 口徑明顯不同（停損/進出場/翻盤條件）。
-- [ ] 兩階段 council 跑通、token 成本下降 ≥ 30%。
-- [ ] debate 雙盲：bull/bear 第一輪互不可見對手論點。
-- [ ] outlier 規則覆蓋 5B/4N/1S；neutral 三類 `neutral_reason` 分開呈現、與 abstain 區分。
+- [x] `--horizon trading|value` 旗標可用，預設 value；錯誤值 fail-loud。（PR1/PR2 #46/#48）
+- [x] analyst 不再輸出 outlook；sage 為唯一方向性來源；brief 以 sage council 為主體。（PR1 #46）
+- [x] persona 宣告 `horizons`；越圍大師於該 horizon abstain、不計入 council，並揭露。（PR2 #48）
+- [x] trading council 成立（5 席：Livermore/Minervini/Raschke + Druckenmiller/Taleb），NVDA `--horizon trading` 實機通過。（PR3 #50；2330 待補）
+- [x] value run 與 trading run 的 action plan 口徑明顯不同（停損/進出場/翻盤條件）。（PR3 實機：trading 分批試單/緊停損 vs value 分批建倉/SMA200 寬停損）
+- [~] 兩階段 council 跑通；token 成本下降 ≥ 30% **未達標**。機制已跑通（PR4b #54），但 2026-06-15
+  實機 NVDA value（9 席）量測：two-stage 反比 single-stage **貴 ~45%**（total token）。主因：
+  `sage_scout` 預設與 `sage` 同 model + scout 仍夾完整 digest，9 份 scout input 推高總量、只省
+  3 個 deep。**達標前提**：scout 換便宜小模型 + scout prompt 瘦身（精簡 evidence）+ N≫deep_budget。
+  追蹤 → **issue #55**。
+- [x] debate 雙盲：bull/bear 第一輪互不可見對手論點。（PR4a #52；實機驗證雙方各有獨立開場+反駁）
+- [x] outlier 規則覆蓋 5B/4N/1S；neutral 三類 `neutral_reason` 分開呈現、與 abstain 區分。（PR4a #52）
 
 ## 決議（2026-06-13，DK 授權按最優解定案；機制層，仍有效）
 
