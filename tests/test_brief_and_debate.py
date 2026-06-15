@@ -6,9 +6,9 @@ import pytest
 
 from cyber_sages.agents.council import load_personas, run_council
 from cyber_sages.agents.debate import (
+    _losing_side_reps,
     _merge_rebuttals,
     _outlier_theses_text,
-    _outliers_needing_rebuttal,
     run_debate,
 )
 from cyber_sages.data.evidence import Evidence, EvidenceStore
@@ -82,21 +82,34 @@ def _council() -> CouncilVerdict:
     )
 
 
-def test_outliers_needing_rebuttal_only_losing_side():
+def test_losing_side_reps_two_sided():
+    # P6 雙邊：敗方核心論點皆須反駁，不論敗方是多數或少數
     c = _council()
-    assert _outliers_needing_rebuttal(c, "bear") == ["Cathie Wood"]  # 多頭離群者敗 → 需反駁
-    assert _outliers_needing_rebuttal(c, "bull") == []               # 離群者在勝方 → 不需
-    assert _outliers_needing_rebuttal(c, "draw") == []               # 平手不強制
+    assert _losing_side_reps(c, "bear") == ["Cathie Wood"]  # 多方敗 → 多方代表需反駁
+    assert _losing_side_reps(c, "bull") == ["Buffett"]      # 空方敗 → 空方代表需反駁（舊版漏）
+    assert _losing_side_reps(c, "draw") == []               # 平手不強制
 
 
-def test_neutral_outlier_never_needs_rebuttal():
-    # 辯論軸是 bull vs bear，中性離群者無軸可歸，任何 winner 都不需反駁
+def test_losing_side_reps_minority_winner_defends_losing_majority():
+    # 少數派勝出：5B/1S，judge 判 bear（少數）勝 → 落敗的多數 bull 也須被守住（取信心前 3）
+    sigs = [SageSignal(sage=f"B{i}", stance="bullish", confidence=0.5 + i * 0.05,
+                       thesis="多", what_would_change_my_mind="x") for i in range(5)]
+    sigs.append(SageSignal(sage="S1", stance="bearish", confidence=0.9,
+                           thesis="空", what_would_change_my_mind="y"))
+    c = CouncilVerdict(signals=sigs, consensus="bullish")
+    reps = _losing_side_reps(c, "bear")  # bear 勝 → bull 敗
+    assert len(reps) == 3                       # cap 3 代表（不要求反駁一整票）
+    assert reps == ["B4", "B3", "B2"]           # 信心最高的前三位多方
+
+
+def test_losing_side_reps_skips_neutral():
+    # 辯論軸是 bull vs bear，中性者無軸可歸，任何 winner 都不入敗方代表
     c = CouncilVerdict(
         signals=[SageSignal(sage="Switzerland", stance="neutral", confidence=0.5,
-                            thesis="觀望", what_would_change_my_mind="x")],
-        outliers=["Switzerland"])
-    assert _outliers_needing_rebuttal(c, "bull") == []
-    assert _outliers_needing_rebuttal(c, "bear") == []
+                            thesis="觀望", what_would_change_my_mind="x",
+                            neutral_reason="balanced_forces")])
+    assert _losing_side_reps(c, "bull") == []
+    assert _losing_side_reps(c, "bear") == []
 
 
 def test_outlier_theses_text_lists_only_known_signals():
@@ -204,7 +217,7 @@ def test_render_debate_shows_outlier_rebuttals():
         bear=DebateArgument(side="bear", argument="空方"),
     )
     out = render_debate(result)
-    assert "論點級反駁" in out
+    assert "逐點反駁" in out
     assert "Cathie Wood" in out and "Wright's Law" in out
     assert "E018, E047" in out
 
@@ -218,6 +231,98 @@ def test_render_debate_warns_on_unrebutted_outliers():
         bear=DebateArgument(side="bear", argument="空"))
     out = render_debate(result)
     assert "未對" in out and "Druckenmiller" in out  # fail-loud 警告有呈現
+
+
+def test_render_debate_shows_blind_opening_and_rebuttal():
+    # P3：開場（盲打）與反駁（見對手後）分段呈現
+    result = SimpleNamespace(
+        ticker="2330",
+        debate=DebateVerdict(winner="draw", rationale="r", strongest_bull_point="b",
+                             strongest_bear_point="s"),
+        bull=DebateArgument(side="bull", argument="多方開場", rebuttal="多方反駁空方"),
+        bear=DebateArgument(side="bear", argument="空方開場", rebuttal="空方反駁多方"))
+    out = render_debate(result)
+    assert "開場（盲打）" in out and "多方開場" in out and "空方開場" in out
+    assert "多方反駁空方" in out and "空方反駁多方" in out
+
+
+# ---------- P3 雙盲：run_debate 第一輪互不可見對手論點 ----------
+
+
+class _BlindCheckGateway:
+    """記錄每次 debater prompt，驗第一輪盲打時 prompt 不含對手開場文字。"""
+    def __init__(self):
+        self.debater_prompts: list[str] = []
+
+    async def structured(self, role, *, system, prompt, schema, **kw):
+        if role == "debater":
+            self.debater_prompts.append(prompt)
+            side = "bull" if "BULL opening" in prompt else (
+                "bear" if "BEAR opening" in prompt else "bull")
+            # 開場/反駁都回 DebateArgument；以可辨識字串當論點內容
+            return DebateArgument(side=side, argument=f"{side.upper()}_ARGUMENT_TOKEN [E001]")
+        if role == "judge":
+            return DebateVerdict(winner="draw", rationale="r", strongest_bull_point="b",
+                                 strongest_bear_point="s")
+        raise AssertionError(role)
+
+
+async def test_run_debate_first_round_is_double_blind():
+    store, council = _store_council()
+    gw = _BlindCheckGateway()
+    bull, bear, _ = await run_debate(store, [], council, None, gw)
+    # 4 次 debater 呼叫：2 開場（盲打）+ 2 反駁
+    assert len(gw.debater_prompts) == 4
+    openings = gw.debater_prompts[:2]
+    # 第一輪兩個開場 prompt 都不可含對手論點 token（盲打）
+    assert all("ARGUMENT_TOKEN" not in p for p in openings)
+    # 第二輪反駁 prompt 必含對手開場（見過對手才反駁）
+    assert any("ARGUMENT_TOKEN" in p for p in gw.debater_prompts[2:])
+    # 兩方都產出了反駁（對稱）
+    assert bull.rebuttal and bear.rebuttal
+
+
+# ---------- P7：neutral 三類獨立訊號 ----------
+
+
+def _neutral_settings():
+    return SimpleNamespace(
+        defaults=SimpleNamespace(sages=10),
+        roles={"sage": SimpleNamespace(provider="p")},
+        providers={"p": SimpleNamespace(has=lambda feat: False)},
+        citation=SimpleNamespace(numeric_tolerance_pct=1.0))
+
+
+def _neutral_gateway(reason):
+    class G:
+        async def structured(self, role, *, system, prompt, schema, **kw):
+            return SageSignal(stance="neutral", confidence=0.4, thesis="觀望",
+                              what_would_change_my_mind="x", neutral_reason=reason)
+    return G()
+
+
+async def test_council_neutral_reason_fallback_and_tally(monkeypatch):
+    from cyber_sages.agents.council import run_council as rc
+    from cyber_sages.personas.pack import Persona
+    ps = [Persona(key=f"k{i}", name=f"N{i}", philosophy="p", focus="f", voice="v")
+          for i in range(2)]
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: ps)
+    # LLM 漏填 neutral_reason → 程式回填 insufficient_signal（保守）
+    gw_missing = _neutral_gateway(None)
+    c = await rc(EvidenceStore(ticker="X", market="US"), [], _neutral_settings(), gw_missing)
+    assert c.neutral == 2
+    assert c.neutral_by_reason == {"insufficient_signal": 2}
+    assert all(s.neutral_reason == "insufficient_signal" for s in c.signals)
+
+
+async def test_council_neutral_reason_preserved_when_supplied(monkeypatch):
+    from cyber_sages.agents.council import run_council as rc
+    from cyber_sages.personas.pack import Persona
+    ps = [Persona(key="k", name="N", philosophy="p", focus="f", voice="v")]
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: ps)
+    c = await rc(EvidenceStore(ticker="X", market="US"), [], _neutral_settings(),
+                 _neutral_gateway("balanced_forces"), n_sages=1)
+    assert c.neutral_by_reason == {"balanced_forces": 1}
 
 
 # ---------- Council 韌性：單一大師失敗不該拖垮全場 ----------

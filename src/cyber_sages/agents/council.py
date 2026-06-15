@@ -54,6 +54,10 @@ Rules (apply through whatever investment philosophy you are assigned next):
 - It is perfectly acceptable (and in character) to disagree with the analysts.
 - confidence: how strongly your philosophy speaks on THIS stock (0.2 = barely
   in your circle of competence, 0.9 = textbook case for you).
+- If your stance is `neutral`, you MUST set `neutral_reason` to WHY:
+  `out_of_circle` (inside your horizon but outside your competence/method),
+  `insufficient_signal` (evidence too thin to call a direction), or
+  `balanced_forces` (genuine bull/bear standoff). Pick the honest one.
 - Write `thesis` and `what_would_change_my_mind` in Traditional Chinese (繁體中文),
   in your distinctive voice; keep tickers/terms in English.
 
@@ -260,6 +264,12 @@ async def run_council(
     async def one(p: Persona) -> SageSignal:
         signal = await (_pack(p) if p.is_pack else _degraded(p))
         signal.sage = p.name
+        # P7：neutral 卻漏填 neutral_reason → 程式回填 insufficient_signal（保守：不假裝有方向，
+        # 也不擅自說「能力圈外」或「勢均力敵」）。非 neutral 的殘留 reason 清掉，避免誤導 tally。
+        if signal.stance == "neutral":
+            signal.neutral_reason = signal.neutral_reason or "insufficient_signal"
+        else:
+            signal.neutral_reason = None
         if on_signal:
             result = on_signal(signal)
             if asyncio.iscoroutine(result):
@@ -303,9 +313,14 @@ def tally(
     abstained = abstained or []
     weights = {p.name: p.weight for p in personas}
     counts = {"bullish": 0, "bearish": 0, "neutral": 0}
+    neutral_by_reason: dict[str, int] = {}
     score_num = score_den = 0.0
     for s in signals:
         counts[s.stance] += 1
+        if s.stance == "neutral":
+            # P7：neutral 細分計數（reason 必非 None——one() 已回填；degraded 路徑亦經 one()）
+            reason = s.neutral_reason or "insufficient_signal"
+            neutral_by_reason[reason] = neutral_by_reason.get(reason, 0) + 1
         w = weights.get(s.sage, 1.0) * s.confidence
         direction = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}[s.stance]
         score_num += w * direction
@@ -323,4 +338,5 @@ def tally(
         signals=signals, bullish=counts["bullish"], bearish=counts["bearish"],
         neutral=counts["neutral"], weighted_score=round(weighted, 3),
         consensus=consensus, outliers=outliers, absent=absent, abstained=abstained,
+        neutral_by_reason=neutral_by_reason,
     )
