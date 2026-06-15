@@ -174,6 +174,10 @@ async def test_pipeline_horizon_propagates_to_result_and_brief():
     brief = render_brief(result)
     assert "短線交易" in brief                      # 標題標 horizon 模式
     assert "未出席（非本 horizon" in brief          # abstain 揭露區塊
+    # agent payload 也須帶 horizon 與 abstained（機器可讀的 judge 視角，實機驗證補的缺口）
+    payload = build_agent_payload(result)
+    assert payload["horizon"] == "trading"
+    assert "Warren Buffett" in payload["council"]["abstained"]
 
 
 async def test_pipeline_skip_debate():

@@ -240,6 +240,10 @@ def build_agent_payload(result: AnalysisResult) -> dict:
     return {
         "ticker": result.ticker,
         "market": result.store.market,
+        # 本次分析時間框架（value/trading）：agent judge 須據此理解票數的語境——同一檔在
+        # trading 與 value horizon 的結論可正當地相反，漏標會讓判讀者誤比。brief 已揭露，
+        # 機器可讀 payload 也補上（實機 NVDA --horizon trading 驗證時發現此落地缺口）。
+        "horizon": result.horizon,
         "generated_at": result.generated_at.isoformat(),
         "commit": result.git_commit,
         "current_price": {"value": price, "evidence_id": price_id},
@@ -248,6 +252,8 @@ def build_agent_payload(result: AnalysisResult) -> dict:
             "bullish": c.bullish, "neutral": c.neutral, "bearish": c.bearish,
             "weighted_score": c.weighted_score, "consensus": c.consensus,
             "outliers": c.outliers,
+            # 非本 horizon 而誠實退場的大師——票數是「出席者」的，abstained 揭露分母真相
+            "abstained": c.abstained,
             "signals": [
                 {"sage": s.sage, "stance": s.stance, "confidence": s.confidence,
                  "thesis": s.thesis,
