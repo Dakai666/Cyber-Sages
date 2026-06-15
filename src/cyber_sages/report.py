@@ -111,6 +111,11 @@ def render_brief(result: AnalysisResult) -> str:
         lines.append(f"中性細分：{'、'.join(parts)}")
     if c.abstained:
         lines.append(f"未出席（非本 horizon，誠實退場）：{'、'.join(c.abstained)}")
+    # P2：兩階段時揭露深入/速覽分布——讓判讀者知道哪些是深度推理、哪些僅 scout 粗判。
+    if c.scouted_only:
+        deep_n = len(c.signals) - len(c.scouted_only)
+        lines.append(f"兩階段合議：{deep_n} 位深入推理 · {len(c.scouted_only)} 位 scout 速覽"
+                     f"（{'、'.join(c.scouted_only)}）")
     if result.debate and result.debate.unrebutted_outliers:
         lines.append(f"⚠️ 裁判未完成論點級反駁：{'、'.join(result.debate.unrebutted_outliers)}"
                      "（其核心論點尚未被正面回應，閱讀時請自行加權）")
@@ -276,6 +281,8 @@ def build_agent_payload(result: AnalysisResult) -> dict:
             "neutral_by_reason": c.neutral_by_reason,
             # 非本 horizon 而誠實退場的大師——票數是「出席者」的，abstained 揭露分母真相
             "abstained": c.abstained,
+            # P2：僅 scout 粗判（未深入）的大師——其票計入但無深度推理，揭露給判讀者
+            "scouted_only": c.scouted_only,
             "signals": [
                 {"sage": s.sage, "stance": s.stance, "confidence": s.confidence,
                  "thesis": s.thesis, "neutral_reason": s.neutral_reason,

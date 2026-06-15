@@ -21,6 +21,7 @@ from cyber_sages.agents.schemas import (
     AnalystReport,
     CouncilVerdict,
     SageSignal,
+    ScoutSignal,
     SopStepResult,
     Stance,
     UnverifiedClaim,
@@ -37,6 +38,12 @@ __all__ = ["Persona", "load_personas", "run_council", "tally"]
 
 # sop_trace 過 cite-check 的重試次數（E1 實作決議 #3：軟揭露，比照 PR #27 chief brief）。
 _SOP_RECHECK_RETRIES = 1
+
+# P2 兩階段取樣（C-3）：deep 階段只深入「共識代表 + 離群代表」各上限數位（決議：各 ~3）。
+# 房間 ≤ deep 預算時跳過 scout、全員深入（小房間兩階段反而多花一輪 scout 成本）。
+_CONSENSUS_REPS = 3
+_OUTLIER_REPS = 3
+_DEEP_BUDGET = _CONSENSUS_REPS + _OUTLIER_REPS
 
 
 # 合議庭通用框架 + 證據摘要——所有 sage 共用，故當作 prompt-cache 的「共享前綴」。
@@ -92,6 +99,21 @@ Every number you state in a step must be traceable to a cited evidence id. Your 
 stance/confidence/thesis must follow from this trace, through your philosophy."""
 
 
+# P2 scout（第一輪）共享前綴——刻意精簡（只給 evidence digest、不含分析師報告、不含 SOP
+# 紀律），走 sage_scout 角色（可指向便宜模型）。目的：用低成本對全員取得粗 stance + 信心，
+# 再只對代表深入，避免 N 位同 model 大師全程昂貴推理（P2：同 model 統計稀釋不成立）。
+SCOUT_SHARED_SYSTEM = """\
+You are a legendary investor giving a QUICK triage read on one stock for an
+investment council. Deliver a rough stance + confidence in ONE pass — no deep
+workup, no step-by-step reasoning. Ground it in the evidence; do not fabricate
+numbers. If your stance is neutral, set neutral_reason honestly.
+
+# Stock: {ticker}
+
+# Evidence digest
+{digest}"""
+
+
 # 注入 shared system 末端，讓被席大師按本次 horizon 校準（trading 看數天~數週、value 看數年）。
 _HORIZON_NOTE = {
     "value": "\n\n# Horizon: VALUE（數年，3~10y）——以多年基本面、護城河、估值、owner "
@@ -116,11 +138,46 @@ def _reports_text(reports: list[AnalystReport]) -> str:
     return "\n\n".join(parts)
 
 
-def _persona_system(p: Persona) -> str:
-    base = (SAGE_PERSONA
+def _persona_identity(p: Persona) -> str:
+    """大師身分段（philosophy/focus/voice）——deep 與 scout 共用；scout 不加 SOP 紀律。"""
+    return (SAGE_PERSONA
             .replace("{name}", p.name).replace("{philosophy}", p.philosophy)
             .replace("{focus}", p.focus).replace("{voice}", p.voice))
+
+
+def _persona_system(p: Persona) -> str:
+    base = _persona_identity(p)
     return base + SAGE_SOP_DISCIPLINE if p.is_pack else base
+
+
+def _consensus_stance(counts: dict[str, int]) -> Stance:
+    """多數方向（與 tally 同規則）：directional 多於對方且不少於 neutral 才成立，否則 neutral。"""
+    if counts["bullish"] > counts["bearish"] and counts["bullish"] >= counts["neutral"]:
+        return "bullish"
+    if counts["bearish"] > counts["bullish"] and counts["bearish"] >= counts["neutral"]:
+        return "bearish"
+    return "neutral"
+
+
+def _select_reps(scouted: list[tuple[Persona, SageSignal]]) -> list[Persona]:
+    """P2：依 scout 結果挑深入代表——共識代表 + 離群代表各取 weight×confidence 最高 ~3 位。
+
+    保留反單一視角：離群者（與 scout 共識不同調）獨立配額，確保異議獲得深度推理，不被多數淹沒。
+    回傳的代表順序：共識代表在前、離群代表在後（皆按分數降序）。
+    """
+    counts = {"bullish": 0, "bearish": 0, "neutral": 0}
+    for _, s in scouted:
+        counts[s.stance] += 1
+    consensus = _consensus_stance(counts)
+
+    def score(item: tuple[Persona, SageSignal]) -> float:
+        p, s = item
+        return p.weight * s.confidence
+
+    agree = sorted((it for it in scouted if it[1].stance == consensus), key=score, reverse=True)
+    dissent = sorted((it for it in scouted if it[1].stance != consensus), key=score, reverse=True)
+    reps = agree[:_CONSENSUS_REPS] + dissent[:_OUTLIER_REPS]
+    return [p for p, _ in reps]
 
 
 def _sop_prompt(
@@ -193,6 +250,12 @@ async def run_council(
     # 全平行即可；Anthropic 會快取，同時併發全部會在快取寫入前每位都 miss（快取在首個
     # 回應開始後才可讀），故先跑一位把共享前綴寫進快取，其餘再平行讀取。
     sage_caches = settings.providers[settings.roles["sage"].provider].has("cache_control")
+    # P2 scout 角色：config.yaml 有 sage_scout 就用（可指便宜模型），否則回退 sage（向後相容）。
+    scout_role = "sage_scout" if "sage_scout" in settings.roles else "sage"
+    scout_shared = (
+        SCOUT_SHARED_SYSTEM.replace("{ticker}", store.ticker).replace("{digest}", store.digest())
+        + _HORIZON_NOTE[horizon]
+    )
 
     async def _degraded(p: Persona) -> SageSignal:
         """舊單檔 persona：原本的單發 prompt（無 skill/rule/SOP）。"""
@@ -265,8 +328,7 @@ async def run_council(
         signal.not_evaluable = not_evaluable
         return signal
 
-    async def one(p: Persona) -> SageSignal:
-        signal = await (_pack(p) if p.is_pack else _degraded(p))
+    async def _finalize(signal: SageSignal, p: Persona, notify: bool) -> SageSignal:
         signal.sage = p.name
         # P7：neutral 卻漏填 neutral_reason → 程式回填 insufficient_signal（保守：不假裝有方向，
         # 也不擅自說「能力圈外」或「勢均力敵」）。非 neutral 的殘留 reason 清掉，避免誤導 tally。
@@ -274,37 +336,82 @@ async def run_council(
             signal.neutral_reason = signal.neutral_reason or "insufficient_signal"
         else:
             signal.neutral_reason = None
-        if on_signal:
+        if notify and on_signal:
             result = on_signal(signal)
             if asyncio.iscoroutine(result):
                 await result
         return signal
 
-    # 大師推理是陪審團的本體，不輕易丟棄：gateway 已會在 thinking 截斷 JSON 時自動加大預算
-    # 重試讓大師把話講完。這裡是最後防線——仍硬失敗者經 return_exceptions 轉為結果值（記為
-    # 缺席、不拖垮全場），唯有過半失敗才視為合議失效而報錯。正常一場 absent 應為空。
-    if sage_caches and len(personas) > 1:
-        # provider 支援快取時先暖一位（把共享前綴寫進快取）再 fan-out 其餘讀取——快取在首個
-        # 回應開始後才可讀，同時併發全部會每位 miss。⚠ 首位若失敗則前綴沒寫入、其餘 N-1 仍
-        # cache-miss（不影響正確性，只是該場退回近 N 倍成本）。MiniMax 無快取則照舊全平行。
-        first = await asyncio.gather(one(personas[0]), return_exceptions=True)
-        rest = await asyncio.gather(*(one(p) for p in personas[1:]), return_exceptions=True)
-        results = [*first, *rest]
-    else:
-        results = await asyncio.gather(*(one(p) for p in personas), return_exceptions=True)
-    signals: list[SageSignal] = []
-    absent: list[str] = []
-    for p, r in zip(personas, results):
-        if isinstance(r, BaseException):
-            absent.append(p.name)
+    async def deep_one(p: Persona) -> SageSignal:
+        signal = await (_pack(p) if p.is_pack else _degraded(p))
+        return await _finalize(signal, p, notify=True)
+
+    async def scout_one(p: Persona) -> SageSignal:
+        """第一輪 scout：便宜模型粗判，轉成輕量 SageSignal（無 sop_trace）。不發 on_signal——
+        代表稍後會以深入訊號覆蓋、避免重複；scout-only 者於組裝後統一補發。"""
+        sc = await gateway.structured(
+            scout_role, system=_persona_identity(p),
+            prompt="Give your quick scout read now: stance, confidence (0-1), one-line rationale.",
+            schema=ScoutSignal, cache_prefix=scout_shared,
+        )
+        sig = SageSignal(stance=sc.stance, confidence=max(0.0, min(1.0, sc.confidence)),
+                         thesis=sc.one_liner, what_would_change_my_mind="",
+                         neutral_reason=sc.neutral_reason)
+        return await _finalize(sig, p, notify=False)
+
+    async def _run_deep(plist: list[Persona]) -> tuple[list[SageSignal], list[str]]:
+        """深入一組大師（Sage Runtime）。硬失敗者經 return_exceptions 轉缺席、不拖垮全場。
+        provider 支援快取時先暖一位（共享前綴寫入快取）再 fan-out，否則全平行（決議 4）。"""
+        if not plist:
+            return [], []
+        if sage_caches and len(plist) > 1:
+            first = await asyncio.gather(deep_one(plist[0]), return_exceptions=True)
+            rest = await asyncio.gather(*(deep_one(p) for p in plist[1:]), return_exceptions=True)
+            results = [*first, *rest]
         else:
-            signals.append(r)
+            results = await asyncio.gather(*(deep_one(p) for p in plist), return_exceptions=True)
+        sigs, absent = [], []
+        for p, r in zip(plist, results):
+            absent.append(p.name) if isinstance(r, BaseException) else sigs.append(r)
+        return sigs, absent
+
+    # 單階段 vs 兩階段：房間 ≤ deep 預算則全員深入（scout 反而多花成本）；否則 scout 全員 →
+    # 選代表 → 只深入代表，其餘留 scout 粗判（仍計票、不丟票）。
+    scouted_only: list[str] = []
+    if len(personas) <= _DEEP_BUDGET:
+        signals, absent = await _run_deep(personas)
+    else:
+        scout_results = await asyncio.gather(
+            *(scout_one(p) for p in personas), return_exceptions=True)
+        scouted: list[tuple[Persona, SageSignal]] = []
+        absent = []
+        for p, r in zip(personas, scout_results):
+            absent.append(p.name) if isinstance(r, BaseException) else scouted.append((p, r))
+        if not scouted:
+            raise RuntimeError("Council failed: scout 階段全員失敗（無人可選為代表）")
+        reps = _select_reps(scouted)
+        deep_sigs, _deep_absent = await _run_deep(reps)
+        deep_by_name = {s.sage: s for s in deep_sigs}
+        # 組裝最終訊號：代表用深入訊號；其餘（含深入失敗的代表）退回 scout 粗判，不丟票。
+        signals = []
+        for p, sc in scouted:
+            if p.name in deep_by_name:
+                signals.append(deep_by_name[p.name])
+            else:
+                signals.append(sc)
+                scouted_only.append(p.name)
+                if on_signal:  # scout-only 統一在此補發（deep 已於 deep_one 內發過）
+                    res = on_signal(sc)
+                    if asyncio.iscoroutine(res):
+                        await res
+
     if len(signals) * 2 < len(personas):
         raise RuntimeError(
             f"Council failed: only {len(signals)}/{len(personas)} sages returned a "
             f"valid signal (absent: {', '.join(absent)})"
         )
-    return tally(signals, personas, absent=absent, abstained=abstained)
+    return tally(signals, personas, absent=absent, abstained=abstained,
+                 scouted_only=scouted_only)
 
 
 def tally(
@@ -312,9 +419,11 @@ def tally(
     personas: list[Persona],
     absent: list[str] | None = None,
     abstained: list[str] | None = None,
+    scouted_only: list[str] | None = None,
 ) -> CouncilVerdict:
     absent = absent or []
     abstained = abstained or []
+    scouted_only = scouted_only or []
     weights = {p.name: p.weight for p in personas}
     counts = {"bullish": 0, "bearish": 0, "neutral": 0}
     neutral_by_reason: dict[str, int] = {}
@@ -342,5 +451,5 @@ def tally(
         signals=signals, bullish=counts["bullish"], bearish=counts["bearish"],
         neutral=counts["neutral"], weighted_score=round(weighted, 3),
         consensus=consensus, outliers=outliers, absent=absent, abstained=abstained,
-        neutral_by_reason=neutral_by_reason,
+        neutral_by_reason=neutral_by_reason, scouted_only=scouted_only,
     )

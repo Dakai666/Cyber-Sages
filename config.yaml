@@ -21,6 +21,9 @@ roles:
   data_auditor: { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
   analyst:      { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
   sage:         { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
+  # P2 兩階段 council 的第一輪 scout：便宜/小模型即可（只要粗 stance + 信心），輸出短、
+  # max_tokens 給小。未設此角色時程式回退用 sage（向後相容）；換更便宜模型可進一步省成本。
+  sage_scout:   { provider: minimax, model: MiniMax-M2.7, max_tokens: 4096 }
   debater:      { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
   judge:        { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
   chief:        { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
