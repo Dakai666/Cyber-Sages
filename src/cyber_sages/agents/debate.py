@@ -67,8 +67,12 @@ def _losing_side_reps(council: CouncilVerdict, winner: str) -> list[str]:
     if winner == "draw":
         return []
     losing_stance = "bearish" if winner == "bull" else "bullish"
+    # P2×P6（PR4b review B）：scout-only 大師只有一句話 one_liner、無深度 thesis——逐點反駁
+    # 一句話 ROI 低且品質差，排除於敗方代表之外（其票仍計入，只是不進論點級反駁）。
+    scout_only = set(council.scouted_only)
     # tiebreak 用 sage 名（review C）：confidence 相同時取前 N 才確定性、不隨 signals 原序漂移。
-    losers = sorted((s for s in council.signals if s.stance == losing_stance),
+    losers = sorted((s for s in council.signals
+                     if s.stance == losing_stance and s.sage not in scout_only),
                     key=lambda s: (-s.confidence, s.sage))
     return [s.sage for s in losers[:_MAX_REBUT_REPS]]
 
@@ -119,7 +123,10 @@ def _minority_text(council: CouncilVerdict, side: str) -> str:
     wanted = "bullish" if side == "bull" else "bearish"
     if council.consensus == wanted:
         return ""
-    minority = [s for s in council.signals if s.stance == wanted]
+    # P2×P3（PR4b review C）：scout-only 少數派只有一句話、非深度論點——不拿來當弱勢方的
+    # 「少數派強化素材」（避免 debater 收到快讀級素材），其票仍計入投票。
+    scout_only = set(council.scouted_only)
+    minority = [s for s in council.signals if s.stance == wanted and s.sage not in scout_only]
     if not minority:
         return ""
     quotes = "\n".join(f"- {s.sage}: {s.thesis}" for s in minority)

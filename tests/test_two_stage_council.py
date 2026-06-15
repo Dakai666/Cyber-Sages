@@ -8,8 +8,16 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from cyber_sages.agents.council import _consensus_stance, _select_reps, run_council
-from cyber_sages.agents.schemas import SageSignal, ScoutSignal
+import pytest
+
+from cyber_sages.agents.council import (
+    _SCOUT_CONFIDENCE_DISCOUNT,
+    _consensus_stance,
+    _select_reps,
+    run_council,
+)
+from cyber_sages.agents.debate import _losing_side_reps, _minority_text
+from cyber_sages.agents.schemas import CouncilVerdict, SageSignal, ScoutSignal
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.personas.pack import Persona
 
@@ -141,5 +149,36 @@ async def test_two_stage_scout_only_signal_counts_but_has_no_sop_trace(monkeypat
     by = {s.sage: s for s in c.signals}
     # scout-only 大師：有 stance/confidence（計票），thesis 是 scout 一句話、無 sop_trace
     assert by["N4"].sop_trace == [] and by["N4"].thesis == "快讀"
-    # 深入代表：thesis 是深度版
-    assert by["N0"].thesis == "深度"
+    # review D：scout 票信心打折（0.5 × 0.85），未經 deep clamp
+    assert by["N4"].confidence == pytest.approx(0.5 * _SCOUT_CONFIDENCE_DISCOUNT)
+    # 深入代表：thesis 是深度版、confidence 為 deep 直出（未打折）
+    assert by["N0"].thesis == "深度" and by["N0"].confidence == pytest.approx(0.6)
+
+
+# ---------- P2 × debate（PR4b review B/C）：scout-only 不進論點級攻防 ----------
+
+
+def _mixed_council() -> CouncilVerdict:
+    # 5 多（含深入）/ 2 空（一深入 N_deep_bear、一 scout-only N_scout_bear）
+    sigs = [
+        SageSignal(sage="DeepBull", stance="bullish", confidence=0.7, thesis="深多",
+                   what_would_change_my_mind="x"),
+        SageSignal(sage="DeepBear", stance="bearish", confidence=0.8, thesis="深空",
+                   what_would_change_my_mind="y"),
+        SageSignal(sage="ScoutBear", stance="bearish", confidence=0.6, thesis="快空一句",
+                   what_would_change_my_mind=""),
+    ]
+    return CouncilVerdict(signals=sigs, consensus="bullish", scouted_only=["ScoutBear"])
+
+
+def test_losing_side_reps_excludes_scout_only():
+    c = _mixed_council()
+    # bull 勝 → bear 敗。敗方代表只取深入的 DeepBear，scout-only 的 ScoutBear 排除（不反駁一句話）
+    assert _losing_side_reps(c, "bull") == ["DeepBear"]
+
+
+def test_minority_text_excludes_scout_only():
+    c = _mixed_council()
+    # 弱勢方 bear（共識 bullish）：少數派強化素材只給深入的 DeepBear，不餵 scout-only 快讀
+    txt = _minority_text(c, "bear")
+    assert "DeepBear" in txt and "ScoutBear" not in txt

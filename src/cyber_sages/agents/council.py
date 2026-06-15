@@ -43,7 +43,11 @@ _SOP_RECHECK_RETRIES = 1
 # 房間 ≤ deep 預算時跳過 scout、全員深入（小房間兩階段反而多花一輪 scout 成本）。
 _CONSENSUS_REPS = 3
 _OUTLIER_REPS = 3
-_DEEP_BUDGET = _CONSENSUS_REPS + _OUTLIER_REPS
+_DEEP_BUDGET = _CONSENSUS_REPS + _OUTLIER_REPS  # 預設；可由 settings.defaults.deep_budget 覆寫（review E）
+
+# review D：scout 信心是 LLM 直出、未經 deep 的 rule clamp 校準。對 scout-only 票套不確定性
+# 折扣，避免「未校準的 scout 0.9」在加權投票中壓過「被規則 clamp 到 0.5 的 deep 代表」。
+_SCOUT_CONFIDENCE_DISCOUNT = 0.85
 
 
 # 合議庭通用框架 + 證據摘要——所有 sage 共用，故當作 prompt-cache 的「共享前綴」。
@@ -354,7 +358,9 @@ async def run_council(
             prompt="Give your quick scout read now: stance, confidence (0-1), one-line rationale.",
             schema=ScoutSignal, cache_prefix=scout_shared,
         )
-        sig = SageSignal(stance=sc.stance, confidence=max(0.0, min(1.0, sc.confidence)),
+        # review D：scout 未經 deep 的 rule clamp → 套不確定性折扣，scout-only 票才不致過重。
+        conf = max(0.0, min(1.0, sc.confidence)) * _SCOUT_CONFIDENCE_DISCOUNT
+        sig = SageSignal(stance=sc.stance, confidence=conf,
                          thesis=sc.one_liner, what_would_change_my_mind="",
                          neutral_reason=sc.neutral_reason)
         return await _finalize(sig, p, notify=False)
@@ -376,13 +382,22 @@ async def run_council(
         return sigs, absent
 
     # 單階段 vs 兩階段：房間 ≤ deep 預算則全員深入（scout 反而多花成本）；否則 scout 全員 →
-    # 選代表 → 只深入代表，其餘留 scout 粗判（仍計票、不丟票）。
+    # 選代表 → 只深入代表，其餘留 scout 粗判（仍計票、不丟票）。預算可由 settings 覆寫（review E）。
+    deep_budget = getattr(settings.defaults, "deep_budget", _DEEP_BUDGET)
     scouted_only: list[str] = []
-    if len(personas) <= _DEEP_BUDGET:
+    if len(personas) <= deep_budget:
         signals, absent = await _run_deep(personas)
     else:
-        scout_results = await asyncio.gather(
-            *(scout_one(p) for p in personas), return_exceptions=True)
+        scout_caches = settings.providers[settings.roles[scout_role].provider].has("cache_control")
+        if scout_caches and len(personas) > 1:
+            # review H：scout 也「先暖一位再 fan-out」——cache_control 啟用時避免其餘同時 miss。
+            first = await asyncio.gather(scout_one(personas[0]), return_exceptions=True)
+            rest = await asyncio.gather(
+                *(scout_one(p) for p in personas[1:]), return_exceptions=True)
+            scout_results = [*first, *rest]
+        else:
+            scout_results = await asyncio.gather(
+                *(scout_one(p) for p in personas), return_exceptions=True)
         scouted: list[tuple[Persona, SageSignal]] = []
         absent = []
         for p, r in zip(personas, scout_results):
@@ -440,12 +455,7 @@ def tally(
         score_den += w
     weighted = score_num / score_den if score_den else 0.0
 
-    consensus: Stance = "neutral"
-    if counts["bullish"] > counts["bearish"] and counts["bullish"] >= counts["neutral"]:
-        consensus = "bullish"
-    elif counts["bearish"] > counts["bullish"] and counts["bearish"] >= counts["neutral"]:
-        consensus = "bearish"
-
+    consensus = _consensus_stance(counts)  # review F：與 _select_reps 共用同一份共識規則（DRY）
     outliers = [s.sage for s in signals if s.stance != consensus and s.stance != "neutral"]
     return CouncilVerdict(
         signals=signals, bullish=counts["bullish"], bearish=counts["bearish"],

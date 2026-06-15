@@ -115,7 +115,8 @@ def render_brief(result: AnalysisResult) -> str:
     if c.scouted_only:
         deep_n = len(c.signals) - len(c.scouted_only)
         lines.append(f"兩階段合議：{deep_n} 位深入推理 · {len(c.scouted_only)} 位 scout 速覽"
-                     f"（{'、'.join(c.scouted_only)}）")
+                     f"（{'、'.join(c.scouted_only)}）；scout 票信心已打折、未經 deep 規則校準，"
+                     "且不進辯論的論點級攻防")
     if result.debate and result.debate.unrebutted_outliers:
         lines.append(f"⚠️ 裁判未完成論點級反駁：{'、'.join(result.debate.unrebutted_outliers)}"
                      "（其核心論點尚未被正面回應，閱讀時請自行加權）")
