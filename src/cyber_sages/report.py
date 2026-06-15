@@ -27,6 +27,11 @@ ACTION_ZH = {
     "reduce": "減碼", "avoid": "觀望勿進", "sell": "出清",
 }
 HORIZON_ZH = {"short": "短期 1-4週", "mid": "中期 1-6月", "long": "長期 6月+"}
+# P7：neutral 三類的中文標籤（brief / payload 共用）
+NEUTRAL_REASON_ZH = {
+    "out_of_circle": "能力圈外", "insufficient_signal": "訊號不足",
+    "balanced_forces": "多空平衡",
+}
 
 
 def _current_price(result: AnalysisResult) -> tuple[float | None, str]:
@@ -94,8 +99,16 @@ def render_brief(result: AnalysisResult) -> str:
         f"## 陪審團 {c.bullish}🐂 {c.neutral}⚖ {c.bearish}🐻 · "
         f"加權 {c.weighted_score:+.2f}{debate_line}",
     ]
+    # review C：明確標示這是「與多數不同調者」的概念——與 debate 的「敗方代表反駁」清單
+    # （持敗方 stance 者，不限離群者）是兩個不同集合，可能無交集，分開呈現避免讀者誤併。
     if c.outliers:
-        lines.append(f"離群者：{'、'.join(c.outliers)}（意見已強制進入辯論）")
+        lines.append(f"與多數不同調者：{'、'.join(c.outliers)}（少數意見已強制進入辯論；"
+                     "辯論段另列敗方代表的逐點反駁）")
+    # P7：中性細分——讓判讀者區分「沒人懂（能力圈外）」「資料不足」「真的勢均力敵」三種 neutral。
+    if c.neutral and c.neutral_by_reason:
+        parts = [f"{NEUTRAL_REASON_ZH.get(k, k)} {v}"
+                 for k, v in c.neutral_by_reason.items()]
+        lines.append(f"中性細分：{'、'.join(parts)}")
     if c.abstained:
         lines.append(f"未出席（非本 horizon，誠實退場）：{'、'.join(c.abstained)}")
     if result.debate and result.debate.unrebutted_outliers:
@@ -171,10 +184,17 @@ def render_debate(result: AnalysisResult) -> str:
         return "# 多空辯論\n\n（本次執行跳過辯論）"
     d = result.debate
     lines = [f"# 多空辯論 · {result.ticker}", ""]
+    # P3 雙盲：開場為第一輪盲打、反駁為第二輪見對手後的回應，分開呈現讓判讀者看見對稱攻防。
     if result.bull:
-        lines += ["## 多方陳詞", result.bull.argument, ""]
+        lines += ["## 多方陳詞", "### 開場（盲打）", result.bull.argument]
+        if result.bull.rebuttal:
+            lines += ["### 反駁（見空方開場後）", result.bull.rebuttal]
+        lines.append("")
     if result.bear:
-        lines += ["## 空方陳詞", result.bear.argument, ""]
+        lines += ["## 空方陳詞", "### 開場（盲打）", result.bear.argument]
+        if result.bear.rebuttal:
+            lines += ["### 反駁（見多方開場後）", result.bear.rebuttal]
+        lines.append("")
     lines += [
         f"## 裁判判定：{d.winner}",
         d.rationale, "",
@@ -184,13 +204,13 @@ def render_debate(result: AnalysisResult) -> str:
     if d.unresolved_risks:
         lines.append("- 未解風險：" + "；".join(d.unresolved_risks))
     if d.outlier_rebuttals:
-        lines += ["", "## 對敗方離群者的論點級反駁"]
+        lines += ["", "## 對敗方核心論點的逐點反駁"]
         for rb in d.outlier_rebuttals:
             ids = f" `[{', '.join(rb.evidence_ids)}]`" if rb.evidence_ids else ""
             lines += [f"### {rb.sage}", f"- 核心論點：{rb.thesis_point}",
                       f"- 反駁：{rb.rebuttal}{ids}"]
     if d.unrebutted_outliers:
-        lines += ["", f"> ⚠️ 裁判未對 {len(d.unrebutted_outliers)} 位敗方離群者完成論點級"
+        lines += ["", f"> ⚠️ 裁判未對 {len(d.unrebutted_outliers)} 位敗方代表完成論點級"
                   f"反駁：{'、'.join(d.unrebutted_outliers)}（其核心論點尚未被正面回應）"]
     return "\n".join(lines)
 
@@ -252,11 +272,13 @@ def build_agent_payload(result: AnalysisResult) -> dict:
             "bullish": c.bullish, "neutral": c.neutral, "bearish": c.bearish,
             "weighted_score": c.weighted_score, "consensus": c.consensus,
             "outliers": c.outliers,
+            # P7：neutral 三類細分（能力圈外/訊號不足/多空平衡）——agent 判讀「為何中性」
+            "neutral_by_reason": c.neutral_by_reason,
             # 非本 horizon 而誠實退場的大師——票數是「出席者」的，abstained 揭露分母真相
             "abstained": c.abstained,
             "signals": [
                 {"sage": s.sage, "stance": s.stance, "confidence": s.confidence,
-                 "thesis": s.thesis,
+                 "thesis": s.thesis, "neutral_reason": s.neutral_reason,
                  "what_would_change_my_mind": s.what_would_change_my_mind}
                 for s in c.signals
             ],

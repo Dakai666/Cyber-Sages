@@ -10,6 +10,14 @@ from cyber_sages.verify.citation_check import Claim, FailureKind
 
 Stance = Literal["bullish", "bearish", "neutral"]
 
+# P7（Spec C v2 C-6）：neutral 不是單一狀態——分三種，tally 分開計數、brief 分開呈現。
+# 與 horizon abstain 嚴格區分：abstain＝「這題不在我的 horizon」（persona 級，不計入 council）；
+# neutral＝「在我 horizon 內、我出席投票了，但我判中性」。三類：
+# - out_of_circle：在我 horizon 內但不在我的能力圈/方法適用範圍（信心天生低）
+# - insufficient_signal：資料/證據不足以形成方向判斷（缺關鍵欄位、not_evaluable 過多）
+# - balanced_forces：多空力量我看是真的勢均力敵（有方向性證據，但相互抵銷）
+NeutralReason = Literal["out_of_circle", "insufficient_signal", "balanced_forces"]
+
 # 分析時間框架（Spec C v2 P9）：trading＝數天~數週（技術/籌碼/動能為主）、
 # value＝數年（多年基本面/護城河/估值為主）。大師在 persona 宣告適用 horizon，越圍 abstain。
 Horizon = Literal["trading", "value"]
@@ -70,6 +78,12 @@ class SageSignal(BaseModel):
     thesis: str = Field(description="3-5 sentences in Traditional Chinese, in this sage's voice")
     key_evidence_ids: list[str] = Field(default_factory=list)
     what_would_change_my_mind: str
+    # P7：stance=neutral 時必填，說明「為何中性」（三類見 NeutralReason）；非中性時忽略。
+    # LLM 填；若 neutral 卻漏填，council 程式回填 insufficient_signal（保守、不假裝有方向）。
+    neutral_reason: NeutralReason | None = Field(
+        default=None, description="If stance is neutral, WHY: out_of_circle / "
+        "insufficient_signal / balanced_forces"
+    )
     # 以下為 Persona Pack（Sage Runtime）專屬；degraded 舊單檔 persona 留空。
     # sop_trace 由 SOP pass 的 LLM 填；其餘三項由 Runtime 程式回填（LLM 不可信，程式收口）。
     sop_trace: list[SopStepResult] = Field(
@@ -96,6 +110,9 @@ class CouncilVerdict(BaseModel):
     weighted_score: float = 0.0  # -1(全空) .. +1(全多)
     consensus: Stance = "neutral"
     outliers: list[str] = Field(default_factory=list)  # 與多數不同調的 sage 名單
+    # P7：neutral 三類各自計數（out_of_circle / insufficient_signal / balanced_forces），
+    # 加總 == neutral。brief 分開呈現，讓判讀者區分「沒人懂」與「真的勢均力敵」。
+    neutral_by_reason: dict[str, int] = Field(default_factory=dict)
     # fail-loud：被席但即便加大預算重試後 structured output 仍失敗而缺席的大師。
     # 正常情況應為空——gateway 偵測截斷會自動加大 token 重試；非空代表硬錯誤，須揭露。
     absent: list[str] = Field(default_factory=list)
@@ -106,11 +123,32 @@ class CouncilVerdict(BaseModel):
 
 class DebateArgument(BaseModel):
     side: Literal["bull", "bear"] = "bull"
-    argument: str = Field(description="Traditional Chinese, cite evidence ids inline")
+    # P3 雙盲：argument＝第一輪「盲打」開場（未見對手論點）。
+    argument: str = Field(description="Round-1 blind opening; Traditional Chinese, cite evidence ids")
+    # 第二輪反駁由程式從 RebuttalArgument 回填（不由 LLM 直接填本欄）——見 RebuttalArgument 註。
+    rebuttal: str = Field(
+        default="", description="Round-2 rebuttal after seeing opponent's opening; 繁體中文"
+    )
+
+
+class RebuttalArgument(BaseModel):
+    """P3 第二輪反駁的**單欄純文字**輸出（review A）。
+
+    第二輪刻意不重用 DebateArgument：雙欄（argument/rebuttal）會讓 LLM 在「系統 prompt 說建立
+    己方論點、使用者 prompt 說反駁對手」方向不一致時，有非零機率把反駁塞進 argument 留 rebuttal
+    空、或反之——下游取錯欄即 silent failure（反駁段消失）。單欄 schema 杜絕塞錯欄。
+    """
+    rebuttal: str = Field(
+        description="A single concise rebuttal paragraph in Traditional Chinese, cite evidence ids"
+    )
 
 
 class OutlierRebuttal(BaseModel):
-    """裁判對敗方離群大師「核心論點」的具體反駁——避免少數派被名義上擊敗卻論點還活著。"""
+    """裁判對敗方核心論點的具體反駁——避免敗方被名義上擊敗卻論點還活著。
+
+    P6（雙邊）：不論敗方是多數或少數，其持敗方 stance 的代表大師核心論點都須被逐點反駁
+    （少數派勝出時，落敗的多數派論點同樣得被守住）；類名沿用 OutlierRebuttal 不破壞下游。
+    """
     sage: str
     thesis_point: str = Field(description="The outlier sage's core claim being rebutted")
     rebuttal: str = Field(
@@ -127,9 +165,10 @@ class DebateVerdict(BaseModel):
     unresolved_risks: list[str] = Field(default_factory=list)
     outlier_rebuttals: list[OutlierRebuttal] = Field(
         default_factory=list,
-        description="One point-level rebuttal per outlier sage on the LOSING side",
+        description="One point-level rebuttal per core dissenting sage on the LOSING side "
+        "(whether the losing side is the majority or the minority)",
     )
-    # fail-loud：補打後仍未被論點級反駁的敗方離群者，brief 顯式警告而非假裝完成
+    # fail-loud：補打後仍未被論點級反駁的敗方代表大師，brief 顯式警告而非假裝完成
     unrebutted_outliers: list[str] = Field(default_factory=list)
 
 
