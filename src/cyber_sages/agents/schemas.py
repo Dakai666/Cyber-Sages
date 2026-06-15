@@ -102,6 +102,19 @@ class SageSignal(BaseModel):
     )
 
 
+class ScoutSignal(BaseModel):
+    """P2 第一輪 scout 的輕量輸出——便宜模型快速粗判，不做深度 SOP（決議 4）。
+
+    全員先出 scout，再只對「共識代表 + 離群代表」深入；scout 結果同時用於選代表與（未被選中
+    深入者的）最終投票，故省去 N−代表 位的昂貴深度推理。
+    """
+    stance: Stance
+    confidence: float = Field(description="0 to 1, a quick gut read")
+    one_liner: str = Field(description="One-sentence rationale in Traditional Chinese")
+    neutral_reason: NeutralReason | None = Field(
+        default=None, description="If neutral: out_of_circle / insufficient_signal / balanced_forces")
+
+
 class CouncilVerdict(BaseModel):
     signals: list[SageSignal]
     bullish: int = 0
@@ -119,6 +132,9 @@ class CouncilVerdict(BaseModel):
     # P9：本次 horizon 不在其適用範圍而不出席的大師（persona 級 not_evaluable）。
     # 與 absent 不同——這是設計上的誠實退場（Buffett 不答當沖），須在 brief 揭露。
     abstained: list[str] = Field(default_factory=list)
+    # P2：只過 scout 粗判、未獲選深入的大師名單。其訊號仍計入投票（不丟票），但無深度
+    # thesis/sop_trace。空＝單階段（全員深入，房間 ≤ deep 預算時）。brief 揭露「深入 N / 速覽 M」。
+    scouted_only: list[str] = Field(default_factory=list)
 
 
 class DebateArgument(BaseModel):

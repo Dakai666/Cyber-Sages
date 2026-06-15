@@ -25,6 +25,8 @@ def _settings() -> SimpleNamespace:
 def _gw():
     class G:
         async def structured(self, role, *, system, prompt, schema, **kw):
+            if schema.__name__ == "ScoutSignal":   # P2 第一輪 scout（value 房間 >6 觸發兩階段）
+                return schema(stance="neutral", confidence=0.5, one_liner="快讀中性")
             return schema(stance="neutral", confidence=0.5, thesis="t",
                           what_would_change_my_mind="w")
     return G()

@@ -194,9 +194,12 @@ async def run_pipeline(
     council = await run_council(store, reports, settings, gateway,
                                 n_sages=n, on_signal=on_signal, horizon=horizon)
     abstain_note = f"；{len(council.abstained)} 位 abstain（非本 horizon）" if council.abstained else ""
+    # P2：兩階段時標示深入/速覽分布（空＝單階段全員深入）
+    scout_note = (f"；{len(council.signals) - len(council.scouted_only)} 深入/"
+                  f"{len(council.scouted_only)} scout 速覽") if council.scouted_only else ""
     await _emit(on_stage, "council", "done",
                 f"{council.bullish}多/{council.neutral}中/{council.bearish}空 "
-                f"weighted {council.weighted_score:+.2f}{abstain_note}")
+                f"weighted {council.weighted_score:+.2f}{scout_note}{abstain_note}")
 
     # [6] Debate
     bull = bear = debate = None

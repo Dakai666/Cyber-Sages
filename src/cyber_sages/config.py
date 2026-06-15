@@ -58,6 +58,9 @@ class DefaultsConfig(BaseModel):
     debate_rounds: int = 1
     max_tokens: int = 8192
     include_macro: bool = True        # 預設帶入 FRED 總經（有 key 才會真正抓）
+    # P2：房間 > 此數才走兩階段 council（scout→只深入代表）；≤ 則全員深入。隨手工大師增多、
+    # trading 房間逼近此值時可在此調整（review E）。
+    deep_budget: int = 6
 
 
 class Settings(BaseModel):

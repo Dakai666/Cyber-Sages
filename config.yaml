@@ -21,6 +21,12 @@ roles:
   data_auditor: { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
   analyst:      { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
   sage:         { provider: minimax, model: MiniMax-M2.7, max_tokens: 16384 }
+  # P2 兩階段 council 的第一輪 scout：便宜/小模型即可（只要粗 stance + 信心），輸出短、
+  # max_tokens 給小。未設此角色時程式回退用 sage（向後相容）。
+  # ⚠ 成本提醒（review A）：此處預設與 sage 同 model，省的只是 prompt 大小與 max_tokens，
+  # 不省 per-token 單價——要拿到 P2 承諾的「token 成本 ≥30% 下降」，請把 sage_scout 換成
+  # 更便宜的小模型（如 provider 的 mini/haiku 級）。
+  sage_scout:   { provider: minimax, model: MiniMax-M2.7, max_tokens: 4096 }
   debater:      { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
   judge:        { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
   chief:        { provider: minimax, model: MiniMax-M3,   max_tokens: 16384 }
@@ -43,3 +49,4 @@ defaults:
   debate_rounds: 1
   max_tokens: 8192
   include_macro: true               # 帶入 FRED 總經背景（需 FRED_API_KEY；--no-macro 可關）
+  deep_budget: 6                    # P2：房間 > 此數才走兩階段 council（scout→只深入代表）
