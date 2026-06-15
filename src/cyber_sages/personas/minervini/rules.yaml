@@ -23,13 +23,16 @@ hard_rules:
     note: 均線未多頭排列、非 Stage-2——SEPA 不在這類股票做多，信心收口
 
   - id: leadership-near-high
+    # review B：原 15% 偏鬆（會把「52 週範圍上半段」誤判成領導股）。Minervini 原典「near
+    # 52w high」約 5~10%，收緊到 10%，並加 return_1y_pct>0 做相對強度二次確認（年線同向）。
     if:
       all:
-        - {field: pct_below_52w_high, op: "<", value: 15}
+        - {field: pct_below_52w_high, op: "<", value: 10}
         - {field: return_3m_pct, op: ">", value: 0}
+        - {field: return_1y_pct, op: ">", value: 0}
     action: bullish_floor
     confidence_floor: 0.55
-    note: 貼近 52 週高點且季線強勢——相對強度領導股的特徵
+    note: 貼近 52 週高點（<10%）且季線、年線俱強——相對強度領導股的特徵
 
   - id: too-extended-from-pivot
     if: {field: extension_above_sma50, op: ">", value: 25}

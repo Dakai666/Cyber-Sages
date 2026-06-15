@@ -3,17 +3,24 @@
 Pack = 可執行的專家，目錄結構（Spec E）：
 
     personas/
-      buffett-2019/            ← 目錄名 = <key>-<epoch>（時點鎖定）
+      buffett-2019/            ← 時點鎖定型：目錄名 = <key>-<epoch>，立場隨時代演進
         persona.yaml           # 身分 + weight_rationale + sources manifest
         rules.yaml             # 硬規則 DSL（hard_rules）+ 自然語言 exceptions
         sop.yaml               # 決策工作流：有序步驟，每步綁 evidence 欄位與 skill
         skills.py              # 選配：該大師專屬的確定性計算
+      livermore/               ← epoch-less 型：目錄名 = <key>（無 epoch 後綴）
       taleb.yaml               ← 舊單檔向後相容（degraded：無 skills/rules/SOP）
+
+兩種目錄命名（皆 Pack，差別只在 `persona.yaml` 有無 `epoch`）：
+- **時點鎖定 `<key>-<epoch>`**：立場會隨時代漂移的大師（如 Buffett 對科技股的態度
+  1990s≠2019），用 epoch 釘住「哪個年代的他」，未來可同 key 並存多版本對決。
+- **epoch-less `<key>`**：行為模式不隨時間漂移、跨時點都成立的大師（多為交易型——
+  趨勢/動能/節奏的方法論本就與年代無關，如 Livermore/Minervini/Raschke），`epoch=None`。
 
 `load_personas` 同時認得目錄與單檔，漸進遷移；degraded persona 走 council 的原單發 prompt。
 
-E1 實作決議 #4：目錄名帶 epoch、`persona.yaml` 有 `epoch` 欄位，但「同 key 取最新 epoch」
-的多版本選取邏輯延後 E2——目前每個 key 預期單一 epoch。
+E1 實作決議 #4：時點鎖定型 persona 有 `epoch` 欄位，但「同 key 取最新 epoch」的多版本
+選取邏輯延後 E2——目前每個 key 預期單一 epoch（epoch-less 型本就單版本，不受此限）。
 """
 
 from __future__ import annotations

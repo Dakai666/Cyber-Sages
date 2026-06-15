@@ -25,13 +25,17 @@ hard_rules:
     note: 完美空頭排列、季線下彎——最小阻力線向下，別去接落下的刀
 
   - id: pivotal-breakout
+    # ⚠ review F：嚴格的 Livermore 關鍵點突破應是「last_price 創新高（> 前期 52w 高）」，但
+    # 本系統 high_52w 已含今日、無「突破前的前期 52w 高」可比對，故以「貼近高點 3% 內 + 動能
+    # 為正」近似「正在/剛突破關鍵點」。會把「貼著高點但尚未真突破」也納入——刻意偏寬，配合
+    # exceptions 的停損紀律收尾（突破失敗即出場）。E2 若加「前期 52w 高」欄位可改嚴。
     if:
       all:
         - {field: pct_below_52w_high, op: "<", value: 3}
         - {field: macd_histogram, op: ">", value: 0}
     action: bullish_floor
     confidence_floor: 0.6
-    note: 逼近 52 週高點且動能為正——關鍵點突破，這正是我加碼的時機
+    note: 逼近 52 週高點且動能為正——關鍵點突破在即，這正是我加碼的時機
 
   - id: climax-no-chase
     if: {field: rsi_14, op: ">", value: 80}

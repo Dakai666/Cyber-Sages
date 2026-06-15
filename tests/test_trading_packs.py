@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from cyber_sages.agents.council import run_council
-from cyber_sages.agents.schemas import SageSignal
+from cyber_sages.agents.schemas import SageSignal, SopStepResult
 from cyber_sages.data.evidence import Evidence, EvidenceStore
 from cyber_sages.personas.pack import Persona, load_personas
 from cyber_sages.personas.rules import clamp_confidence, evaluate_rules
@@ -36,6 +36,7 @@ def _uptrend_store() -> EvidenceStore:
         _tech("sma_50", 100.0, unit="USD"),
         _tech("sma_200", 90.0, unit="USD"),
         _tech("return_3m_pct", 15.0, unit="%"),
+        _tech("return_1y_pct", 40.0, unit="%"),
         _tech("pct_below_52w_high", 2.0, unit="%"),
         _tech("macd_histogram", 0.5),
         _tech("rsi_14", 65.0),
@@ -113,6 +114,22 @@ def test_minervini_caps_when_not_stage2_and_extended():
     assert conf == 0.5 and conflicts == []              # 兩 ceiling 取低（0.5）硬收
 
 
+def test_minervini_leadership_requires_tight_proximity_and_yearly_strength():
+    # review B：收緊後——貼近高點 2%、季線/年線俱強 → 領導股觸發
+    near = {"trend_alignment_score": 2.0, "return_3m_pct": 15.0, "return_1y_pct": 40.0,
+            "pct_below_52w_high": 2.0}
+    o = {r.rule_id: r for r in evaluate_rules(_pack("minervini").pack.hard_rules, near)}
+    assert o["leadership-near-high"].triggered and o["stage2-uptrend"].triggered
+    # 距高 12%（原 15% 門檻會誤判成領導股）現在不觸發
+    loose = {**near, "pct_below_52w_high": 12.0}
+    o = {r.rule_id: r for r in evaluate_rules(_pack("minervini").pack.hard_rules, loose)}
+    assert not o["leadership-near-high"].triggered
+    # 年線轉弱（return_1y_pct<0）即使貼近高點也不算領導股
+    weak_year = {**near, "return_1y_pct": -5.0}
+    o = {r.rule_id: r for r in evaluate_rules(_pack("minervini").pack.hard_rules, weak_year)}
+    assert not o["leadership-near-high"].triggered
+
+
 def test_raschke_momentum_rules_and_overbought_cap():
     # 順勢動能：trend ≥1 且 macd>0 → bullish_floor；但 rsi 76>75 → 過熱 cap 0.55
     vals = {"trend_alignment_score": 2.0, "macd_histogram": 0.3, "rsi_14": 76.0}
@@ -164,3 +181,24 @@ async def test_minervini_pack_end_to_end_floor_clamps_up(monkeypatch):
     assert s.confidence == 0.6      # stage2-uptrend floor 0.6 把 0.3 抬上來
     assert s.not_evaluable == []    # 強勢股技術面齊全，skill 與 rule 全評得出
     assert council.abstained == []  # 單獨座 minervini，無人 abstain
+
+
+async def test_livermore_pack_sop_trace_citechecks_against_skill_evidence(monkeypatch):
+    # review E：trading Pack 的 SOP pass 端到端——LLM 的 sop_trace 引用 private skill 輸出，
+    # 數字須能由該 derived evidence 推導（cite-check 過），否則標 unverified（軟揭露）。
+    liv = _pack("livermore")
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [liv])
+    llm = SageSignal(
+        stance="bullish", confidence=0.3, thesis="最小阻力線向上，順勢坐穩",
+        what_would_change_my_mind="跌破前低 low_52w",
+        sop_trace=[SopStepResult(
+            step="line-of-least-resistance",
+            conclusion="均線排列分數為 2，完美多頭排列",
+            evidence_ids=["S-livermore-trend_alignment_score"])])
+    council = await run_council(_uptrend_store(), [], _settings(), _gateway(llm),
+                                n_sages=1, horizon="trading")
+    [s] = council.signals
+    assert s.sage == "Jesse Livermore"
+    assert s.unverified == []        # sop_trace 的「2」對得上 private derived evidence
+    assert s.confidence == 0.6       # trend-up(0.55) + pivotal-breakout(0.6) floor → 0.6
+    assert s.sop_trace[0].step == "line-of-least-resistance"
