@@ -49,10 +49,14 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     ps = {p.key: p for p in load_personas()}
     assert ps["buffett"].is_pack and ps["buffett"].epoch == 2019
     assert ps["munger"].is_pack and ps["munger"].epoch == 2019
-    assert len(load_personas()) == 10  # 8 legacy + 2 pack，無重複
+    # PR3 起 Livermore/Minervini/Raschke 亦為交易型 Pack（無 epoch）
+    assert ps["livermore"].is_pack and ps["livermore"].epoch is None
+    assert ps["minervini"].is_pack and ps["raschke"].is_pack
+    assert len(load_personas()) == 12  # 7 legacy + 5 pack，無重複
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1
+    assert names.count("Jesse Livermore") == 1  # livermore.yaml 已刪、不與目錄 Pack 重複
 
 
 # ---------- skill pass：真實 skills.py 確定性計算 ----------

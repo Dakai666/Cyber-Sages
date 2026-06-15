@@ -1,0 +1,51 @@
+# Livermore 硬規則（DSL，程式判定、零幻覺）：最小阻力線 + 關鍵點突破 + climax 收口。
+# 技術欄位由 data/indicators.py 確定性產出（US/TW 共用）：sma_* / rsi_14 / macd_histogram /
+# pct_below_52w_high / return_3m_pct。trend_alignment_score 為本 Pack skill 的 private
+# derived 欄位（跨均線比較無法用 DSL 直接表達，故先算成單一欄位，見 skills_lib 註）。
+#
+# ⚠ 短均/動能欄位需 ~30+ 交易日歷史方有值；資料不足時規則記 not_evaluable（誠實揭露、
+# 不假裝通過），Livermore 在 SOP pass 會說「這檔盤面我還讀不出來」。
+hard_rules:
+  - id: trend-up-least-resistance
+    if:
+      all:
+        - {field: trend_alignment_score, op: ">=", value: 2}
+        - {field: return_3m_pct, op: ">", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: 均線完美多頭排列、季線翻揚——最小阻力線向上，順勢坐穩才賺得到大錢
+
+  - id: trend-down-least-resistance
+    if:
+      all:
+        - {field: trend_alignment_score, op: "<=", value: -2}
+        - {field: return_3m_pct, op: "<", value: 0}
+    action: bearish_floor
+    confidence_floor: 0.55
+    note: 完美空頭排列、季線下彎——最小阻力線向下，別去接落下的刀
+
+  - id: pivotal-breakout
+    if:
+      all:
+        - {field: pct_below_52w_high, op: "<", value: 3}
+        - {field: macd_histogram, op: ">", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: 逼近 52 週高點且動能為正——關鍵點突破，這正是我加碼的時機
+
+  - id: climax-no-chase
+    if: {field: rsi_14, op: ">", value: 80}
+    action: cap_confidence
+    confidence_ceiling: 0.6
+    note: RSI 過熱像 climax run，別在亢奮處追進——等回檔或下一個關鍵點
+
+exceptions:
+  - >
+    停損紀律高於一切：任何進場都要先定好「錯了在哪」（跌破最近關鍵點或前低 low_52w
+    即出場）。動用看多時務必說明停損錨在哪個 evidence，講不出停損就不該進場。
+  - >
+    順勢時只在「已經賺錢的部位」上金字塔加碼，絕不向下攤平虧損；主張續抱前要引用
+    evidence 說明趨勢仍完好（均線排列、季報酬未轉弱）。
+  - >
+    新聞與內線消息不可作為進出依據——tape 永遠先於新聞反映真相；若僅有新聞題材而盤面
+    未確認，誠實說「還沒到我的關鍵點」而非預設立場。

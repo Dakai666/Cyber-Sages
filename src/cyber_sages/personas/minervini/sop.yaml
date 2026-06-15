@@ -1,0 +1,23 @@
+# Minervini SEPA 決策工作流——流程本身就是視角：趨勢模板 → 相對強度領導 → 樞紐/延伸度 →
+# 定義風險 → 結論。SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: trend-template
+    ask: 是否處於 Stage-2 上升趨勢？均線是否多頭排列、長期均線是否上彎？
+    use_skill: trend_alignment_score
+    on_fail: 非 Stage-2 就不做多——SEPA 只買強勢，弱勢股再便宜也放生
+
+  - step: relative-strength
+    ask: 這是不是領導股？是否貼近 52 週高點、近季表現具相對強度特徵？
+    look_at: [history.pct_below_52w_high, history.return_3m_pct, history.return_1y_pct]
+
+  - step: pivot-and-extension
+    ask: 進場點在樞紐附近還是已過度延伸？此處追高的風險報酬比可接受嗎？
+    use_skill: extension_above_sma50
+    on_fail: 距均線延伸過大就等下一個低風險樞紐——不追、不將就
+
+  - step: define-risk
+    ask: 停損錨在哪（樞紐下方/SMA50）？波動容許多大部位？小賠快出的紀律守得住嗎？
+    look_at: [history.sma_50, history.volatility_30d_annualized_pct, history.low_52w]
+
+  - step: verdict
+    ask: 綜合 SEPA——這是低風險的 Stage-2 領導股進場，還是該放生、等更好的設置？

@@ -35,3 +35,44 @@ def owner_earnings_yield(ev: EvidenceAccessor) -> SkillResult:
           - ev["capex_annual"])
     return SkillResult(value=oe / ev["market_cap"] * 100, unit="%",
                        formula="owner earnings yield = (NI + D&A − CapEx) / market_cap × 100")
+
+
+# ---- 交易型共用 skill（趨勢 / 動能 / 延伸度，多位短線大師共用）----
+# 技術欄位（sma_* / last_price 等）由 data/indicators.py 確定性產出、US/TW 共用；DSL 的
+# `{field, op, value}` 只能拿欄位比常數，無法直接比兩個欄位（如 SMA20>SMA50），故把這類
+# 跨欄位比較**先算成單一 derived 欄位**再交給 rules——這正是 skill pass 的用途。
+
+
+def trend_alignment_score(ev: EvidenceAccessor) -> SkillResult:
+    """趨勢排列分數（line of least resistance）：均線多/空頭排列的淨方向，範圍 −2..+2。
+
+    +2＝SMA20>SMA50>SMA200 完美多頭排列；−2＝完美空頭排列；0＝糾結無方向。
+    Livermore 的「最小阻力線」、Minervini Stage-2 的客觀代理。
+    requires（由 Pack 宣告）：sma_20 / sma_50 / sma_200。
+    """
+    up = int(ev["sma_20"] > ev["sma_50"]) + int(ev["sma_50"] > ev["sma_200"])
+    down = int(ev["sma_20"] < ev["sma_50"]) + int(ev["sma_50"] < ev["sma_200"])
+    return SkillResult(value=float(up - down),
+                       formula="trend score = (SMA20>SMA50)+(SMA50>SMA200) − 反向兩項")
+
+
+def extension_above_sma50(ev: EvidenceAccessor) -> SkillResult:
+    """價格相對 SMA50 的延伸度（%）= (last_price − SMA50) / SMA50 × 100。
+
+    正且過大＝追高、進場風險報酬差（Minervini 忌「extended」）；負＝跌破中期均線。
+    requires：last_price / sma_50。
+    """
+    last, sma = ev["last_price"], ev["sma_50"]
+    return SkillResult(value=(last - sma) / sma * 100, unit="%",
+                       formula="extension = (last_price − SMA50) / SMA50 × 100")
+
+
+def pullback_depth_to_sma20(ev: EvidenceAccessor) -> SkillResult:
+    """價格相對 SMA20 的乖離（%）= (last_price − SMA20) / SMA20 × 100。
+
+    Raschke「Holy Grail」回檔買點：強勢股回測 20MA 附近（小正乖離）是順勢進場節奏點；
+    大負＝跌破短均、節奏轉弱。requires：last_price / sma_20。
+    """
+    last, sma = ev["last_price"], ev["sma_20"]
+    return SkillResult(value=(last - sma) / sma * 100, unit="%",
+                       formula="pullback = (last_price − SMA20) / SMA20 × 100")
