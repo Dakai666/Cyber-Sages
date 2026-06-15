@@ -99,8 +99,11 @@ def render_brief(result: AnalysisResult) -> str:
         f"## 陪審團 {c.bullish}🐂 {c.neutral}⚖ {c.bearish}🐻 · "
         f"加權 {c.weighted_score:+.2f}{debate_line}",
     ]
+    # review C：明確標示這是「與多數不同調者」的概念——與 debate 的「敗方代表反駁」清單
+    # （持敗方 stance 者，不限離群者）是兩個不同集合，可能無交集，分開呈現避免讀者誤併。
     if c.outliers:
-        lines.append(f"離群者：{'、'.join(c.outliers)}（意見已強制進入辯論）")
+        lines.append(f"與多數不同調者：{'、'.join(c.outliers)}（少數意見已強制進入辯論；"
+                     "辯論段另列敗方代表的逐點反駁）")
     # P7：中性細分——讓判讀者區分「沒人懂（能力圈外）」「資料不足」「真的勢均力敵」三種 neutral。
     if c.neutral and c.neutral_by_reason:
         parts = [f"{NEUTRAL_REASON_ZH.get(k, k)} {v}"

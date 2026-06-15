@@ -13,6 +13,7 @@ from cyber_sages.agents.schemas import (
     FinalVerdict,
     HorizonView,
     PriceLevel,
+    RebuttalArgument,
     RiskNote,
     SageSignal,
 )
@@ -49,6 +50,8 @@ class FakeGateway:
             )
         if name == "DebateArgument":
             return DebateArgument(argument="論點如上 [E001]。")
+        if name == "RebuttalArgument":
+            return RebuttalArgument(rebuttal="反駁對手 [E001]。")
         if name == "DebateVerdict":
             return DebateVerdict(
                 winner="bull", rationale="多方證據較紮實",

@@ -18,6 +18,7 @@ from cyber_sages.agents.schemas import (
     DebateArgument,
     DebateVerdict,
     OutlierRebuttal,
+    RebuttalArgument,
     SageSignal,
     UnverifiedClaim,
 )
@@ -145,6 +146,8 @@ class _FakeDebateGateway:
     async def structured(self, role, *, system, prompt, schema, **kw):
         if role == "debater":
             self.debater_calls += 1
+            if schema.__name__ == "RebuttalArgument":
+                return RebuttalArgument(rebuttal="反駁 [E001]")
             return DebateArgument(side="bull", argument="陳詞 [E001]")
         if role == "judge":
             v = self._judge[self.judge_calls]
@@ -257,9 +260,9 @@ class _BlindCheckGateway:
     async def structured(self, role, *, system, prompt, schema, **kw):
         if role == "debater":
             self.debater_prompts.append(prompt)
-            side = "bull" if "BULL opening" in prompt else (
-                "bear" if "BEAR opening" in prompt else "bull")
-            # 開場/反駁都回 DebateArgument；以可辨識字串當論點內容
+            if schema.__name__ == "RebuttalArgument":   # 第二輪反駁
+                return RebuttalArgument(rebuttal="REBUTTAL_TOKEN [E001]")
+            side = "bull" if "BULL opening" in prompt else "bear"
             return DebateArgument(side=side, argument=f"{side.upper()}_ARGUMENT_TOKEN [E001]")
         if role == "judge":
             return DebateVerdict(winner="draw", rationale="r", strongest_bull_point="b",

@@ -123,10 +123,23 @@ class CouncilVerdict(BaseModel):
 
 class DebateArgument(BaseModel):
     side: Literal["bull", "bear"] = "bull"
-    # P3 雙盲：argument＝第一輪「盲打」開場（未見對手論點）；rebuttal＝第二輪見對手開場後的反駁。
+    # P3 雙盲：argument＝第一輪「盲打」開場（未見對手論點）。
     argument: str = Field(description="Round-1 blind opening; Traditional Chinese, cite evidence ids")
+    # 第二輪反駁由程式從 RebuttalArgument 回填（不由 LLM 直接填本欄）——見 RebuttalArgument 註。
     rebuttal: str = Field(
         default="", description="Round-2 rebuttal after seeing opponent's opening; 繁體中文"
+    )
+
+
+class RebuttalArgument(BaseModel):
+    """P3 第二輪反駁的**單欄純文字**輸出（review A）。
+
+    第二輪刻意不重用 DebateArgument：雙欄（argument/rebuttal）會讓 LLM 在「系統 prompt 說建立
+    己方論點、使用者 prompt 說反駁對手」方向不一致時，有非零機率把反駁塞進 argument 留 rebuttal
+    空、或反之——下游取錯欄即 silent failure（反駁段消失）。單欄 schema 杜絕塞錯欄。
+    """
+    rebuttal: str = Field(
+        description="A single concise rebuttal paragraph in Traditional Chinese, cite evidence ids"
     )
 
 

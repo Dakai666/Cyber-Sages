@@ -19,6 +19,7 @@ from cyber_sages.agents.schemas import (
     DebateArgument,
     DebateVerdict,
     OutlierRebuttal,
+    RebuttalArgument,
 )
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
@@ -33,6 +34,14 @@ Build the strongest honest case for the {side_name} side using ONLY the provided
 evidence and council opinions — cite evidence ids inline like [E012].
 Attack the other side's weakest assumptions. Do not fabricate numbers.
 Write in Traditional Chinese (繁體中文), terms/tickers in English."""
+
+# 第二輪反駁專用 system（review A/B）：與「單欄 RebuttalArgument + 只反駁」的使用者 prompt
+# 方向一致——不再要 LLM「建立己方論點」，避免它把輸出塞錯位置。
+REBUTTER_SYSTEM = """\
+You are the {side_name} advocate in ROUND 2 of an investment debate about {ticker}.
+Your ONLY job now is to rebut the opponent's opening — do NOT restate your own case.
+Attack their weakest assumptions using ONLY the provided evidence; cite ids like [E012].
+Output a single concise rebuttal paragraph in Traditional Chinese; do not fabricate numbers."""
 
 JUDGE_SYSTEM = """\
 You are a coolly impartial investment judge. You watched a symmetric bull-vs-bear
@@ -58,8 +67,9 @@ def _losing_side_reps(council: CouncilVerdict, winner: str) -> list[str]:
     if winner == "draw":
         return []
     losing_stance = "bearish" if winner == "bull" else "bullish"
+    # tiebreak 用 sage 名（review C）：confidence 相同時取前 N 才確定性、不隨 signals 原序漂移。
     losers = sorted((s for s in council.signals if s.stance == losing_stance),
-                    key=lambda s: -s.confidence)
+                    key=lambda s: (-s.confidence, s.sage))
     return [s.sage for s in losers[:_MAX_REBUT_REPS]]
 
 
@@ -153,14 +163,14 @@ async def run_debate(
         side_name = "BULL" if mine.side == "bull" else "BEAR"
         out = await gateway.structured(
             "debater",
-            system=DEBATER_SYSTEM.format(side_name=side_name, ticker=store.ticker),
+            system=REBUTTER_SYSTEM.format(side_name=side_name, ticker=store.ticker),
             prompt=(base_context
                     + f"\n\n# 你（{mine.side}）的開場\n{mine.argument}"
                     + f"\n\n# 對手（{opp.side}）的開場\n{opp.argument}"
                     + "\n\n針對對手開場最弱的假設做一輪反駁，引用 evidence id；只出反駁、不重述開場。"),
-            schema=DebateArgument,
+            schema=RebuttalArgument,
         )
-        return out.argument
+        return out.rebuttal
 
     bull.rebuttal, bear.rebuttal = await asyncio.gather(
         _rebut(bull, bear), _rebut(bear, bull))

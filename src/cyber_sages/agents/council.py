@@ -54,10 +54,14 @@ Rules (apply through whatever investment philosophy you are assigned next):
 - It is perfectly acceptable (and in character) to disagree with the analysts.
 - confidence: how strongly your philosophy speaks on THIS stock (0.2 = barely
   in your circle of competence, 0.9 = textbook case for you).
-- If your stance is `neutral`, you MUST set `neutral_reason` to WHY:
-  `out_of_circle` (inside your horizon but outside your competence/method),
-  `insufficient_signal` (evidence too thin to call a direction), or
-  `balanced_forces` (genuine bull/bear standoff). Pick the honest one.
+- If your stance is `neutral`, you MUST set `neutral_reason`. Decide in THIS order:
+  1. if the evidence is missing key fields you'd need to judge (thin/incomplete)
+     → `insufficient_signal`;
+  2. else if the evidence is there but this stock sits outside your competence or
+     your method doesn't apply → `out_of_circle`;
+  3. else (evidence is there, in your circle, but genuine bull and bear forces
+     cancel out) → `balanced_forces`.
+  Pick the first that matches — do not overclaim a standoff when you simply lack data.
 - Write `thesis` and `what_would_change_my_mind` in Traditional Chinese (繁體中文),
   in your distinctive voice; keep tickers/terms in English.
 
