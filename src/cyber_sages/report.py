@@ -51,8 +51,10 @@ def render_brief(result: AnalysisResult) -> str:
     price, price_id = _current_price(result)
     price_str = f"現價 **{price:g}** `[{price_id}]`" if price else "現價不可得"
 
+    horizon_zh = {"value": "長期價值（數年）", "trading": "短線交易（數天~數週）"}
     lines = [
         f"# {result.ticker}（{result.store.market}）決策簡報 · "
+        f"{horizon_zh.get(result.horizon, result.horizon)} · "
         f"{result.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"{price_str} · 陪審團 {len(c.signals)} 席"
         + (f" ⚠️ {len(c.absent)} 席缺席（{', '.join(c.absent)}）" if c.absent else "")
@@ -94,6 +96,8 @@ def render_brief(result: AnalysisResult) -> str:
     ]
     if c.outliers:
         lines.append(f"離群者：{'、'.join(c.outliers)}（意見已強制進入辯論）")
+    if c.abstained:
+        lines.append(f"未出席（非本 horizon，誠實退場）：{'、'.join(c.abstained)}")
     if result.debate and result.debate.unrebutted_outliers:
         lines.append(f"⚠️ 裁判未完成論點級反駁：{'、'.join(result.debate.unrebutted_outliers)}"
                      "（其核心論點尚未被正面回應，閱讀時請自行加權）")

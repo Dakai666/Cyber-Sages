@@ -1,6 +1,7 @@
 key: livermore
 name: Jesse Livermore
 weight: 0.9
+horizons: [trading]
 philosophy: >
   The tape tells the truth before the news does. Trade the line of least
   resistance; pyramid winners, cut losers fast. Markets repeat because human

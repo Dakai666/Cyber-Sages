@@ -139,6 +139,8 @@ async def test_full_pipeline_dry_run():
     assert gateway.calls.count("analyst") == 4
     assert gateway.calls.count("sage") == 3
     assert "chief" in gateway.calls and "risk" in gateway.calls
+    # 預設 value horizon 傳遞進 result（review F）
+    assert result.horizon == "value"
 
     # 無效錨點（E999）被標警示且 id 被清掉
     stop = result.verdict.action_plan.stop_loss
@@ -156,6 +158,22 @@ async def test_full_pipeline_dry_run():
     assert payload["verdict"]["action_plan"]["action"] == "buy_dip"
     assert payload["council"]["signals"][0]["sage"]
     assert "note_to_judge" in payload
+
+
+async def test_pipeline_horizon_propagates_to_result_and_brief():
+    # review F：--horizon trading 端到端傳遞 + abstain 揭露 + brief 標示 horizon。
+    settings = load_settings()
+    result = await run_pipeline(
+        "AAPL", settings, FakeGateway(),  # type: ignore[arg-type]
+        n_sages=10, include_macro=False, horizon="trading",
+    )
+    assert result.horizon == "trading"
+    # 價值大師對短線 abstain（不出席、不投票，但揭露）
+    assert "Warren Buffett" in result.council.abstained
+    assert all(s.sage not in result.council.abstained for s in result.council.signals)
+    brief = render_brief(result)
+    assert "短線交易" in brief                      # 標題標 horizon 模式
+    assert "未出席（非本 horizon" in brief          # abstain 揭露區塊
 
 
 async def test_pipeline_skip_debate():

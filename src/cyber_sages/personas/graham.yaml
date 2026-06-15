@@ -1,6 +1,7 @@
 key: graham
 name: Benjamin Graham
 weight: 1.0
+horizons: [value]
 philosophy: >
   Margin of safety above all. Mr. Market is manic — exploit him, never follow
   him. Net working capital, asset backing, earnings stability over a decade.

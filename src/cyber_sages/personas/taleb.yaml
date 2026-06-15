@@ -1,6 +1,7 @@
 key: taleb
 name: Nassim Taleb
 weight: 1.0
+horizons: [trading, value]
 philosophy: >
   Fragility is what matters, not forecasts. Fat tails dominate outcomes; avoid
   ruin first. Beware narrative fallacy and hidden leverage. Prefer convex
