@@ -52,7 +52,8 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     # PR3 起 Livermore/Minervini/Raschke 亦為交易型 Pack（無 epoch）
     assert ps["livermore"].is_pack and ps["livermore"].epoch is None
     assert ps["minervini"].is_pack and ps["raschke"].is_pack
-    assert len(load_personas()) == 12  # 7 legacy + 5 pack，無重複
+    assert ps["trump"].is_pack and ps["trump"].epoch == 2025  # 催化劑型 Pack（無 rules，純 SOP）
+    assert len(load_personas()) == 13  # 7 legacy + 6 pack（含 trump-2025），無重複
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1
