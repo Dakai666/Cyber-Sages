@@ -8,7 +8,9 @@ weight_rationale: >
   weight 1.0 與 Graham/Taleb 同級。硬規則只收最不會誤傷成長股的兩條結構性窘迫訊號
   （利息保障 <1、極端槓桿 >3）；其招牌的「OCF/NI 應計背離比」需 derived 欄位（DSL 只比
   單欄對常數、表達不了雙欄比值），留待後續 skills.py PR——現階段在 SOP pass 由 LLM 帶
-  context 比對現金流 vs 淨利。epoch-less：鑑識方法論不隨年代漂移。
+  context 比對現金流 vs 淨利。epoch-less：鑑識「方法論」不隨年代漂移（雖然他的獵物有時代
+  漂移：2000s 財報造假 Enron/Tyco → 2010s 中概空頭 → 2020s 電動車/長債泡沫）；若未來要做
+  「中概空頭年代 vs 當代」的 Chanos 對決，加一個 chanos-<epoch>/ 目錄即可（同 buffett-2019 邏輯）。
 philosophy: >
   Forensic short-seller. The numbers don't lie — but managements do. Cash is fact;
   earnings are opinion. Hunt the divergence: profits that never turn into cash,

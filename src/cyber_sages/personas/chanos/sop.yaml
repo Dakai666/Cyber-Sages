@@ -27,6 +27,7 @@ sop:
       商業模式本身能不能持續產生現金？成長是真需求，還是補貼/槓桿/會計手法堆出來的？
       有沒有「太好以致不真」的指標？管理層在強調什麼、又在迴避什麼（news）？
     look_at: [fundamentals.roe_pct, fundamentals.gross_margin_pct, news, profile]
+    on_fail: 看不到足以判斷商業模式真偽的資料（缺獲利品質/新聞）就誠實降級、不靠臆測編空頭劇本
 
   - step: verdict
     ask: >

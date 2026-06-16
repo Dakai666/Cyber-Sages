@@ -21,6 +21,8 @@ hard_rules:
     confidence_floor: 0.5
     note: 債務/權益 >3，槓桿在掩蓋商業模式的問題；利率或景氣一回檔就見光
 
+# 注意：DSL 無 industry 欄位，以下 exceptions 是「給 SOP pass 的 LLM 降權指引」，不是規則本身
+# 的自動修正——硬規則觸發時不看業別，金融業豁免由 SOP pass 帶 context 實作（語意在此、執行在 SOP）。
 exceptions:
   - >
     受監管的金融業（銀行/保險）本就以高槓桿經營，debt_to_equity >3 不必然是紅旗——
