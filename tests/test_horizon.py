@@ -46,6 +46,43 @@ def test_roster_horizon_tags():
     assert "trading" in by["Stanley Druckenmiller"] and "value" in by["Stanley Druckenmiller"]
 
 
+def test_persona_default_aggression_is_both():
+    # 未宣告 aggression 的 persona 預設兩者皆適用（向後相容，同 horizons）
+    p = Persona(key="x", name="X", philosophy="p", focus="f", voice="v")
+    assert p.aggression == ["conservative", "aggressive"]
+
+
+def test_roster_aggression_tags():
+    by = {p.name: p.aggression for p in load_personas()}
+    assert by["Warren Buffett"] == ["conservative"] and by["Jim Chanos"] == ["conservative"]
+    assert by["Masayoshi Son"] == ["aggressive"] and by["George Soros"] == ["aggressive"]
+    # 中庸者兩個都列、兩種陪審團都出席
+    assert set(by["Aswath Damodaran"]) == {"conservative", "aggressive"}
+    assert set(by["Peter Lynch"]) == {"conservative", "aggressive"}
+
+
+async def test_aggression_filter_seats_only_matching_temperament():
+    # 四象限：value + conservative → 只座位保守派；激進專屬者（Son）退場、中庸者（Lynch）仍出席。
+    council = await run_council(EvidenceStore(ticker="NVDA", market="US"), [],
+                               _settings(), _gw(), horizon="value", aggression="conservative")
+    seated = {s.sage for s in council.signals} | set(council.scouted_only)
+    assert "Warren Buffett" in seated and "Jim Chanos" in seated   # 保守派出席
+    assert "Peter Lynch" in seated                                  # 中庸者兩邊都出席
+    assert "Masayoshi Son" in council.abstained                     # 激進專屬者退場
+    assert "Masayoshi Son" not in seated
+
+
+async def test_grand_assembly_seats_all_value_sages_no_truncation():
+    # 大師會堂（n_sages=None、無 aggression）：全體 value-eligible 出席，不被預設上限截斷——
+    # 修掉舊 default --sages 10 把 Trump/Taleb/Wood/Icahn 切掉的問題。
+    council = await run_council(EvidenceStore(ticker="NVDA", market="US"), [],
+                               _settings(), _gw(), horizon="value", n_sages=None)
+    seated = {s.sage for s in council.signals} | set(council.scouted_only)
+    for name in ("Donald Trump", "Nassim Taleb", "Cathie Wood", "Carl Icahn"):
+        assert name in seated, f"{name} 應在大師會堂出席（不該被截斷）"
+    assert len(seated) == 14   # 全體 value-eligible
+
+
 async def test_value_horizon_abstains_trading_only_sages():
     council = await run_council(EvidenceStore(ticker="NVDA", market="US"), [],
                                _settings(), _gw(), horizon="value")

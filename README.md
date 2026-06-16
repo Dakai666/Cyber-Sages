@@ -55,8 +55,10 @@ roles:
 ## 使用
 
 ```bash
-uv run cyber-sages analyze NVDA                    # 美股完整：價值大師合議 + 辯論（預設 --horizon value）
+uv run cyber-sages analyze NVDA                    # 大師會堂：該 horizon 全員合議 + 辯論（預設 --horizon value）
 uv run cyber-sages analyze NVDA --horizon trading  # 短線（數天~數週）：交易型大師出席、長期價值大師退場
+uv run cyber-sages analyze NVDA --aggression aggressive    # 激進陪審團（長期）：只座位進攻型大師
+uv run cyber-sages analyze NVDA --horizon trading --aggression conservative  # 保守短期象限
 uv run cyber-sages analyze 2330                    # 台股（FinMind + yfinance .TW，自動偵測）
 uv run cyber-sages analyze NVDA --sages 5 --depth quick   # 省 token
 uv run cyber-sages analyze NVDA --no-debate        # 跳過辯論
@@ -77,8 +79,12 @@ uv run cyber-sages analyze NVDA --json             # stdout 輸出 verdict.json�
 **Roster（18 人）**：value/quality（Buffett, Munger, Graham, Damodaran, Lynch, Burry, Wood,
 Chanos 鑑識空頭, Icahn 行動派, Son power-law 賭徒）、trading（Livermore, Minervini, Raschke,
 Roaring Kitty 散戶情緒）、tail-risk（Taleb）、policy/reflexive（Trump 政策催化劑, Soros 反身性宏觀）。
-預設 `--sages 10` 截斷後 value run 出席 10 人（Taleb/Icahn/Wood/Trump 被切）、trading run 8 人全出席；
-要指定低權重大師出席請調高 `--sages`。完整名單與 seating 機制見 `CLAUDE.md`，原型 roadmap 見 `docs/ROADMAP.md`。
+
+**五種模式（兩條分席軸）**：每位大師宣告 `horizons`（時間軸）與 `aggression`（保守/激進性格軸，
+中庸者兩者皆列）。組合出 5 種陪審團——**大師會堂**（預設，不給 `--aggression`：該 horizon 全員出席、
+不截斷）+ 四象限（`--horizon {value,trading}` × `--aggression {conservative,aggressive}`）。
+`--sages N` 僅作手動省 token 上限。brief 會標示本次是哪種陪審團（激進陪審團偏多是「組成使然」、
+非標的訊號）。完整 seating 機制見 `CLAUDE.md`，原型 roadmap 見 `docs/ROADMAP.md`。
 
 **市場自動偵測**：純數字代號（`2330`、`0050`）或 `.TW`/`.TWO` 字尾走台股管線——
 FinMind 為第一手來源（綜合損益表/資產負債表/月營收 + 三大法人買賣超 + 融資融券），

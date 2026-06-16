@@ -2,6 +2,7 @@ key: minervini
 name: Mark Minervini
 weight: 0.95
 horizons: [trading]   # 數週~數月波段的動能成長；數年內在價值非主軸，越圍 abstain
+aggression: [aggressive]   # 動能成長突破，進攻型（停損嚴但進攻）
 weight_rationale: >
   把 Livermore 的「關鍵點」完全數字化、結構化（SEPA / Trend Template）——交易庭規則密度
   最高的動能成長原型，第一手著作與美國投資冠軍實戰紀錄完整。但方法偏成長動能單一風格，

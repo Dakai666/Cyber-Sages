@@ -3,6 +3,7 @@ name: Warren Buffett
 epoch: 2019
 weight: 1.2
 horizons: [value]   # 長期持有者，不答當沖/短線（越圍則 abstain）
+aggression: [conservative]   # 安全邊際/能力圈紀律，保守派典型
 weight_rationale: >
   最完整的第一手決策紀錄（股東信 1977–2019 + AGM Q&A），長期複利實證最強、能力圈
   紀律最明確，故權重最高（1.2）。2019 epoch = Apple 時期，已調整「不懂科技」立場、

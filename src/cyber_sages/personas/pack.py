@@ -66,6 +66,10 @@ class Persona(BaseModel):
     # 適用 horizon（Spec C v2 P9）：未宣告預設兩者皆適用（向後相容——舊 persona 照常全程出席）；
     # 宣告後，run 的 horizon 不在此清單內則該大師 abstain（不出席、不投票，brief 揭露）。
     horizons: list[str] = Field(default_factory=lambda: ["trading", "value"])
+    # 適用 aggression（Phase 4.5 四象限）：保守/激進性格軸，與 horizons 同型（list、預設兩者皆適用、
+    # 向後相容）。run 給 --aggression 時，不在此清單內者不座位（性格不合本次陪審團）；不給＝大師會堂全員。
+    # 性格中庸者列 [conservative, aggressive]，兩種陪審團都出席。
+    aggression: list[str] = Field(default_factory=lambda: ["conservative", "aggressive"])
     # Pack 專屬（degraded 單檔留預設）
     epoch: str | int | None = None
     weight_rationale: str = ""

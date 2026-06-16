@@ -2,6 +2,7 @@ key: son
 name: Masayoshi Son
 weight: 1.0          # 進攻型成長重倉——Batch 2 平衡偏空 roster 的核心賭徒
 horizons: [value]    # 願景型長期豪賭，不答短線
+aggression: [aggressive]   # power-law 集中豪賭，最純粹的進攻型
 weight_rationale: >
   power-law 集中豪賭——roster 最純粹的「敢站多的賭徒」，刻意補來平衡偏空陣營（價值紀律派 +
   Taleb + Chanos 預設壓信心）。weight 1.0 與價值中段同級，確保多數 value run 都出席、真的形成

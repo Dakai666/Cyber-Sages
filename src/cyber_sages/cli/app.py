@@ -127,6 +127,8 @@ def analyze(
     depth: str = typer.Option("full", "--depth", help="full | quick（較省 token）"),
     horizon: str = typer.Option("value", "--horizon",
                                 help="value（數年，長期價值）| trading（數天~數週，短線）"),
+    aggression: str = typer.Option(None, "--aggression",
+                                   help="conservative | aggressive（不給＝大師會堂全員出席）"),
     no_debate: bool = typer.Option(False, "--no-debate", help="跳過多空辯論"),
     no_macro: bool = typer.Option(False, "--no-macro", help="不帶入 FRED 總經背景"),
     as_json: bool = typer.Option(False, "--json",
@@ -136,6 +138,8 @@ def analyze(
     """跑完整七階段分析管線，產出可操作的決策簡報。"""
     if horizon not in ("value", "trading"):
         raise typer.BadParameter("--horizon 只能是 value 或 trading")
+    if aggression not in (None, "conservative", "aggressive"):
+        raise typer.BadParameter("--aggression 只能是 conservative 或 aggressive")
     settings = load_settings(config)
     if depth == "quick":
         settings.defaults.max_tokens = min(settings.defaults.max_tokens, 4096)
@@ -144,7 +148,7 @@ def analyze(
     include_macro = settings.defaults.include_macro and not no_macro
 
     if as_json:
-        result = _run_plain(ticker, settings, sages, no_debate, include_macro, horizon)
+        result = _run_plain(ticker, settings, sages, no_debate, include_macro, horizon, aggression)
         out_dir = save_run(result)
         print(json.dumps(build_agent_payload(result), ensure_ascii=False, indent=2))
         Console(stderr=True).print(f"[dim]saved: {out_dir}[/]")
@@ -159,7 +163,8 @@ def analyze(
             ticker_task = asyncio.create_task(run_pipeline(
                 ticker, settings, gateway,
                 n_sages=sages, skip_debate=no_debate, include_macro=include_macro,
-                horizon=horizon, on_stage=dash.on_stage, on_signal=dash.on_signal,
+                horizon=horizon, aggression=aggression,
+                on_stage=dash.on_stage, on_signal=dash.on_signal,
             ))
             while not ticker_task.done():
                 live.update(dash.render())
@@ -181,7 +186,8 @@ def analyze(
 
 
 def _run_plain(ticker: str, settings, sages: int | None, no_debate: bool,
-               include_macro: bool = True, horizon: str = "value"):
+               include_macro: bool = True, horizon: str = "value",
+               aggression: str | None = None):
     """agent 模式：無 Live 畫面，stage 進度印到 stderr。"""
     err = Console(stderr=True)
     gateway = LLMGateway(settings)  # 不串流文字，省 stderr 噪音
@@ -193,7 +199,7 @@ def _run_plain(ticker: str, settings, sages: int | None, no_debate: bool,
         return asyncio.run(run_pipeline(
             ticker, settings, gateway,
             n_sages=sages, skip_debate=no_debate, include_macro=include_macro,
-            horizon=horizon, on_stage=on_stage,
+            horizon=horizon, aggression=aggression, on_stage=on_stage,
         ))
     except RuntimeError as e:
         err.print(f"[red]分析失敗：{e}[/]")

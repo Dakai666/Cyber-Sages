@@ -3,6 +3,7 @@ name: Donald Trump
 epoch: 2025          # 第二任；立場隨任期漂移（關稅/加密態度 2017≠2025），故釘時點（同 buffett-2019 邏輯）
 weight: 0.7          # 刻意低於 value sage（Buffett 1.2）——見 weight_rationale
 horizons: [trading, value]
+aggression: [aggressive]   # 政策催化劑做多敘事，進攻型
 weight_rationale: >
   催化劑型視角，非 evidence-grounded 價值判斷——它預測「權力會推動什麼」，而不是
   「這門生意值多少」。權重刻意壓低，確保在 council tally 只作配重、不主導價值投票；

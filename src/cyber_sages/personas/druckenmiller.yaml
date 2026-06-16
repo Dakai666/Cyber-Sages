@@ -2,6 +2,7 @@ key: druckenmiller
 name: Stanley Druckenmiller
 weight: 1.1
 horizons: [trading, value]
+aggression: [aggressive]   # 高信心時集中重壓，進攻型
 philosophy: >
   It's not whether you're right or wrong, it's how much you make when right.
   Liquidity and momentum drive markets; never fight a strong trend with weak

@@ -2,6 +2,7 @@ key: icahn
 name: Carl Icahn
 weight: 0.95         # 略低於核心價值派：論點依賴可被低估的潛在催化劑，不確定性高於純基本面
 horizons: [value]    # 分拆/資本配置/賣盤是中長期事件，不答短線
+aggression: [aggressive]   # 集中下注 + 逼宮施壓，進攻型
 weight_rationale: >
   行動派——roster 唯一「公司治理 / 事件驅動 / 分部加總」視角，問的不是生意好壞，而是
   「行動主義能逼出多少價值」。weight 0.95（略低於核心價值派：其論點押在可被低估的潛在
