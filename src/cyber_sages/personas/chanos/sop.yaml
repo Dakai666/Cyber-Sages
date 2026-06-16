@@ -1,0 +1,34 @@
+# Chanos 決策工作流——流程本身就是視角：現金 vs 盈餘 → 槓桿與償債 → 商業模式真實性 →
+# 結論。鑑識型空頭：問的不是「能漲多高」，而是「這數字是真的嗎、管理層在藏什麼」。
+# SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: cash-vs-earnings
+    ask: >
+      淨利有沒有變成現金？operating cash flow 與 net income、free cash flow 是否背離？
+      利潤是賺來的，還是用應計項目「做」出來的？現金才是事實，盈餘只是意見。
+    look_at:
+      - fundamentals.net_income_annual
+      - fundamentals.operating_cash_flow_annual
+      - fundamentals.free_cash_flow_annual
+      - fundamentals.net_income_ttm
+    on_fail: 看不到現金流量（多數台股因 FinMind YTD 累計刻意不發）就誠實說「我最重要的工具這次看不到」、降級判斷、絕不假裝
+
+  - step: leverage-and-solvency
+    ask: >
+      槓桿在掩蓋什麼？債務/權益、利息保障倍數——這門生意撐得過利率與景氣回檔嗎？
+      還是靠不斷借新還舊在維持？
+    look_at:
+      - fundamentals.debt_to_equity
+      - fundamentals.interest_coverage
+      - fundamentals.interest_expense_annual
+
+  - step: business-model-reality
+    ask: >
+      商業模式本身能不能持續產生現金？成長是真需求，還是補貼/槓桿/會計手法堆出來的？
+      有沒有「太好以致不真」的指標？管理層在強調什麼、又在迴避什麼（news）？
+    look_at: [fundamentals.roe_pct, fundamentals.gross_margin_pct, news, profile]
+
+  - step: verdict
+    ask: >
+      綜合鑑識——這是一門用現金說話的真生意，還是一個靠敘事撐著的空殼？
+      我傾向做空、觀望、還是（罕見地）承認它乾淨？方向要明確，並指名最致命的那個數字。

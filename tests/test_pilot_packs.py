@@ -53,7 +53,10 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert ps["livermore"].is_pack and ps["livermore"].epoch is None
     assert ps["minervini"].is_pack and ps["raschke"].is_pack
     assert ps["trump"].is_pack and ps["trump"].epoch == 2025  # 催化劑型 Pack（無 rules，純 SOP）
-    assert len(load_personas()) == 13  # 7 legacy + 6 pack（含 trump-2025），無重複
+    # Phase 4.5 catalyst/archetype 擴充：Chanos（鑑識空頭，有 rules）+ Icahn（行動派，純 SOP）
+    assert ps["chanos"].is_pack and len(ps["chanos"].pack.hard_rules) == 2
+    assert ps["icahn"].is_pack and ps["icahn"].epoch is None
+    assert len(load_personas()) == 15  # 7 legacy + 8 pack（含 trump-2025 / chanos / icahn），無重複
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1
