@@ -213,7 +213,7 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 **進度**：
 - ✅ Batch 1（PR #56）：Trump（政策催化劑，weight 0.7）/ Chanos（鑑識空頭，帶 2 條 hard rules）/ Icahn（行動派，純 SOP）。
 - ✅ Batch 2（PR #57）：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，epoch=2021）/ Masayoshi Son（power-law 集中豪賭）——刻意補「敢站多的賭徒」平衡目前偏空/保守的 roster（價值紀律派 + Taleb + Chanos 預設都壓低信心）。PLTR 實機驗證「roster 平衡 ≠ verdict 平衡」：要後者得靠下方四象限選擇讓使用者自組陪審團。
-- 🔜 Batch 3（待定）：盤點 18 人性格光譜剩餘的洞再 curate。**優先候選：保守型短線交易者**——四象限落地後發現「保守×短期」只有 2 席（Taleb / Raschke），是 roster 最瘦的象限；其餘候選：量化/系統化、PE/私募控制、央行/政策制定者視角。
+- 🔜 Batch 3（待定）：盤點 18 人性格光譜剩餘的洞再 curate。**優先候選：保守型短線交易者**——四象限落地後發現「保守×短期」只有 2 席（Taleb / Raschke），是 roster 最瘦的象限（激進短期有 7 席獨立鏡頭制衡，保守短期只有 2 個觀點易被 dominate）。精準缺口：**「短線 + 防禦」的交集**——Taleb 主要是 macro 風險框架、Raschke 是純短線節奏，缺的是「風險優先 + 短線紀律 + 程式可驗證規則」的真人；若只補 1 人，此原型優先順位最高。其餘候選：量化/系統化、PE/私募控制、央行/政策制定者視角。
 
 **象限化選擇（DK 2026-06-15 定調，✅ 已實作）**：「**保守↔激進 × 短期↔長期**」四象限組合來組 council，加上不過濾的「大師會堂」＝五種模式。
 - **短期/長期** 軸 = persona 的 `horizons: [trading, value]`（`council.py` 按 horizon 分席）。

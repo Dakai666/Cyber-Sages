@@ -86,6 +86,10 @@ Roaring Kitty 散戶情緒）、tail-risk（Taleb）、policy/reflexive（Trump 
 `--sages N` 僅作手動省 token 上限。brief 會標示本次是哪種陪審團（激進陪審團偏多是「組成使然」、
 非標的訊號）。完整 seating 機制見 `CLAUDE.md`，原型 roadmap 見 `docs/ROADMAP.md`。
 
+> **升級注意（行為變更）**：預設改為「大師會堂全員出席、不截斷」（舊版預設截斷 10 席）——value run
+> 從 10 席 → 14 席，token 用量約 +40%。這是刻意取捨（品質優先於 token）；要省 token 請用 `--sages N`
+> 限制席數，或挑單一象限（`--aggression` 縮小陪審團）。
+
 **市場自動偵測**：純數字代號（`2330`、`0050`）或 `.TW`/`.TWO` 字尾走台股管線——
 FinMind 為第一手來源（綜合損益表/資產負債表/月營收 + 三大法人買賣超 + 融資融券），
 yfinance `.TW` 報價當跨源比對的第二路徑；技術指標一樣在程式裡確定性計算。
