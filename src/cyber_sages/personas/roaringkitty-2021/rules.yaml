@@ -17,6 +17,8 @@ hard_rules:
     confidence_floor: 0.5
     note: days-to-cover >5，空方要回補得花好幾天的量——軋起來的爆發力更猛
 
+# 注意：bullish_floor 只在 LLM 判 bullish 同向時生效（rules.py clamp_confidence）——SOP 判 neutral
+# 時 floor 不觸發、走 SOP 判斷不被規則覆蓋；反向 bearish 則記 rule_conflicts 揭露、不翻轉。
 exceptions:
   - >
     高 short interest 也可能是空方判斷正確（基本面真的爛）——本規則只反映「軋空燃料充足」這個

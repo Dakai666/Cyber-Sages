@@ -7,6 +7,7 @@ sop:
       賭對了，右尾有多大？這檔站在哪個顛覆性浪潮上（AI/資訊革命…），TAM 與指數成長曲線
       撐得起 10x、100x 的想像嗎？刻意不被當前估值錨定——先問上檔規模。
     look_at: [profile, fundamentals.revenue_yoy_pct, news]
+    on_fail: 找不到任何不對稱上檔（純成熟低成長、無 100x 想像）就誠實說「這不是我的賭局」、neutral、不必再跑後段
 
   - step: vision-and-moat
     ask: >

@@ -61,7 +61,12 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert ps["roaringkitty"].is_pack and ps["roaringkitty"].epoch == 2021
     assert len(ps["roaringkitty"].pack.hard_rules) == 2
     assert ps["son"].is_pack and ps["son"].epoch is None
-    assert len(load_personas()) == 18  # 7 legacy + 11 pack，無重複
+    assert len(load_personas()) >= 18  # 加 persona 不該壞此測試（PR#57 review #4）
+    # 必載名單：守住 key 不被 typo 改掉（比脆性總數斷言更耐 roster 成長）
+    for k in ("buffett", "munger", "graham", "damodaran", "lynch", "burry", "wood",
+              "taleb", "druckenmiller", "livermore", "minervini", "raschke",
+              "trump", "chanos", "icahn", "soros", "roaringkitty", "son"):
+        assert k in ps, f"persona {k} 必載"
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1

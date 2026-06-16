@@ -212,7 +212,8 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 
 **進度**：
 - ✅ Batch 1（PR #56）：Trump（政策催化劑，weight 0.7）/ Chanos（鑑識空頭，帶 2 條 hard rules）/ Icahn（行動派，純 SOP）。
-- 🚧 Batch 2：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，epoch=2021）/ Masayoshi Son（power-law 集中豪賭）——刻意補「敢站多的賭徒」平衡目前偏空/保守的 roster（價值紀律派 + Taleb + Chanos 預設都壓低信心）。
+- ✅ Batch 2（PR #57）：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，epoch=2021）/ Masayoshi Son（power-law 集中豪賭）——刻意補「敢站多的賭徒」平衡目前偏空/保守的 roster（價值紀律派 + Taleb + Chanos 預設都壓低信心）。PLTR 實機驗證「roster 平衡 ≠ verdict 平衡」：要後者得靠下方四象限選擇讓使用者自組陪審團。
+- 🔜 Batch 3（待定）：盤點 18 人性格光譜剩餘的洞再 curate（候選方向：量化/系統化、PE/私募控制、央行/政策制定者視角…）。
 
 **象限化選擇（DK 2026-06-15 定調，待實作）**：未來功能應支援「**保守↔激進 × 短期↔長期**」四象限組合來組 council（例如「激進短期」只座位 aggressive+trading 的大師）。
 - **短期/長期** 軸已存在 = persona 的 `horizons: [trading, value]`（`council.py` 按 horizon 分席）。

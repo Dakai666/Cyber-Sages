@@ -74,6 +74,12 @@ uv run cyber-sages analyze NVDA --json             # stdout 輸出 verdict.json�
 （如 owner earnings / 趨勢排列分數，程式算不讓 LLM 算）。缺欄位時誠實記 `not_evaluable`，
 不假裝算得出。新增大師：放一個 Pack 目錄，零程式碼。
 
+**Roster（18 人）**：value/quality（Buffett, Munger, Graham, Damodaran, Lynch, Burry, Wood,
+Chanos 鑑識空頭, Icahn 行動派, Son power-law 賭徒）、trading（Livermore, Minervini, Raschke,
+Roaring Kitty 散戶情緒）、tail-risk（Taleb）、policy/reflexive（Trump 政策催化劑, Soros 反身性宏觀）。
+預設 `--sages 10` 截斷後 value run 出席 10 人（Taleb/Icahn/Wood/Trump 被切）、trading run 8 人全出席；
+要指定低權重大師出席請調高 `--sages`。完整名單與 seating 機制見 `CLAUDE.md`，原型 roadmap 見 `docs/ROADMAP.md`。
+
 **市場自動偵測**：純數字代號（`2330`、`0050`）或 `.TW`/`.TWO` 字尾走台股管線——
 FinMind 為第一手來源（綜合損益表/資產負債表/月營收 + 三大法人買賣超 + 融資融券），
 yfinance `.TW` 報價當跨源比對的第二路徑；技術指標一樣在程式裡確定性計算。
