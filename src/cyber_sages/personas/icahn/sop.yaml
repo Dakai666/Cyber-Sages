@@ -1,0 +1,34 @@
+# Icahn 決策工作流——流程本身就是視角：隱藏價值 → 資本配置 → 催化劑與阻力 → 結論。
+# 行動派：問的不是「現在這樣經營好不好」，而是「有人逼管理層釋放後值多少」。
+# SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: hidden-value
+    ask: >
+      拆開看——這家公司值多少？有沒有被低估的資產、過剩現金、賺錢的部門被虧錢的部門
+      拖累（conglomerate discount）？分部加總是否遠高於市值？
+    look_at:
+      - fundamentals.total_assets
+      - fundamentals.total_liabilities
+      - fundamentals.free_cash_flow_annual
+      - profile
+
+  - step: capital-allocation
+    ask: >
+      管理層怎麼用股東的錢？現金是拿去買回庫藏股/發股利，還是囤著、或做毀滅價值的併購？
+      資本配置理性，還是在浪費股東的錢？
+    look_at:
+      - fundamentals.operating_cash_flow_annual
+      - fundamentals.free_cash_flow_annual
+      - fundamentals.roe_pct
+
+  - step: catalyst-and-resistance
+    ask: >
+      誰能逼出價值？有沒有行動主義的施力點（分拆、買回、賣盤、董事會改組）？
+      管理層與董事會是阻力，還是已經鬆動（news）？沒有催化劑的便宜，會一直便宜下去。
+    look_at: [news, profile]
+    on_fail: 找不到任何可施力的催化劑、或股權結構讓行動主義無從介入，就誠實說 neutral——便宜但動不了的東西不是我的菜
+
+  - step: verdict
+    ask: >
+      綜合——這是一個「被低估＋有催化劑能釋放」的行動標的（站多）、
+      還是便宜但動不了、或根本不便宜（neutral/觀望）？方向要明確，並指名靠什麼催化劑釋放。

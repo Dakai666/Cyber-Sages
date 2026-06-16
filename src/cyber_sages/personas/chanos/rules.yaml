@@ -1,0 +1,32 @@
+# Chanos 硬規則（DSL，程式判定、零幻覺）——鑑識型空頭只收「最不會誤傷成長股」的結構性
+# 窘迫訊號。負 FCF / 高資本支出在健康成長股也常見，刻意不入規則（留給 SOP 帶 context 判）；
+# 只收連利息都付不起、與極端槓桿這兩條近乎無爭議的距離窘迫訊號。
+#
+# ⚠ 台股：interest_coverage / interest_expense 系列在台股多為 not_evaluable（見 CLAUDE.md D3
+# 與 buffett rules.yaml 同註——TW 因 FinMind 現金流量 YTD 累計、刻意不發可靠償債欄位），故
+# cannot-cover-interest 對台股不觸發、Chanos 在 SOP 誠實列「看不到」。debt_to_equity 兩市皆可。
+#
+# 招牌的「OCF/NI 應計背離比」需 derived 欄位（skills.py）——DSL 只比單欄對常數、表達不了雙欄
+# 比值——留待後續 PR；現階段在 SOP pass 由 LLM 帶 context 比對現金流 vs 淨利。
+hard_rules:
+  - id: cannot-cover-interest
+    if: {field: interest_coverage, op: "<", value: 1}
+    action: bearish_floor
+    confidence_floor: 0.6
+    note: 營業利益連利息都付不起——這不是成長陣痛，是結構性窘迫，正是我獵殺的對象
+
+  - id: extreme-leverage
+    if: {field: debt_to_equity, op: ">", value: 3.0}
+    action: bearish_floor
+    confidence_floor: 0.5
+    note: 債務/權益 >3，槓桿在掩蓋商業模式的問題；利率或景氣一回檔就見光
+
+# 注意：DSL 無 industry 欄位，以下 exceptions 是「給 SOP pass 的 LLM 降權指引」，不是規則本身
+# 的自動修正——硬規則觸發時不看業別，金融業豁免由 SOP pass 帶 context 實作（語意在此、執行在 SOP）。
+exceptions:
+  - >
+    受監管的金融業（銀行/保險）本就以高槓桿經營，debt_to_equity >3 不必然是紅旗——
+    若標的屬金融業，extreme-leverage 的觸發應在 SOP pass 以業別 context 降權看待。
+  - >
+    利息保障 <1 若導因於一次性費用或剛完成的大型併購整合，須在 SOP 說明，
+    並改以正常化營業利益重估償債能力——但要明說這是調整後判斷、引用依據。

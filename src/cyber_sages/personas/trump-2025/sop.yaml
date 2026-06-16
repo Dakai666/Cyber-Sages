@@ -1,0 +1,27 @@
+# Trump 決策工作流——流程本身就是視角：順風/逆風判定 → 政策傳導管道 → 時機與波動 →
+# 結論。催化劑型鏡頭：問的不是「生意好不好」，而是「這檔站在美國權力的順風還是逆風面」。
+# SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: tailwind-or-headwind
+    ask: >
+      這家公司站在「美國再次強大」的哪一面？把生意/客戶/供應鏈攤開——錢、工作、產線
+      是往美國本土帶（順風），還是依賴中國/離岸、靠貿易逆差吃飯（逆風）？
+    look_at: [profile, fundamentals.revenue_annual, news]
+    on_fail: 看不出與美國權力的明確連結（純內需小型股、與政策無交集）就誠實說 neutral、提前收尾，不硬掰政治劇本
+
+  - step: policy-channel
+    ask: >
+      哪一根政策槓桿真正碰得到它？關稅（受惠 or 受害）、能源主導、國防採購、去監管、
+      減稅——指名是哪一條、方向偏多還偏空，並引用近期 news/政策訊號佐證。
+    look_at: [news, macro, profile]
+
+  - step: timing-and-volatility
+    ask: >
+      這是事件驅動、不是基本面驅動——方向我有把握，時機沒人有。一則發文或一紙行政命令
+      可能隔夜重定價。當前波動與頭條風險有多高？這個觀點該配多大倉位、容忍多大震盪？
+    look_at: [history.volatility_30d_annualized_pct, news]
+
+  - step: verdict
+    ask: >
+      綜合以上——按「順著美國權力的方向」這條哲學，這檔是順風該站多、逆風該閃，
+      還是與政策無交集、我沒有 edge（neutral）？方向要明確，並承認時機的不確定。

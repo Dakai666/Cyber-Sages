@@ -52,11 +52,31 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     # PR3 起 Livermore/Minervini/Raschke 亦為交易型 Pack（無 epoch）
     assert ps["livermore"].is_pack and ps["livermore"].epoch is None
     assert ps["minervini"].is_pack and ps["raschke"].is_pack
-    assert len(load_personas()) == 12  # 7 legacy + 5 pack，無重複
+    assert ps["trump"].is_pack and ps["trump"].epoch == 2025  # 催化劑型 Pack（無 rules，純 SOP）
+    # Phase 4.5 catalyst/archetype 擴充：Chanos（鑑識空頭，有 rules）+ Icahn（行動派，純 SOP）
+    assert ps["chanos"].is_pack and len(ps["chanos"].pack.hard_rules) == 2
+    assert ps["icahn"].is_pack and ps["icahn"].epoch is None
+    assert len(load_personas()) == 15  # 7 legacy + 8 pack（含 trump-2025 / chanos / icahn），無重複
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1
     assert names.count("Jesse Livermore") == 1  # livermore.yaml 已刪、不與目錄 Pack 重複
+
+
+def test_sop_only_personas_have_wellformed_sop():
+    # Trump / Icahn 純靠 sop.yaml（無 rules/skills）；Chanos 亦有 SOP。驗 SOP 載入成形、
+    # 每步有 step+ask、look_at 引用的 evidence 類別合法——contract 守門：防 SOP step 引用
+    # 不存在的 category 溜進 production（look_at 在 council 僅 render 成 prompt 提示字串）。
+    known_categories = {"quote", "fundamentals", "history", "news", "profile", "chips", "macro"}
+    ps = {p.key: p for p in load_personas()}
+    for key in ("trump", "icahn", "chanos"):
+        sop = ps[key].pack.sop
+        assert len(sop) >= 3, f"{key} SOP 應至少 3 步"
+        assert all(s.step and s.ask for s in sop), f"{key} 每步應有 step 名與 ask"
+        for s in sop:
+            for ref in s.look_at:
+                cat = ref.split(".")[0]
+                assert cat in known_categories, f"{key}/{s.step} look_at 引用未知類別：{ref}"
 
 
 # ---------- skill pass：真實 skills.py 確定性計算 ----------
@@ -113,6 +133,68 @@ def test_buffett_moat_floor_clamps_low_confidence_up():
     outcomes = evaluate_rules(buffett.pack.hard_rules, rule_values(_wonderful_us_store()))
     conf, conflicts = clamp_confidence("bullish", 0.3, outcomes)
     assert conf == 0.6 and conflicts == []  # wide-moat floor 0.6 > 0.3
+
+
+# ---------- Chanos rules.yaml：鑑識空頭硬規則行為（Phase 4.5）----------
+
+
+def _distressed_us_store() -> EvidenceStore:
+    """連利息都付不起、極端槓桿的結構性窘迫美股——Chanos 的獵物。"""
+    store = EvidenceStore(ticker="ROT", market="US")
+    store.add_all([
+        _fund("interest_coverage", 0.4, unit="x"),
+        _fund("debt_to_equity", 4.5),
+    ])
+    return store
+
+
+def _healthy_us_store() -> EvidenceStore:
+    store = EvidenceStore(ticker="OK", market="US")
+    store.add_all([
+        _fund("interest_coverage", 15.0, unit="x"),
+        _fund("debt_to_equity", 0.4),
+    ])
+    return store
+
+
+def test_chanos_rules_fire_on_distressed_business():
+    chanos = _pack("chanos")
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        chanos.pack.hard_rules, rule_values(_distressed_us_store()))}
+    assert outcomes["cannot-cover-interest"].triggered   # coverage 0.4 < 1
+    assert outcomes["extreme-leverage"].triggered        # d/e 4.5 > 3
+    assert outcomes["cannot-cover-interest"].action == "bearish_floor"
+
+
+def test_chanos_rules_silent_on_healthy_business():
+    chanos = _pack("chanos")
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        chanos.pack.hard_rules, rule_values(_healthy_us_store()))}
+    assert not outcomes["cannot-cover-interest"].triggered  # coverage 15 >= 1
+    assert not outcomes["extreme-leverage"].triggered       # d/e 0.4 < 3
+
+
+def test_chanos_interest_rule_not_evaluable_on_tw_data():
+    # 台股缺 interest_coverage（FinMind 現金流量 YTD 累計、刻意不發償債欄位）→
+    # cannot-cover-interest 降 not_evaluable（驗 rules.yaml 開頭 D3 註解真實落地）；
+    # debt_to_equity 兩市皆可 → extreme-leverage 照常求值。
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 4.5)])  # 無 interest_coverage
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        _pack("chanos").pack.hard_rules, rule_values(tw))}
+    assert outcomes["cannot-cover-interest"].not_evaluable
+    assert outcomes["extreme-leverage"].triggered           # d/e 4.5 > 3 仍可判
+
+
+def test_chanos_bearish_floor_clamps_low_confidence_up():
+    chanos = _pack("chanos")
+    outcomes = evaluate_rules(chanos.pack.hard_rules, rule_values(_distressed_us_store()))
+    # 同向（bearish）→ floor 把信心從 0.3 抬到 0.6（cannot-cover-interest floor 0.6 為兩條中較高）
+    conf, conflicts = clamp_confidence("bearish", 0.3, outcomes)
+    assert conf == 0.6 and conflicts == []
+    # 反向（bullish）→ 不翻轉、兩條 bearish 規則皆記入 rule_conflicts 揭露
+    conf2, conflicts2 = clamp_confidence("bullish", 0.7, outcomes)
+    assert conf2 == 0.7 and len(conflicts2) == 2
 
 
 # ---------- 三段執行整合（run_council 的 pack 路徑，真實 Pack 檔） ----------
