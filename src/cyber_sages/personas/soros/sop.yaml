@@ -1,0 +1,28 @@
+# Soros 決策工作流——流程本身就是視角：主流偏見 → 反身性回饋 → 循環位置 → 結論與下注。
+# 反身性：問的不是「真實價值多少」，而是「主流偏見在餵養什麼趨勢、走到哪、賠率傾不傾斜」。
+# SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: prevailing-bias
+    ask: >
+      市場現在對這檔抱著什麼主流偏見/敘事（news、分析師共識）？這個偏見是看多還是看空，
+      強度多高？共識看不見的破綻在哪？
+    look_at: [news, profile, fundamentals.revenue_yoy_pct]
+
+  - step: reflexive-feedback
+    ask: >
+      這個偏見如何「反身」回去餵養基本面？（例如高股價 → 低融資成本/購併籌碼 → 真的改善
+      基本面 → 又推高股價）這個自我強化的循環是正在加速，還是已經透支？
+    look_at: [history.return_3m_pct, history.return_1m_pct, fundamentals.debt_to_equity, macro]
+    on_fail: 找不到價格與基本面互相餵養的反身回路（純隨機波動、與敘事無關），就誠實說這不是反身性局、neutral
+
+  - step: where-in-cycle
+    ask: >
+      盛衰循環走到哪？還在「趨勢自我強化」段（順勢），還是接近「偏見被現實打臉」的轉折點
+      （反轉）？流動性與政策（利率、macro）是在添柴還是抽柴？
+    look_at: [macro, history.volatility_30d_annualized_pct, history.pct_below_52w_high]
+
+  - step: verdict
+    ask: >
+      綜合反身性——順著這個自我強化趨勢站邊、還是賭它轉折？關鍵是賠率：當賠率明顯傾斜、
+      破綻清楚時 go for the jugular 重壓；模糊時就站旁邊。方向 + 下注強度都要講，
+      並說明什麼訊號會讓我一秒反手。

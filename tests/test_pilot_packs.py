@@ -53,10 +53,20 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert ps["livermore"].is_pack and ps["livermore"].epoch is None
     assert ps["minervini"].is_pack and ps["raschke"].is_pack
     assert ps["trump"].is_pack and ps["trump"].epoch == 2025  # 催化劑型 Pack（無 rules，純 SOP）
-    # Phase 4.5 catalyst/archetype 擴充：Chanos（鑑識空頭，有 rules）+ Icahn（行動派，純 SOP）
+    # Phase 4.5 Batch 1：Chanos（鑑識空頭，有 rules）+ Icahn（行動派，純 SOP）
     assert ps["chanos"].is_pack and len(ps["chanos"].pack.hard_rules) == 2
     assert ps["icahn"].is_pack and ps["icahn"].epoch is None
-    assert len(load_personas()) == 15  # 7 legacy + 8 pack（含 trump-2025 / chanos / icahn），無重複
+    # Phase 4.5 Batch 2：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，有軋空 rules）/ Son（賭徒）
+    assert ps["soros"].is_pack and ps["soros"].epoch is None
+    assert ps["roaringkitty"].is_pack and ps["roaringkitty"].epoch == 2021
+    assert len(ps["roaringkitty"].pack.hard_rules) == 2
+    assert ps["son"].is_pack and ps["son"].epoch is None
+    assert len(load_personas()) >= 18  # 加 persona 不該壞此測試（PR#57 review #4）
+    # 必載名單：守住 key 不被 typo 改掉（比脆性總數斷言更耐 roster 成長）
+    for k in ("buffett", "munger", "graham", "damodaran", "lynch", "burry", "wood",
+              "taleb", "druckenmiller", "livermore", "minervini", "raschke",
+              "trump", "chanos", "icahn", "soros", "roaringkitty", "son"):
+        assert k in ps, f"persona {k} 必載"
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1
@@ -69,7 +79,7 @@ def test_sop_only_personas_have_wellformed_sop():
     # 不存在的 category 溜進 production（look_at 在 council 僅 render 成 prompt 提示字串）。
     known_categories = {"quote", "fundamentals", "history", "news", "profile", "chips", "macro"}
     ps = {p.key: p for p in load_personas()}
-    for key in ("trump", "icahn", "chanos"):
+    for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty"):
         sop = ps[key].pack.sop
         assert len(sop) >= 3, f"{key} SOP 應至少 3 步"
         assert all(s.step and s.ask for s in sop), f"{key} 每步應有 step 名與 ask"
@@ -195,6 +205,49 @@ def test_chanos_bearish_floor_clamps_low_confidence_up():
     # 反向（bullish）→ 不翻轉、兩條 bearish 規則皆記入 rule_conflicts 揭露
     conf2, conflicts2 = clamp_confidence("bullish", 0.7, outcomes)
     assert conf2 == 0.7 and len(conflicts2) == 2
+
+
+# ---------- Roaring Kitty rules.yaml：軋空火藥硬規則行為（Phase 4.5 Batch 2）----------
+
+
+def _squeeze_us_store() -> EvidenceStore:
+    """高 short% of float、回補天數長的軋空 setup 美股——Roaring Kitty 的火藥庫。"""
+    store = EvidenceStore(ticker="MEME", market="US")
+    store.add_all([
+        _fund("short_percent_of_float", 35.0, unit="%"),
+        _fund("short_ratio", 8.0, unit="days"),
+    ])
+    return store
+
+
+def test_roaringkitty_rules_fire_on_squeeze_setup():
+    kitty = _pack("roaringkitty")
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        kitty.pack.hard_rules, rule_values(_squeeze_us_store()))}
+    assert outcomes["heavy-short-interest"].triggered   # short% 35 > 20
+    assert outcomes["many-days-to-cover"].triggered      # short_ratio 8 > 5
+    assert outcomes["heavy-short-interest"].action == "bullish_floor"
+
+
+def test_roaringkitty_bullish_floor_only_clamps_when_aligned():
+    kitty = _pack("roaringkitty")
+    outcomes = evaluate_rules(kitty.pack.hard_rules, rule_values(_squeeze_us_store()))
+    # 同向（bullish）→ floor 把 0.3 抬到 0.55（heavy-short-interest floor 0.55 為兩條中較高）
+    conf, conflicts = clamp_confidence("bullish", 0.3, outcomes)
+    assert conf == 0.55 and conflicts == []
+    # 反向（bearish，如 Chanos 對同一高 short% 讀成「空方是對的」）→ 不翻轉、記 2 conflicts
+    conf2, conflicts2 = clamp_confidence("bearish", 0.6, outcomes)
+    assert conf2 == 0.6 and len(conflicts2) == 2
+
+
+def test_roaringkitty_rules_not_evaluable_on_tw_data():
+    # 台股以融資券（chips）表達、不發 short_percent_of_float / short_ratio → 兩條規則 not_evaluable。
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 0.3)])  # 無 short interest 欄位
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        _pack("roaringkitty").pack.hard_rules, rule_values(tw))}
+    assert outcomes["heavy-short-interest"].not_evaluable
+    assert outcomes["many-days-to-cover"].not_evaluable
 
 
 # ---------- 三段執行整合（run_council 的 pack 路徑，真實 Pack 檔） ----------
