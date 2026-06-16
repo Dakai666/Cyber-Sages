@@ -1,0 +1,24 @@
+# Roaring Kitty 硬規則（DSL，程式判定、零幻覺）——軋空火藥的可量化部分。
+# bullish_floor：高 short interest = 反身軋空燃料，若他本就看多則墊高信心；反向則記 rule_conflicts
+# 揭露（同一個高 short% 的訊號，Chanos 讀成「空方是對的」、Kitty 讀成「軋空燃料」——刻意的視角分歧）。
+#
+# ⚠ 台股：short_percent_of_float / short_ratio 為 US（yfinance）欄位，台股以融資券（chips）表達、
+# 不發這些欄位 → 兩條規則在台股 not_evaluable（Kitty 本就是美股迷因股原型）。
+hard_rules:
+  - id: heavy-short-interest
+    if: {field: short_percent_of_float, op: ">", value: 20}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: short% of float >20，空方押注沉重——這是軋空的火藥，群眾一點火空方就得追買
+
+  - id: many-days-to-cover
+    if: {field: short_ratio, op: ">", value: 5}
+    action: bullish_floor
+    confidence_floor: 0.5
+    note: days-to-cover >5，空方要回補得花好幾天的量——軋起來的爆發力更猛
+
+exceptions:
+  - >
+    高 short interest 也可能是空方判斷正確（基本面真的爛）——本規則只反映「軋空燃料充足」這個
+    機制面事實，不等於看多必勝；若 SOP 判斷散戶敘事冷、無引爆點，仍應 neutral，floor 不會
+    把無群眾號召的標的硬拉成多。

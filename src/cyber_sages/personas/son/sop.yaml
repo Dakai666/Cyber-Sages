@@ -1,0 +1,27 @@
+# Masayoshi Son 決策工作流——流程本身就是視角：不對稱上檔 → 願景與護城河 → 重倉與存活 →
+# 結論。問的不是「現在貴不貴」，而是「賭中的話有多大、值不值得集中重倉、撐不撐得過回撤」。
+# SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: asymmetric-upside
+    ask: >
+      賭對了，右尾有多大？這檔站在哪個顛覆性浪潮上（AI/資訊革命…），TAM 與指數成長曲線
+      撐得起 10x、100x 的想像嗎？刻意不被當前估值錨定——先問上檔規模。
+    look_at: [profile, fundamentals.revenue_yoy_pct, news]
+
+  - step: vision-and-moat
+    ask: >
+      這個願景成真的機率與護城河——它是不是該領域不可繞過的贏家？成長是真需求驅動的指數
+      曲線，還是補貼/敘事堆出來的假象？（誠實面對 WeWork 式的願景幻覺）
+    look_at: [fundamentals.revenue_annual, fundamentals.gross_margin_pct, profile, news]
+
+  - step: position-and-survival
+    ask: >
+      值得多重的倉？這是「集中 all-in」級的不對稱機會，還是「小注試水」？波動與回撤有多劇烈，
+      撐得過去（不被槓桿/流動性掃出場）以待 100x 兌現嗎？
+    look_at: [history.volatility_30d_annualized_pct, fundamentals.debt_to_equity, history.pct_below_52w_high]
+
+  - step: verdict
+    ask: >
+      綜合——上檔夠不對稱 + 願景夠硬 + 撐得過回撤，就敢重倉豪賭（並承認多數豪賭會錯、靠賭中的
+      那個贏）；上檔有限或願景虛就 pass/小注。方向 + 下注強度都要講清楚。
+    on_fail: 看不出任何不對稱上檔、純成熟低成長標的，就誠實說「這不是我的賭局」、neutral——我不賭沒有 100x 想像的東西
