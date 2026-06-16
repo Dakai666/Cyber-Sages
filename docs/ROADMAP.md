@@ -210,6 +210,15 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 才能提供更完善的蒸餾方法**。手工樣本不足就量產只會固化不成熟規格。此階段逐步補齊各原型
 （價值/成長/動能/宏觀/風險/事件…）的代表大師，每位仍走 E1 手工 Pack 流程。
 
+**進度**：
+- ✅ Batch 1（PR #56）：Trump（政策催化劑，weight 0.7）/ Chanos（鑑識空頭，帶 2 條 hard rules）/ Icahn（行動派，純 SOP）。
+- 🚧 Batch 2：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，epoch=2021）/ Masayoshi Son（power-law 集中豪賭）——刻意補「敢站多的賭徒」平衡目前偏空/保守的 roster（價值紀律派 + Taleb + Chanos 預設都壓低信心）。
+
+**象限化選擇（DK 2026-06-15 定調，待實作）**：未來功能應支援「**保守↔激進 × 短期↔長期**」四象限組合來組 council（例如「激進短期」只座位 aggressive+trading 的大師）。
+- **短期/長期** 軸已存在 = persona 的 `horizons: [trading, value]`（`council.py` 按 horizon 分席）。
+- **保守/激進** 軸尚缺 = 需在 persona schema 加 `aggression`（risk-appetite）純資料標記（比照 `horizons` 做法）+ CLI 旗標按象限 filter/組陪審團。
+- 動機：手工擴充時要刻意補齊各性格原型，避免 roster 性格偏斜——加賭徒型平衡偏空、象限選擇則讓使用者主動挑「想聽哪種性格的陪審團」。
+
 ### Phase 5 — Spec D：決策結構
 
 Chief / Judge 強制 evidence id 引用（行內 `[E001]`）、risk officer 雙向
