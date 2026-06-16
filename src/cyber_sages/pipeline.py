@@ -86,6 +86,7 @@ class AnalysisResult(BaseModel):
     # 若未來 run 長到中途可能出現新 commit，改為 run_pipeline 開頭快照
     git_commit: str | None = Field(default_factory=_git_commit)
     horizon: str = "value"  # 本次分析時間框架（trading / value）——brief 標示、abstain 揭露依據
+    aggression: str | None = None  # 四象限激進軸（conservative/aggressive/None＝大師會堂）——brief 標示
     store: EvidenceStore
     audit: AuditReport
     reports: list[AnalystReport]
@@ -114,6 +115,7 @@ async def run_pipeline(
     skip_debate: bool = False,
     include_macro: bool = True,
     horizon: str = "value",
+    aggression: str | None = None,
     on_stage: StageCallback | None = None,
     on_signal=None,
 ) -> AnalysisResult:
@@ -187,12 +189,12 @@ async def run_pipeline(
         await _emit(on_stage, "cite", "done", f"{total_claims}/{total_claims} claims verified")
 
     # [5] Council
-    n = n_sages or settings.defaults.sages
-    # running 階段不寫死 n（trading horizon 多數大師會 abstain，寫「10 sages」會誤導——
-    # 實際席數待 council 分席後才知；done 階段以真實多/中/空 + abstain 數呈現，review B）。
-    await _emit(on_stage, "council", "running", f"sages voting ({horizon} horizon)")
-    council = await run_council(store, reports, settings, gateway,
-                                n_sages=n, on_signal=on_signal, horizon=horizon)
+    # running 階段不寫死席數（n_sages=None＝大師會堂全員出席、不截斷；trading/象限多數大師會
+    # abstain，寫死數字會誤導——實際席數待 council 分席後才知；done 階段以真實多/中/空 + abstain 呈現）。
+    mode_note = f"{horizon} horizon" + (f" / {aggression}" if aggression else " / 大師會堂")
+    await _emit(on_stage, "council", "running", f"sages voting ({mode_note})")
+    council = await run_council(store, reports, settings, gateway, n_sages=n_sages,
+                                on_signal=on_signal, horizon=horizon, aggression=aggression)
     abstain_note = f"；{len(council.abstained)} 位 abstain（非本 horizon）" if council.abstained else ""
     # P2：兩階段時標示深入/速覽分布（空＝單階段全員深入）
     scout_note = (f"；{len(council.signals) - len(council.scouted_only)} 深入/"
@@ -218,6 +220,7 @@ async def run_pipeline(
                 f"{verdict.stance} (conviction {verdict.conviction:.2f})")
 
     return AnalysisResult(
-        ticker=ticker, horizon=horizon, store=store, audit=audit, reports=reports,
-        council=council, bull=bull, bear=bear, debate=debate, verdict=verdict, risk=risk,
+        ticker=ticker, horizon=horizon, aggression=aggression, store=store, audit=audit,
+        reports=reports, council=council, bull=bull, bear=bear, debate=debate,
+        verdict=verdict, risk=risk,
     )

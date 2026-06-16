@@ -2,6 +2,7 @@ key: soros
 name: George Soros
 weight: 1.05         # 重量級宏觀視角，確認後敢重壓——刻意略高，平衡偏空 roster
 horizons: [trading, value]
+aggression: [aggressive]   # 確認後 go-for-the-jugular 重壓，進攻型
 weight_rationale: >
   反身性宏觀——roster 缺的「確認後重壓」的進攻型大師之一（與 Masayoshi Son 同為 Batch 2
   平衡偏空陣營的補強）。weight 1.05 略高於中位，反映其作為宏觀重量級 + 高信心時 go-for-the-

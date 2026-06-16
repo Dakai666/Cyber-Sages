@@ -57,9 +57,11 @@ def render_brief(result: AnalysisResult) -> str:
     price_str = f"現價 **{price:g}** `[{price_id}]`" if price else "現價不可得"
 
     horizon_zh = {"value": "長期價值（數年）", "trading": "短線交易（數天~數週）"}
+    aggression_zh = {"conservative": "保守陪審團", "aggressive": "激進陪審團", None: "大師會堂（全員）"}
     lines = [
         f"# {result.ticker}（{result.store.market}）決策簡報 · "
         f"{horizon_zh.get(result.horizon, result.horizon)} · "
+        f"{aggression_zh.get(result.aggression, result.aggression)} · "
         f"{result.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"{price_str} · 陪審團 {len(c.signals)} 席"
         + (f" ⚠️ {len(c.absent)} 席缺席（{', '.join(c.absent)}）" if c.absent else "")
@@ -270,6 +272,9 @@ def build_agent_payload(result: AnalysisResult) -> dict:
         # trading 與 value horizon 的結論可正當地相反，漏標會讓判讀者誤比。brief 已揭露，
         # 機器可讀 payload 也補上（實機 NVDA --horizon trading 驗證時發現此落地缺口）。
         "horizon": result.horizon,
+        # 四象限激進軸（conservative/aggressive/null＝大師會堂全員）：與 horizon 同理，judge 須據此
+        # 理解這是哪種性格的陪審團——激進陪審團偏多、保守陪審團偏空是組成使然，非標的本身的訊號。
+        "aggression": result.aggression,
         "generated_at": result.generated_at.isoformat(),
         "commit": result.git_commit,
         "current_price": {"value": price, "evidence_id": price_id},

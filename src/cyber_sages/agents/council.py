@@ -226,18 +226,27 @@ async def run_council(
     n_sages: int | None = None,
     on_signal=None,  # callback(SageSignal) — CLI 即時更新投票表
     horizon: str = "value",
+    aggression: str | None = None,  # 四象限激進軸：None＝大師會堂全員；conservative/aggressive＝該性格陪審團
 ) -> CouncilVerdict:
-    # P9：按 horizon 分席——只座位適用本 horizon 的大師；越圍者 abstain（不出席、不投票，
-    # brief 揭露），不浪費 LLM 呼叫去問 Buffett 當沖。abstain ≠ absent（後者是硬失敗）。
+    # P9 + 四象限分席：只座位「適用本 horizon」且（若指定 aggression）「性格相符」的大師；
+    # 越圍者 abstain（不出席、不投票，brief 揭露），不浪費 LLM 呼叫去問 Buffett 當沖。abstain ≠ absent。
     everyone = load_personas()  # 全員、已按 weight 降序
-    applicable = [p for p in everyone if horizon in p.horizons]
-    abstained = [p.name for p in everyone if horizon not in p.horizons]
-    personas = applicable[: (n_sages or settings.defaults.sages)]
-    # fail-loud（review C）：該 horizon 無任何適用大師時不可靜默產出「0 席、中性共識」的詭異
-    # brief——quorum 條件 0<0 為 False 不會擋。PR3 改 trading roster 時這是高風險路徑。
+    applicable = [
+        p for p in everyone
+        if horizon in p.horizons and (aggression is None or aggression in p.aggression)
+    ]
+    abstained = [
+        p.name for p in everyone
+        if horizon not in p.horizons or (aggression is not None and aggression not in p.aggression)
+    ]
+    # n_sages=None＝大師會堂（全員出席、不截斷，預設）；給值才截斷（手動省 token，weight 高者優先）。
+    personas = applicable if n_sages is None else applicable[:n_sages]
+    # fail-loud（review C）：該象限無任何適用大師時不可靜默產出「0 席、中性共識」的詭異
+    # brief——quorum 條件 0<0 為 False 不會擋。
     if not personas:
         raise RuntimeError(
-            f"Council failed: horizon={horizon} 沒有任何適用大師——檢查 persona horizons 標記"
+            f"Council failed: horizon={horizon} aggression={aggression} "
+            f"沒有任何適用大師——檢查 persona horizons / aggression 標記"
         )
     # 共享前綴：證據摘要 + 分析師報告，所有大師一字不差地共用 → 走 cache_prefix 命中快取。
     # 用 .replace 而非 .format：analyst 報告 / digest 是 LLM 生成 + 數值文本，可能含字面

@@ -2,6 +2,7 @@ key: burry
 name: Michael Burry
 weight: 1.0
 horizons: [value]
+aggression: [conservative]   # 深度價值/懷疑者，預設防禦偏空
 philosophy: >
   Deep value with a catalyst, and obsessive primary-source research. Crowds are
   usually wrong at extremes; bubbles hide in consensus. Position only where the

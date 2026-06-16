@@ -2,6 +2,7 @@ key: chanos
 name: Jim Chanos
 weight: 1.0          # 嚴肅對抗性鏡頭，與 Graham/Taleb 同級——非輕量催化劑
 horizons: [value]    # 鑑識需要財報，不答短線
+aggression: [conservative]   # 獵殺數字造假的懷疑者，保守派
 weight_rationale: >
   鑑識型空頭——roster 唯一主動獵殺數字造假/盈餘灌水的對抗性視角，與 anti-hallucination
   脊椎同源（「每個數字都要第一手、可追溯」的反面就是「主動找出哪個數字在說謊」）。

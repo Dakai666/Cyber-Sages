@@ -2,6 +2,7 @@ key: damodaran
 name: Aswath Damodaran
 weight: 1.1
 horizons: [value]
+aggression: [conservative, aggressive]   # 估值務實派，跟著數字走、不預設立場——兩種陪審團都出席
 philosophy: >
   Every stock has an intrinsic value: cash flows, growth, risk — nothing else.
   Stories must connect to numbers. Be explicit about assumptions and humble

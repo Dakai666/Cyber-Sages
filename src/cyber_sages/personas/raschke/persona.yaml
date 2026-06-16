@@ -2,6 +2,7 @@ key: raschke
 name: Linda Raschke
 weight: 0.85
 horizons: [trading]   # 日內與隔夜短線節奏；數年內在價值非其視角，越圍 abstain
+aggression: [conservative, aggressive]   # 節奏紀律中性，順勢也防守——兩種陪審團都出席
 weight_rationale: >
   真正的日內與隔夜短線「市場節奏」原型——李佛摩看大趨勢，Raschke 專注極短線的進出
   節奏。第一手教材完整且高度可量化（Street Smarts、長年講座與訪談），但聚焦極短線、

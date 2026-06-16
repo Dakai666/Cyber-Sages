@@ -2,6 +2,7 @@ key: livermore
 name: Jesse Livermore
 weight: 0.9
 horizons: [trading]   # 純投機者，只答數天~數週的盤面；長期內在價值非其視角，越圍 abstain
+aggression: [aggressive]   # 順勢加碼金字塔的投機者，進攻型
 weight_rationale: >
   盤感與停損紀律的原型，交易庭的「趨勢/最小阻力線」視角。第一手量中等且多為回憶錄
   轉述（Reminiscences 經 Lefèvre 之筆、How to Trade in Stocks 為晚年自述），可量化規則

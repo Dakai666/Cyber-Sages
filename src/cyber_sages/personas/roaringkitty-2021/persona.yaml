@@ -3,6 +3,7 @@ name: Keith Gill (Roaring Kitty)
 epoch: 2021          # GME 軋空時點；散戶協同 + 社群動能的代表年代
 weight: 0.7          # 散戶情緒訊號噪音大、刻意低權重（同 Trump 配重邏輯）
 horizons: [trading]  # 純情緒/動能/軋空，不答長期價值
+aggression: [aggressive]   # 軋空高風險賭注，進攻型
 weight_rationale: >
   散戶情緒/迷因股原型——與 Trump 並列為「非基本面的真實市場力量」（情緒驅動 vs 政策驅動）。
   weight 0.7 刻意低：散戶情緒訊號噪音大、最容易帶歪（見 [[design-match-complexity-to-task]]），

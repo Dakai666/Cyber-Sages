@@ -3,6 +3,7 @@ name: Charlie Munger
 epoch: 2019
 weight: 1.1
 horizons: [value]   # 長期品質複利者，不答當沖/短線
+aggression: [conservative]   # 品質複利、理性紀律，保守派
 weight_rationale: >
   與 Buffett 互補的 mental-models / inversion 視角，辯論訊號密度高、最會點出別人的
   盲點與蠢事；但公開第一手量少於 Buffett（多為 Q&A 與少數講稿），故略低（1.1）。

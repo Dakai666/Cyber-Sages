@@ -2,6 +2,7 @@ key: wood
 name: Cathie Wood
 weight: 0.9
 horizons: [value]
+aggression: [aggressive]   # 顛覆性創新成長，進攻型
 philosophy: >
   Disruptive innovation compounds faster than markets price in. Five-year
   horizons, not quarters. Wright's Law cost curves, S-curves of adoption.
