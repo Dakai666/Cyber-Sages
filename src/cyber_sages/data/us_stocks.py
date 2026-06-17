@@ -17,7 +17,7 @@ import httpx
 from cyber_sages.data.damodaran import industry_benchmark_evidence
 from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
-from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.indicators import compute_indicator_evidence, short_history_evidence
 from cyber_sages.data.longterm import multiyear_fundamentals
 from cyber_sages.data.retry import to_thread_with_timeout, with_retry
 
@@ -268,7 +268,10 @@ class USStockProvider:
         hist = drop_phantom_bars(
             t.history(period="1y", auto_adjust=True).dropna(subset=["Close"]))
         if len(hist) < 30:
-            return []
+            # S5：< 30 交易日 → 發 IPO/新上市標記（讓 audit 降為 warning + 明說），不硬出指標
+            return short_history_evidence(
+                len(hist), url=f"https://finance.yahoo.com/quote/{ticker}/history",
+                source="yfinance 1y daily (insufficient bars)")
         return compute_indicator_evidence(
             hist["Close"], as_of=hist.index[-1].date(),
             url=f"https://finance.yahoo.com/quote/{ticker}/history",

@@ -192,6 +192,10 @@ def render_brief(result: AnalysisResult) -> str:
         "",
         f"資料品質：{dq}{uv} — 深挖請看 `details/`",
     ]
+    # D1：IPO/新上市明說承認——讓讀者知道技術面有限是「標的太新」而非「資料壞了」。
+    tech = card.dimensions.get("technical")
+    if tech and tech.status == "missing" and "新上市" in (tech.reason or ""):
+        lines.append(f"ℹ️ {tech.reason}——技術面分析有限，請偏重基本面/新聞/情緒。")
 
     # 引用驗證未過清單：brief 一頁可判斷會不會動搖裁定，不必每次再深挖 details/
     if flat:

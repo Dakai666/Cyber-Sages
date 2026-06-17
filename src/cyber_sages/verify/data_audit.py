@@ -141,6 +141,11 @@ def build_health_card(audit: AuditReport, store: EvidenceStore) -> DataHealthCar
         else:
             status = "healthy"
         reason = "；".join(f.message for f in fs if f.severity in ("fatal", "error"))[:240]
+        # D1：technical 缺若因 IPO/新上市，明說承認（reason 帶 N 交易日），不是「資料壞了」。
+        if dim == "technical" and status == "missing":
+            ipo_days = _short_history_days(store)
+            if ipo_days is not None:
+                reason = f"僅 {ipo_days} 個交易日歷史（疑新上市 IPO），技術面有限"
         oldest = min((e.as_of for e in items if e.as_of), default=None)
         dims[dim] = DimensionHealth(status=status, reason=reason,
                                     evidence_count=len(items), oldest_as_of=oldest)
@@ -163,6 +168,14 @@ def _etf_relaxed(category: str, store: EvidenceStore) -> bool:
     """ETF 無發行人損益表：fundamentals 缺屬預期口徑，降級與訊息都據此放寬。
     ETF 例外的唯一真相來源——severity 與 message 都查它，不在兩處各判一次。"""
     return category == "fundamentals" and store.instrument == "etf"
+
+
+def _short_history_days(store: EvidenceStore) -> int | None:
+    """有 IPO/新上市標記（trading_days_available）則回交易日數，否則 None。"""
+    for e in store.items:
+        if e.category == "profile" and e.field == "trading_days_available":
+            return int(e.value)
+    return None
 
 
 def _missing_severity(category: str, store: EvidenceStore) -> Severity:
@@ -199,12 +212,20 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
         if fields is not None:
             evs = [e for e in evs if e.field in fields]
         if not evs:
+            severity = _missing_severity(category, store)
+            message = f"Missing {category} data: {msg}"
             # ETF fundamentals 例外的 severity 與訊息都源自 _etf_relaxed，集中一處
             if _etf_relaxed(category, store):
-                msg = "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"
+                message = "Missing fundamentals data: ETF has no issuer financials " \
+                          "(估值改看技術/籌碼/折溢價)"
+            # D1：history 缺若伴隨 IPO/新上市標記，屬特例——降為 warning + 明說承認，不當資料錯誤。
+            days = _short_history_days(store)
+            if category == "history" and days is not None:
+                severity = "warning"
+                message = f"技術面有限：僅 {days} 個交易日歷史（疑新上市 IPO），" \
+                          "不足以算技術指標——仍可依基本面/新聞/情緒分析"
             findings.append(AuditFinding(
-                severity=_missing_severity(category, store), check="completeness",
-                message=f"Missing {category} data: {msg}",
+                severity=severity, check="completeness", message=message,
             ))
 
     # 2. 新鮮度

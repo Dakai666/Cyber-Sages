@@ -26,7 +26,7 @@ from cyber_sages.data.base import is_tw_etf
 from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
 from cyber_sages.data.finmind import days_ago, finmind_get
-from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.indicators import compute_indicator_evidence, short_history_evidence
 from cyber_sages.data.longterm import multiyear_fundamentals
 from cyber_sages.data.retry import to_thread_with_timeout
 
@@ -167,7 +167,10 @@ class TWStockProvider:
         # 需有收盤且為真實成交日（0 量佔位 bar 會污染指標與 as_of，同 get_quote 處理）
         rows = [r for r in rows if r.get("close") and int(r.get("Trading_Volume") or 0) > 0]
         if len(rows) < 30:
-            return []
+            # S5：< 30 交易日 → IPO/新上市標記（audit 降 warning + 明說），不硬出指標
+            return short_history_evidence(
+                len(rows), url=f"https://tw.stock.yahoo.com/quote/{stock_id}.TW",
+                source="FinMind daily (insufficient bars)")
         import pandas as pd
 
         close = pd.Series(

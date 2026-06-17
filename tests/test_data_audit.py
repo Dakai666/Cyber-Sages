@@ -152,6 +152,31 @@ def test_missing_history_is_error():
     assert any(f.check == "completeness" and "history" in f.message for f in found)
 
 
+def test_ipo_short_history_is_warning_not_error():
+    # D1：history 缺但有 IPO 標記（trading_days_available）→ warning + 明說，不當 error 降級。
+    store = healthy_store()
+    store.items = [e for e in store.items if e.category != "history"]
+    store.add(Evidence(category="profile", field="trading_days_available", value=3,
+                       unit="days", source="yf", as_of=date.today()))
+    findings = deterministic_checks(store, CFG)
+    hist = [f for f in findings if f.check == "completeness" and "技術面有限" in f.message]
+    assert hist and all(f.severity == "warning" for f in hist)
+    assert not any(f.check == "completeness" and "history" in f.message.lower()
+                   and f.severity == "error" for f in findings)
+
+
+def test_ipo_short_history_does_not_cap_confidence():
+    # IPO 的 technical=missing 不腰斬信心（health card 不把 missing 計入 cap）。
+    store = healthy_store()
+    store.items = [e for e in store.items if e.category != "history"]
+    store.add(Evidence(category="profile", field="trading_days_available", value=3,
+                       unit="days", source="yf", as_of=date.today()))
+    card = _card(store)
+    assert card.dimensions["technical"].status == "missing"
+    assert "新上市" in card.dimensions["technical"].reason
+    assert card.overall == "ok" and card.confidence_cap is None
+
+
 def test_missing_news_stays_warning():
     # 非核心類別缺 → 仍只是 warning，不觸發降級
     store = healthy_store()
