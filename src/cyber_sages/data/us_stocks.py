@@ -76,6 +76,19 @@ def _ua() -> str:
     return os.environ.get("EDGAR_USER_AGENT", "Cyber-Sages research bot contact@example.com")
 
 
+def drop_phantom_bars(hist):
+    """剔除 yfinance「未結算佔位」日線 bar：Volume=0（美股交易日幾乎不存在真實 0 量日，
+    0 量＝資料源尚未結算的 artifact）。
+
+    SPCX 2026-06-16 實例：日線回 OHLC 全 = 前一日收 192.5、Volume = 0，但同日 1 分線
+    真實收 $202、成交 5.4 億股。舊碼直接取 `iloc[-1]` 把這個幻覺值當第一手 latest_close/
+    latest_volume 發出，整份 brief 圍繞「零成交量＝懸浮標價」立論。取最新報價/算指標前
+    一律剔除這種 bar，寧可用稍舊但真實的 bar，也不用最新但虛構的值。純函式以便不打網路測試。"""
+    if hasattr(hist, "columns") and "Volume" in hist.columns:
+        return hist[hist["Volume"] > 0]
+    return hist
+
+
 class USStockProvider:
     market = "US"
 
@@ -107,7 +120,9 @@ class USStockProvider:
             ))
 
         # 第二條路徑：日線最後收盤，供 audit 跨源比對
-        hist = t.history(period="5d", auto_adjust=False).dropna(subset=["Close"])
+        # drop_phantom_bars：剔除未結算的 0 量佔位 bar（見 SPCX 案例），避免幻覺價/量入帳
+        hist = drop_phantom_bars(
+            t.history(period="5d", auto_adjust=False).dropna(subset=["Close"]))
         if len(hist) > 0:
             last_row = hist.iloc[-1]
             close_date = hist.index[-1].date()
@@ -195,7 +210,9 @@ class USStockProvider:
         import yfinance as yf
 
         t = yf.Ticker(ticker)
-        hist = t.history(period="1y", auto_adjust=True).dropna(subset=["Close"])
+        # 同 quote：剔除 0 量佔位 bar，避免幽靈尾 bar 污染 SMA/RSI/MACD 與 as_of 日期
+        hist = drop_phantom_bars(
+            t.history(period="1y", auto_adjust=True).dropna(subset=["Close"]))
         if len(hist) < 30:
             return []
         return compute_indicator_evidence(

@@ -7,10 +7,40 @@
 
 from datetime import date
 
+import pandas as pd
+
 from cyber_sages.config import AuditConfig
 from cyber_sages.data.evidence import Evidence, EvidenceStore
-from cyber_sages.data.us_stocks import USStockProvider
+from cyber_sages.data.us_stocks import USStockProvider, drop_phantom_bars
 from cyber_sages.verify.data_audit import deterministic_checks
+
+
+# ---------- Spec F / S1：幽靈 bar 防呆 ----------
+
+def _bars(rows):
+    """rows: list of (close, volume) → DataFrame，模擬 yfinance 日線（時間升冪）。"""
+    idx = pd.to_datetime([f"2026-06-{12 + i:02d}" for i in range(len(rows))])
+    return pd.DataFrame({"Close": [c for c, _ in rows],
+                         "Volume": [v for _, v in rows]}, index=idx)
+
+
+def test_drop_phantom_bars_removes_zero_volume_tail():
+    # SPCX 實例：最後一根 0 量佔位 bar 被剔除，取到前一根真實 bar
+    hist = _bars([(160.9, 519_000_000), (192.5, 256_000_000), (192.5, 0)])
+    cleaned = drop_phantom_bars(hist)
+    assert len(cleaned) == 2
+    assert float(cleaned.iloc[-1]["Close"]) == 192.5
+    assert int(cleaned.iloc[-1]["Volume"]) == 256_000_000
+
+
+def test_drop_phantom_bars_keeps_all_real_bars():
+    hist = _bars([(100.0, 1_000), (101.0, 2_000), (102.0, 3_000)])
+    assert len(drop_phantom_bars(hist)) == 3
+
+
+def test_drop_phantom_bars_tolerates_missing_volume_column():
+    df = pd.DataFrame({"Close": [1.0, 2.0]})
+    assert len(drop_phantom_bars(df)) == 2  # 無 Volume 欄位時原樣返回，不炸
 
 
 def _usd_annual(val, end="2024-12-31", start="2024-01-01", fy=2024, form="10-K"):

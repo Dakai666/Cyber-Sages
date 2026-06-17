@@ -97,6 +97,9 @@ class TWStockProvider:
         evs: list[Evidence] = []
 
         rows = await self._fm("TaiwanStockPrice", stock_id, days_ago(14))
+        # 剔除 0 量（未交易/未結算）尾 bar，取最新一筆真實成交日——與美股 drop_phantom_bars
+        # 同理（見 SPCX 案例）：寧用稍舊但真實的收盤，不用最新但虛構的佔位值。
+        rows = [r for r in rows if int(r.get("Trading_Volume") or 0) > 0]
         if rows:
             last = rows[-1]
             as_of = date.fromisoformat(last["date"])
@@ -161,7 +164,8 @@ class TWStockProvider:
     async def get_history(self, ticker: str) -> list[Evidence]:
         stock_id = to_stock_id(ticker)
         rows = await self._fm("TaiwanStockPrice", stock_id, days_ago(400))
-        rows = [r for r in rows if r.get("close")]
+        # 需有收盤且為真實成交日（0 量佔位 bar 會污染指標與 as_of，同 get_quote 處理）
+        rows = [r for r in rows if r.get("close") and int(r.get("Trading_Volume") or 0) > 0]
         if len(rows) < 30:
             return []
         import pandas as pd
