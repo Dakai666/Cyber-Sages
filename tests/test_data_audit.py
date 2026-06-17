@@ -64,7 +64,9 @@ def test_cross_source_divergence_is_fatal():
                        unit="USD", source="yfinance intraday", as_of=date.today()))
     found = deterministic_checks(store, CFG)  # last_price=100 vs intraday=120 → 20%
     cs = [f for f in found if f.check == "cross_source"]
-    assert cs and all(f.severity == "fatal" for f in cs)
+    assert any(f.severity == "fatal" for f in cs)  # 背離 → fatal
+    # 無 Finnhub 時同時揭露「降級為同源 intraday」warning（D4 #1）
+    assert any(f.severity == "warning" and "降級" in f.message for f in cs)
 
 
 def test_cross_source_prefers_finnhub_over_intraday():
@@ -92,6 +94,17 @@ def test_cross_source_agrees_within_threshold():
     store = healthy_store()
     store.add(Evidence(category="quote", field="last_price_intraday", value=101.0,
                        unit="USD", source="yfinance intraday", as_of=date.today()))
+    cs = [f for f in deterministic_checks(store, CFG) if f.check == "cross_source"]
+    # 吻合 → 無 fatal；但用同源 intraday 仍揭露降級 warning（D4 #1）
+    assert not any(f.severity == "fatal" for f in cs)
+    assert all(f.severity == "warning" for f in cs)
+
+
+def test_cross_source_finnhub_no_degradation_warning():
+    # 有 Finnhub（真正異源）時不發降級 warning——確認降級揭露只在退回同源時觸發。
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="last_price_finnhub", value=101.0,
+                       unit="USD", source="finnhub", as_of=date.today()))
     assert not any(f.check == "cross_source" for f in deterministic_checks(store, CFG))
 
 

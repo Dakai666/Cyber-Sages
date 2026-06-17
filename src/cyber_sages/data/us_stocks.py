@@ -138,7 +138,8 @@ class USStockProvider:
         return [Evidence(
             category="quote", field="last_price_finnhub", value=round(float(c), 2),
             unit="USD", source="finnhub /quote (independent of Yahoo)", url=url, as_of=as_of,
-            note="真正異源（Finnhub，非 Yahoo 系）的當前價讀數，供跨源比對——D4",
+            note="真正異源（Finnhub，非 Yahoo 系）的當前價讀數，供跨源比對——D4；"
+                 "跨源比對與 SOP 引用皆優先於 last_price_intraday（後者同源 Yahoo）",
         )]
 
     def _quote_sync(self, ticker: str) -> list[Evidence]:

@@ -144,7 +144,7 @@ P1（PR 進行中，commit 201b24b/2121b2d/03dc09a）：
 
 P2（PR 進行中）：
 
-- [x] **D4 真正異源第二價格源**：Finnhub `/quote`（非 Yahoo 系，複用 FINNHUB_API_KEY）；cross_source 優先用 Finnhub-vs-Yahoo 比對，無則退而用 intraday。收口 SPCX 的 correlated-failure 風險。
+- [x] **D4 真正異源第二價格源**：Finnhub `/quote`（非 Yahoo 系，複用 FINNHUB_API_KEY）；cross_source 優先用 Finnhub-vs-Yahoo 比對，無則退而用 intraday。**退回同源 intraday 時 audit 發 warning 揭露降級**（不 silent，PR #63 review #1）。收口 SPCX 的 correlated-failure 風險。
 - [x] S6 延伸：市值 vs shares×price 矛盾 sanity（偏離 >30% → error，抓 ticker 錯配）。
 - [x] ROADMAP 更新：新增 Phase F 條目（弱點沿用 spec 內 S1-S7/C1-C8，不另佔 W 序號）。
 - [ ] C5 台灣總經/匯率、C3 TW 現金流、C6 news 情緒、C7 ATR/RS（後續批次）。

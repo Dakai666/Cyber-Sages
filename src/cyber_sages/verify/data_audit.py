@@ -288,6 +288,15 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                             f"(max {cfg.max_price_divergence_pct}%) — 其一已 stale，當前價不可信",
                     evidence_ids=[live[0].id, alt[0].id],
                 ))
+        # D4：用了同源 intraday（Finnhub 異源不可用）→ 揭露降級。否則讀者會以為跨源是用
+        # 真正異源把關，實際是「兩條 Yahoo 路徑」較弱比對（Yahoo 整體 stale 時仍可能一起漏接）。
+        if not finnhub:
+            findings.append(AuditFinding(
+                severity="warning", check="cross_source",
+                message="Finnhub 異源第二價格源不可用，跨源把關降級為同源 yfinance intraday"
+                        "（D4 已知限制：Yahoo 整體 stale 時同源比對仍可能漏接）",
+                evidence_ids=[live[0].id],
+            ))
     elif live:
         # 缺獨立的盤中讀數（盤前/週末/抓取失敗）→ 跨源把關「沒跑」，不是「通過」。明說出來，
         # 否則讀者與 judge 會把「無 finding」誤讀成「跨源一致」。掛 last_price 的 id 讓它歸到
