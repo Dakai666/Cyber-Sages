@@ -8,7 +8,20 @@ from datetime import date
 
 import pandas as pd
 
-from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.indicators import compute_indicator_evidence, short_history_evidence
+
+
+def test_short_history_evidence_marks_ipo():
+    # S5：0 < n < 30 → 發 trading_days_available 標記（profile），供 audit 辨識 IPO 特例
+    evs = short_history_evidence(3, url="http://x", source="yf")
+    assert len(evs) == 1
+    assert evs[0].category == "profile" and evs[0].field == "trading_days_available"
+    assert evs[0].value == 3
+
+
+def test_short_history_evidence_empty_when_no_data():
+    # n=0（完全抓不到）回 []——那是真缺資料/抓取失敗，仍走 error，不偽裝成 IPO
+    assert short_history_evidence(0, url="http://x", source="yf") == []
 
 
 def _linear_closes(n: int, start: float = 100.0, step: float = 1.0) -> pd.Series:

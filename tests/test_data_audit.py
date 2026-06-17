@@ -152,6 +152,31 @@ def test_missing_history_is_error():
     assert any(f.check == "completeness" and "history" in f.message for f in found)
 
 
+def test_ipo_short_history_is_warning_not_error():
+    # D1：history 缺但有 IPO 標記（trading_days_available）→ warning + 明說，不當 error 降級。
+    store = healthy_store()
+    store.items = [e for e in store.items if e.category != "history"]
+    store.add(Evidence(category="profile", field="trading_days_available", value=3,
+                       unit="days", source="yf", as_of=date.today()))
+    findings = deterministic_checks(store, CFG)
+    hist = [f for f in findings if f.check == "completeness" and "技術面有限" in f.message]
+    assert hist and all(f.severity == "warning" for f in hist)
+    assert not any(f.check == "completeness" and "history" in f.message.lower()
+                   and f.severity == "error" for f in findings)
+
+
+def test_ipo_short_history_does_not_cap_confidence():
+    # IPO 的 technical=missing 不腰斬信心（health card 不把 missing 計入 cap）。
+    store = healthy_store()
+    store.items = [e for e in store.items if e.category != "history"]
+    store.add(Evidence(category="profile", field="trading_days_available", value=3,
+                       unit="days", source="yf", as_of=date.today()))
+    card = _card(store)
+    assert card.dimensions["technical"].status == "missing"
+    assert "新上市" in card.dimensions["technical"].reason
+    assert card.overall == "ok" and card.confidence_cap is None
+
+
 def test_missing_news_stays_warning():
     # 非核心類別缺 → 仍只是 warning，不觸發降級
     store = healthy_store()
@@ -306,6 +331,56 @@ def test_health_card_missing_noncore_does_not_cap():
     card = _card(store)
     assert card.overall == "ok" and card.confidence_cap is None
     assert card.dimensions["sentiment"].status == "missing"
+
+
+def test_second_hand_fundamentals_degrades_provenance():
+    # C2：fundamentals 全為二手（yfinance fallback）→ provenance error → fundamentals 維度降級。
+    # 用乾淨 store（不重指派 store.items，避免 id 計數器失準產生重複 id）。
+    store = EvidenceStore(ticker="ADR")
+    store.add(Evidence(category="quote", field="last_price", value=100.0,
+                       unit="USD", source="a", as_of=date.today()))
+    for field in ("revenue_annual", "net_income_annual"):
+        store.add(Evidence(category="fundamentals", field=field, value=1e9, unit="USD",
+                           source="yfinance financials (second-hand)", as_of=date.today()))
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "provenance" for f in found)
+    assert _card(store).dimensions["fundamentals"].status == "degraded"
+
+
+def test_first_hand_fundamentals_no_provenance_flag():
+    # SEC 第一手 fundamentals → 不觸發 provenance 降級。
+    assert not any(f.check == "provenance" for f in deterministic_checks(healthy_store(), CFG))
+
+
+def test_pe_sanity_flags_meaningless_magnitude():
+    # S6：|forward_pe| 過大（SPCX −2242x）→ warning「勿用 multiple 估值」，不再無聲發出。
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="forward_pe", value=-2242.222,
+                       source="yfinance", as_of=date.today()))
+    findings = deterministic_checks(store, CFG)
+    pe = [f for f in findings if f.check == "pe_sanity"]
+    assert pe and all(f.severity == "warning" for f in pe)
+
+
+def test_forward_pe_internal_inconsistency_is_error():
+    # S6：forward_pe × forward_eps 與 last_price 嚴重偏離 → error（PE 對另一價算，疑 staleness）。
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="forward_pe", value=20.0,
+                       source="yf", as_of=date.today()))
+    store.add(Evidence(category="estimate", field="forward_eps", value=6.0,
+                       unit="USD/share", source="yf", as_of=date.today()))  # 20×6=120 vs 100 → 20%
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "internal_consistency" and "forward_pe" in f.message for f in found)
+
+
+def test_forward_pe_consistency_passes_when_aligned():
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="forward_pe", value=20.0,
+                       source="yf", as_of=date.today()))
+    store.add(Evidence(category="estimate", field="forward_eps", value=5.0,
+                       unit="USD/share", source="yf", as_of=date.today()))  # 20×5=100 ✓
+    assert not any(f.check == "internal_consistency" and "forward_pe" in f.message
+                   for f in deterministic_checks(store, CFG))
 
 
 def test_health_card_fatal_blocks():

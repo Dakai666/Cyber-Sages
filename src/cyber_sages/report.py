@@ -87,6 +87,10 @@ def _render_blocked_brief(result: AnalysisResult) -> str:
         f"已收集 {len(result.store.items)} 筆證據（見 `evidence.json`），"
         "但因致命問題未進入分析階段。",
     ]
+    # #7：列出涉事的壞值 evidence id，方便對著 evidence.json debug
+    bad_ids = sorted({eid for f in a.fatals for eid in f.evidence_ids})
+    if bad_ids:
+        lines.append(f"涉事證據：{' '.join(bad_ids)}（對照 `evidence.json` 查原值與來源）")
     return "\n".join(lines)
 
 
@@ -192,6 +196,10 @@ def render_brief(result: AnalysisResult) -> str:
         "",
         f"資料品質：{dq}{uv} — 深挖請看 `details/`",
     ]
+    # D1：IPO/新上市明說承認——讓讀者知道技術面有限是「標的太新」而非「資料壞了」。
+    tech = card.dimensions.get("technical")
+    if tech and tech.status == "missing" and "新上市" in (tech.reason or ""):
+        lines.append(f"ℹ️ {tech.reason}——技術面分析有限，請偏重基本面/新聞/情緒。")
 
     # 引用驗證未過清單：brief 一頁可判斷會不會動搖裁定，不必每次再深挖 details/
     if flat:

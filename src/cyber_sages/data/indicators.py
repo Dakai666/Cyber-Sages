@@ -11,6 +11,20 @@ from datetime import date
 from cyber_sages.data.evidence import Evidence
 
 
+def short_history_evidence(n_days: int, *, url: str | None, source: str) -> list[Evidence]:
+    """歷史不足以算技術指標（< 30 交易日，疑新上市 IPO）時的標記 evidence。
+
+    讓 audit 能把「缺技術指標」辨識為 IPO/新上市特例（降為 warning + 明說承認），而非當成
+    資料錯誤而降級（Spec F S5 / D1：歷史過短屬特例，不 fatal、不腰斬）。n_days<=0（完全抓不到）
+    回 []——那是真的缺資料/抓取失敗，仍走 error。"""
+    if n_days <= 0:
+        return []
+    return [Evidence(
+        category="profile", field="trading_days_available", value=n_days, unit="days",
+        source=source, url=url, note="歷史交易日數不足 30（疑新上市），技術指標無法計算",
+    )]
+
+
 def compute_indicator_evidence(
     close,                      # pandas.Series of closing prices, 時間升冪
     *,

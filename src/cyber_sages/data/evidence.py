@@ -9,7 +9,7 @@ import json
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 Category = Literal[
     "quote", "fundamentals", "history", "news", "profile", "chips", "macro",
@@ -69,9 +69,19 @@ class EvidenceStore(BaseModel):
     market: str = "US"         # "US" | "TW" …，審核與下游可據此調整口徑
     instrument: str = "stock"  # "stock" | "etf"，ETF 無個股財報，審核不要求基本面
     items: list[Evidence] = Field(default_factory=list)
+    # 單調遞增的編號計數器（high-water mark，永不回退）。不可用 len(items) 推 id——items 若被
+    # 移除/重指派（如測試或未來篩選邏輯）會使 len 倒退、新 add 重用已發過的 id → 重複 id。
+    _id_counter: int = PrivateAttr(default=0)
+
+    @model_validator(mode="after")
+    def _init_id_counter(self) -> "EvidenceStore":
+        # 新建（items=[]）→ 0；從 JSON 載入既有 items → 接續其數量，避免再 add 撞號。
+        self._id_counter = len(self.items)
+        return self
 
     def add(self, ev: Evidence) -> Evidence:
-        ev.id = f"E{len(self.items) + 1:03d}"
+        self._id_counter += 1
+        ev.id = f"E{self._id_counter:03d}"
         self.items.append(ev)
         return ev
 

@@ -17,7 +17,7 @@ import httpx
 from cyber_sages.data.damodaran import industry_benchmark_evidence
 from cyber_sages.data.estimates import fetch_estimates
 from cyber_sages.data.evidence import Evidence
-from cyber_sages.data.indicators import compute_indicator_evidence
+from cyber_sages.data.indicators import compute_indicator_evidence, short_history_evidence
 from cyber_sages.data.longterm import multiyear_fundamentals
 from cyber_sages.data.retry import to_thread_with_timeout, with_retry
 
@@ -124,8 +124,17 @@ class USStockProvider:
 
         # 第二條路徑：日線最後收盤，供 audit 跨源比對
         # drop_phantom_bars：剔除未結算的 0 量佔位 bar（見 SPCX 案例），避免幻覺價/量入帳
-        hist = drop_phantom_bars(
-            t.history(period="5d", auto_adjust=False).dropna(subset=["Close"]))
+        raw_hist = t.history(period="5d", auto_adjust=False).dropna(subset=["Close"])
+        hist = drop_phantom_bars(raw_hist)
+        # #3 可回溯性：剔除了幾根、哪幾天——事後 debug（如 SPCX 幽靈 bar 在 6/16）才查得到
+        dropped = len(raw_hist) - len(hist)
+        if dropped > 0:
+            dates = [str(d.date()) for d in raw_hist.index if d not in hist.index]
+            evs.append(Evidence(
+                category="quote", field="phantom_bars_dropped", value=dropped, unit="bars",
+                source="drop_phantom_bars", url=url, as_of=date.today(),
+                note=f"剔除 {dropped} 根 0 量幽靈 bar（{', '.join(dates)}）—資料源未結算佔位，未入帳",
+            ))
         if len(hist) > 0:
             last_row = hist.iloc[-1]
             close_date = hist.index[-1].date()
@@ -268,7 +277,10 @@ class USStockProvider:
         hist = drop_phantom_bars(
             t.history(period="1y", auto_adjust=True).dropna(subset=["Close"]))
         if len(hist) < 30:
-            return []
+            # S5：< 30 交易日 → 發 IPO/新上市標記（讓 audit 降為 warning + 明說），不硬出指標
+            return short_history_evidence(
+                len(hist), url=f"https://finance.yahoo.com/quote/{ticker}/history",
+                source="yfinance 1y daily (insufficient bars)")
         return compute_indicator_evidence(
             hist["Close"], as_of=hist.index[-1].date(),
             url=f"https://finance.yahoo.com/quote/{ticker}/history",
@@ -282,7 +294,12 @@ class USStockProvider:
         async with httpx.AsyncClient(headers=headers, timeout=30) as client:
             cik = await self._resolve_cik(client, ticker)
             if cik is None:
-                return []
+                # C2：無 SEC CIK（ADR/新上市）→ yfinance 二手 fallback。嚴格隔離：source 明標
+                # second-hand、audit 會把 fundamentals 維度標「二手降級」（見 data_audit provenance
+                # 檢查），不讓二手值被當第一手。寧可二手降級揭露，也不讓基本面整片空白。
+                return await to_thread_with_timeout(
+                    lambda: self._yf_fundamentals_sync(ticker),
+                    what=f"yfinance fundamentals fallback {ticker}", default=[])
 
             async def _fetch() -> httpx.Response:
                 r = await client.get(EDGAR_FACTS.format(cik=cik))
@@ -294,6 +311,47 @@ class USStockProvider:
 
         filing_base = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}"
         return self._facts_to_evidence(facts, filing_base)
+
+    # ---------- fundamentals 二手 fallback（C2：無 SEC CIK 時）----------
+
+    def _yf_fundamentals_sync(self, ticker: str) -> list[Evidence]:
+        import yfinance as yf
+
+        try:
+            info = yf.Ticker(ticker).info or {}
+        except Exception as e:
+            logger.warning("US yfinance fundamentals fallback failed for %s: %s", ticker, e)
+            return []
+        return self._yf_fundamentals_from_info(
+            info, f"https://finance.yahoo.com/quote/{ticker}/financials")
+
+    @staticmethod
+    def _yf_fundamentals_from_info(info: dict, url: str) -> list[Evidence]:
+        """yfinance `info` → canonical fundamentals evidence（**二手**，無 SEC CIK 時的 fallback）。
+
+        嚴格隔離（決議：做但隔離二手）：source 一律標 `(second-hand)`、note 明示「非 SEC 第一手」，
+        讓 audit 的 provenance 檢查把 fundamentals 維度標二手降級、下游不誤當第一手。抽純函式
+        以便不打網路測試（同 `_facts_to_evidence` / `_short_interest_evidence` 範式）。
+
+        欄位口徑：totalRevenue/netIncomeToCommon 為 yfinance 的 TTM 聚合值（非單一年報），故給
+        canonical `*_annual` 名以滿足下游與 audit 必要欄位，但 note 標明二手 TTM 口徑。"""
+        src = "yfinance financials (second-hand)"
+        note = "二手（yfinance），非 SEC 第一手——信心已降級，僅供基本面補充"
+        out: list[Evidence] = []
+        mapping = [
+            ("revenue_annual", "totalRevenue", "USD"),
+            ("net_income_annual", "netIncomeToCommon", "USD"),
+            ("eps_ttm", "trailingEps", "USD/shares"),
+            ("total_assets", "totalAssets", "USD"),
+        ]
+        for field, key, unit in mapping:
+            v = info.get(key)
+            if v is not None:
+                out.append(Evidence(
+                    category="fundamentals", field=field, value=round(float(v), 2),
+                    unit=unit, source=src, url=url, as_of=None, note=note,
+                ))
+        return out
 
     @classmethod
     def _facts_to_evidence(cls, facts: dict, filing_base: str) -> list[Evidence]:

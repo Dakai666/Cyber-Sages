@@ -46,6 +46,11 @@ class AuditConfig(BaseModel):
     # 單一財報欄位嚴重過時（如換 XBRL 標籤撈到舊值）即 error；年報自然落後 ~1 年，
     # 超過 ~16 個月視為異常。與 max_fundamentals_age_days（整類新鮮度）分開。
     max_fundamentals_stale_field_days: int = 500
+    # S6：forward_pe × forward_eps 應 ≈ last_price（同源 yfinance 的內部一致性）。偏離過大
+    # 代表 PE 是對「另一個價」算的（常是 staleness：fast_info 落後、PE 用了真實當前價）→ error。
+    max_forward_pe_consistency_pct: float = 10.0
+    # S6：|P/E| 超此值時該比率已無估值意義（EPS≈0 使 PE 爆量）→ 警示「勿用 multiple 估值」。
+    max_abs_pe_meaningful: float = 1000.0
 
 
 class CitationConfig(BaseModel):

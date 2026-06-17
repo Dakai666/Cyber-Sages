@@ -141,6 +141,11 @@ def build_health_card(audit: AuditReport, store: EvidenceStore) -> DataHealthCar
         else:
             status = "healthy"
         reason = "；".join(f.message for f in fs if f.severity in ("fatal", "error"))[:240]
+        # D1：technical 缺若因 IPO/新上市，明說承認（reason 帶 N 交易日），不是「資料壞了」。
+        if dim == "technical" and status == "missing":
+            ipo_days = _short_history_days(store)
+            if ipo_days is not None:
+                reason = f"僅 {ipo_days} 個交易日歷史（疑新上市 IPO），技術面有限"
         oldest = min((e.as_of for e in items if e.as_of), default=None)
         dims[dim] = DimensionHealth(status=status, reason=reason,
                                     evidence_count=len(items), oldest_as_of=oldest)
@@ -163,6 +168,14 @@ def _etf_relaxed(category: str, store: EvidenceStore) -> bool:
     """ETF 無發行人損益表：fundamentals 缺屬預期口徑，降級與訊息都據此放寬。
     ETF 例外的唯一真相來源——severity 與 message 都查它，不在兩處各判一次。"""
     return category == "fundamentals" and store.instrument == "etf"
+
+
+def _short_history_days(store: EvidenceStore) -> int | None:
+    """有 IPO/新上市標記（trading_days_available）則回交易日數，否則 None。"""
+    for e in store.items:
+        if e.category == "profile" and e.field == "trading_days_available":
+            return int(e.value)
+    return None
 
 
 def _missing_severity(category: str, store: EvidenceStore) -> Severity:
@@ -199,12 +212,20 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
         if fields is not None:
             evs = [e for e in evs if e.field in fields]
         if not evs:
+            severity = _missing_severity(category, store)
+            message = f"Missing {category} data: {msg}"
             # ETF fundamentals 例外的 severity 與訊息都源自 _etf_relaxed，集中一處
             if _etf_relaxed(category, store):
-                msg = "ETF has no issuer financials (估值改看技術/籌碼/折溢價)"
+                message = "Missing fundamentals data: ETF has no issuer financials " \
+                          "(估值改看技術/籌碼/折溢價)"
+            # D1：history 缺若伴隨 IPO/新上市標記，屬特例——降為 warning + 明說承認，不當資料錯誤。
+            days = _short_history_days(store)
+            if category == "history" and days is not None:
+                severity = "warning"
+                message = f"技術面有限：僅 {days} 個交易日歷史（疑新上市 IPO），" \
+                          "不足以算技術指標——仍可依基本面/新聞/情緒分析"
             findings.append(AuditFinding(
-                severity=_missing_severity(category, store), check="completeness",
-                message=f"Missing {category} data: {msg}",
+                severity=severity, check="completeness", message=message,
             ))
 
     # 2. 新鮮度
@@ -297,6 +318,17 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                 evidence_ids=[eps[0].id, ni[0].id, sh[0].id],
             ))
 
+    # 5b. C2 — fundamentals 二手降級：無 SEC 第一手（ADR/新上市走 yfinance fallback）時，
+    # fundamentals 全為 second-hand 來源 → error，使 health card 的 fundamentals 維度標降級、
+    # 信心封頂。第一手原則：二手值可入（聊勝於無），但必須明顯降級揭露、不得當第一手用。
+    fund = store.by_category("fundamentals")
+    if fund and all("second-hand" in (e.source or "") for e in fund):
+        findings.append(AuditFinding(
+            severity="error", check="provenance",
+            message="fundamentals 全為二手來源（yfinance，無 SEC 第一手）—基本面 thesis 信心降級，勿當第一手",
+            evidence_ids=[fund[0].id],
+        ))
+
     # 6. W2 — US trailing P/E cross-check：yfinance 的 trailing_pe 是它自算的二手值，
     # 用 SEC 第一手 EPS 反算 implied P/E 比對，偏離過大代表二手值可疑 → error。
     # 僅 US：trailing_pe 由 yfinance info 提供，TW 端不發此欄位。
@@ -321,6 +353,35 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                                 f"(max {cfg.max_pe_divergence_pct:.0f}%; TTM-vs-TTM 口徑對齊)",
                         evidence_ids=[pe[0].id, eps_ttm[0].id, price[0].id],
                     ))
+
+        # 7. S6 — forward P/E 內部矛盾 sanity（US，同源 yfinance/estimate 的三角一致性）。
+        # (a) |P/E| 過大：EPS≈0 使比率爆量（SPCX forward_pe −2242x），此比率已無估值意義 →
+        #     warning 明示「勿用 multiple 估值」，避免分析師/讀者把它當有效估值錨點。
+        for field in ("trailing_pe", "forward_pe"):
+            for ev in field_evs("quote", field):
+                if abs(float(ev.value)) > cfg.max_abs_pe_meaningful:
+                    findings.append(AuditFinding(
+                        severity="warning", check="pe_sanity",
+                        message=f"{field} {ev.value} 絕對值過大（EPS≈0）—此比率無估值意義，"
+                                "勿用 P/E multiple 估值",
+                        evidence_ids=[ev.id],
+                    ))
+        # (b) forward_pe × forward_eps 應 ≈ last_price。偏離大＝PE 是對「另一個價」算的
+        #     （常是 staleness：fast_info 落後而 PE 用了真實當前價）→ error（資料內部矛盾）。
+        fpe = field_evs("quote", "forward_pe")
+        feps = field_evs("estimate", "forward_eps")
+        lp = field_evs("quote", "last_price")
+        if fpe and feps and lp and float(lp[0].value) > 0:
+            implied = float(fpe[0].value) * float(feps[0].value)
+            div = abs(implied - float(lp[0].value)) / float(lp[0].value) * 100
+            if div > cfg.max_forward_pe_consistency_pct:
+                findings.append(AuditFinding(
+                    severity="error", check="internal_consistency",
+                    message=f"forward_pe×forward_eps={implied:.2f} 與 last_price={lp[0].value} "
+                            f"偏離 {div:.0f}%（max {cfg.max_forward_pe_consistency_pct:.0f}%）"
+                            "—P/E 似對另一價計算，可能報價 stale 或來源錯配",
+                    evidence_ids=[fpe[0].id, feps[0].id, lp[0].id],
+                ))
     return findings
 
 
