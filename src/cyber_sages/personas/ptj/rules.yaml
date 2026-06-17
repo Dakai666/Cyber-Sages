@@ -1,0 +1,18 @@
+# PTJ 硬規則（DSL，程式判定、零幻覺）——招牌防線：絕不持有跌破 200 日均線的部位。
+# price_vs_sma_200_pct 由 skills.py 確定性算出（>0 在年線之上、<0 跌破）；DSL 只比單欄對常數，
+# 故靠這個衍生欄位把「last_price < sma_200」轉成可判定的單欄比較。
+#
+# bearish_floor：跌破年線＝防禦性退場/看空，若 PTJ 本就看空則墊高信心；反向（他看多）則記
+# rule_conflicts 揭露、不翻轉——「在年線之下我不站多」是他的鐵則，衝突要被看見。
+# 美台股皆可評估（last_price 來自 quote、sma_200 由 indicators 從 history 算），非台股專屬降級。
+hard_rules:
+  - id: below-200dma
+    if: {field: price_vs_sma_200_pct, op: "<", value: 0}
+    action: bearish_floor
+    confidence_floor: 0.55
+    note: 跌破 200 日均線——我的防線破了，先保命不接刀；這不是站多的位置
+
+exceptions:
+  - >
+    剛跌破年線的第一根、或因一次性事件瞬殺而基本面未變時，PTJ 可能視為「測試防線」而非確認跌勢——
+    但須在 SOP 說明，並以更緊的停損表達；規則本身仍記錄「現價在年線之下」這個機制面事實。
