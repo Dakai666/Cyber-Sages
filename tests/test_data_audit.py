@@ -209,3 +209,43 @@ async def test_llm_auditor_error_is_clamped_to_warning():
     assert not report.degraded                      # 不再被稽核員的 error 拉降級
     assert any(f.check == "data_freshness" and f.severity == "warning"
                for f in report.findings)            # 保留為 warning 供揭露
+
+
+# ---------- Spec F：fatal tier + halt ----------
+
+def test_nonpositive_price_is_fatal():
+    # Spec F / S4：非正值報價＝分析前提已壞 → fatal（中止），不再只是 error（降級）。
+    store = healthy_store()
+    for e in store.items:
+        if e.field == "last_price":
+            e.value = 0.0
+    findings = deterministic_checks(store, CFG)
+    sanity = [f for f in findings if f.check == "sanity"]
+    assert sanity and all(f.severity == "fatal" for f in sanity)
+
+
+def test_audit_report_blocked_and_degraded_semantics():
+    # fatal ⇒ blocked 且 degraded（中止隱含降級）；純 error ⇒ degraded 但非 blocked。
+    from cyber_sages.verify.data_audit import AuditReport
+    fatal = AuditReport(findings=[AuditFinding(severity="fatal", check="sanity", message="x")])
+    assert fatal.blocked and fatal.degraded and fatal.fatals
+    err = AuditReport(findings=[AuditFinding(severity="error", check="completeness", message="y")])
+    assert err.degraded and not err.blocked
+    clean = AuditReport(findings=[AuditFinding(severity="warning", check="freshness", message="z")])
+    assert not clean.degraded and not clean.blocked
+
+
+async def test_llm_auditor_fatal_is_clamped_to_warning():
+    # Spec F：fatal 只能由確定性閘門產生——LLM 稽核員回 fatal 一律壓到 warning，
+    # 不能讓非確定性模型獨自把整場分析喊停。
+    store = healthy_store()
+    settings = Settings.model_construct(audit=CFG)
+    fake = _FakeGateway(AuditorOutput(
+        findings=[AuditFinding(severity="fatal", check="hallucinated",
+                               message="model thinks everything is broken")],
+        summary="bogus",
+    ))
+    report = await run_audit(store, settings, fake)  # type: ignore[arg-type]
+    assert not report.blocked                        # 模型不能觸發中止
+    assert any(f.check == "hallucinated" and f.severity == "warning"
+               for f in report.findings)

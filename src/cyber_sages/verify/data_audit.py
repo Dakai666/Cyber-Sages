@@ -4,7 +4,11 @@
 1. 確定性檢查（程式）：必要資料齊全、新鮮度、跨來源一致性、基本 sanity。
 2. LLM 稽核員：找程式抓不到的語意異常（如 EPS 與 net_income/shares 對不上）。
 
+fatal → 管線在 stage 2 中止（分析前提已壞，後續一切無意義，產「無法分析」短報告）；
 error → 管線降級（degraded mode，最終報告強制揭露）；warning → 通過但標記。
+
+fatal 只由確定性閘門產生——LLM 稽核員（非確定性）的任何發現一律壓到 warning，
+不能讓模型獨自把整場分析喊停（見 run_audit 的 clamp）。
 """
 
 from __future__ import annotations
@@ -18,7 +22,8 @@ from cyber_sages.config import AuditConfig, Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
 
-Severity = Literal["error", "warning"]
+# 三級嚴重度：fatal（中止）> error（降級）> warning（通過但標記）。
+Severity = Literal["fatal", "error", "warning"]
 
 
 class AuditFinding(BaseModel):
@@ -33,12 +38,22 @@ class AuditReport(BaseModel):
     auditor_summary: str = ""
 
     @property
+    def fatals(self) -> list[AuditFinding]:
+        return [f for f in self.findings if f.severity == "fatal"]
+
+    @property
     def errors(self) -> list[AuditFinding]:
         return [f for f in self.findings if f.severity == "error"]
 
     @property
+    def blocked(self) -> bool:
+        """分析前提已壞 → 管線應在 stage 2 中止，不產出大師團/行動計畫。"""
+        return len(self.fatals) > 0
+
+    @property
     def degraded(self) -> bool:
-        return len(self.errors) > 0
+        """核心維度受損但分析仍可進行 → 降級 + 揭露。fatal 同時意味降級。"""
+        return len(self.errors) > 0 or self.blocked
 
 
 # W9 — 缺漏分級表（Spec B 決議 3，模組常數，不散落在 if 裡）。
@@ -158,12 +173,13 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                     evidence_ids=[live[0].id, close[0].id],
                 ))
 
-    # 4. sanity：價格類數值必須為正
+    # 4. sanity：價格類數值必須為正。非正值報價＝分析前提已壞（不是「品質差一點」），
+    #    後續整套估值/技術/行動計畫都建立在這個錯數上，故 fatal → 中止，不降級硬出報告。
     for ev in store.by_category("quote"):
         if ev.field in ("last_price", "latest_close") and float(ev.value) <= 0:
             findings.append(AuditFinding(
-                severity="error", check="sanity",
-                message=f"Non-positive price in {ev.id}: {ev.value}",
+                severity="fatal", check="sanity",
+                message=f"Non-positive price in {ev.id}: {ev.value} — 報價無效，無法分析",
                 evidence_ids=[ev.id],
             ))
 
@@ -274,12 +290,12 @@ async def run_audit(
             prompt=f"Ticker: {store.ticker}\n\nEvidence dump:\n{store.digest()}",
             schema=AuditorOutput,
         )
-        # LLM 稽核員只當「語意顧問」：其發現一律降為 warning，不獨自觸發降級。
-        # 降級（信心封頂 0.5）保留給可信的確定性閘門，避免非確定性的稽核員
-        # 在相同資料上忽高忽低地把 conviction 砍半（曾因「未來日期」幻覺誤判全表）。
+        # LLM 稽核員只當「語意顧問」：其發現一律壓到 warning，不獨自觸發降級或中止。
+        # 降級/中止保留給可信的確定性閘門，避免非確定性的稽核員在相同資料上忽高忽低地
+        # 把 conviction 砍半、甚至誤判 fatal 把整場喊停（曾因「未來日期」幻覺誤判全表）。
         for f in out.findings:
-            findings.append(f.model_copy(update={"severity": "warning"})
-                            if f.severity == "error" else f)
+            findings.append(f if f.severity == "warning"
+                            else f.model_copy(update={"severity": "warning"}))
         summary = out.summary
     except Exception as e:
         findings.append(AuditFinding(

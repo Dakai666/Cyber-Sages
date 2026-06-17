@@ -191,3 +191,66 @@ async def test_pipeline_skip_debate():
     )
     assert result.debate is None
     assert result.bull is None
+
+
+async def test_pipeline_halts_on_fatal(monkeypatch):
+    # Spec F / S4：資料閘門命中 fatal（這裡用非正值報價）→ 管線在 stage 2 中止，
+    # 不跑 analyst/council/debate/synthesis，產出「無法分析」短報告。
+    async def zero_price_quote(self, t):
+        return [Evidence(category="quote", field="last_price", value=0.0,
+                         unit="USD", source="broken feed")]
+
+    monkeypatch.setattr(USStockProvider, "get_quote", zero_price_quote)
+
+    settings = load_settings()
+    gateway = FakeGateway()
+    stages_seen: list[tuple[str, str]] = []
+    result = await run_pipeline(
+        "AAPL", settings, gateway,  # type: ignore[arg-type]
+        n_sages=3, include_macro=False,
+        on_stage=lambda s, st, d: stages_seen.append((s, st)),
+    )
+
+    # 中止：只走到 audit（fail），不進入後續階段
+    seen_keys = {s for s, _ in stages_seen}
+    assert seen_keys == {"collect", "audit"}
+    assert ("audit", "fail") in stages_seen
+    # 大師團/裁定皆未產出
+    assert result.blocked and result.audit.blocked
+    assert result.verdict is None and result.council is None and result.reports == []
+    # 未呼叫任何分析/大師/辯論角色（只可能呼叫到 data_auditor）
+    assert "analyst" not in gateway.calls and "sage" not in gateway.calls
+    assert "chief" not in gateway.calls
+
+    # 短報告：標「無法分析」，不含行動計畫
+    brief = render_brief(result)
+    assert "無法分析" in brief and "致命問題" in brief
+    assert "行動計畫" not in brief or "不產出" in brief
+
+    # 機器可讀 payload 明示 blocked、無 verdict
+    payload = build_agent_payload(result)
+    assert payload["blocked"] is True
+    assert payload["verdict"] is None
+    assert payload["data_quality"]["fatals"]
+
+
+async def test_save_run_blocked_skips_council_detail(tmp_path, monkeypatch):
+    # blocked 時 save_run 不寫 council/debate 明細（會在 None council 上炸），
+    # 但仍寫 brief / verdict.json / data_quality / evidence 留痕。
+    async def zero_price_quote(self, t):
+        return [Evidence(category="quote", field="last_price", value=0.0,
+                         unit="USD", source="broken feed")]
+
+    monkeypatch.setattr(USStockProvider, "get_quote", zero_price_quote)
+    from cyber_sages.report import save_run
+
+    settings = load_settings()
+    result = await run_pipeline(
+        "AAPL", settings, FakeGateway(),  # type: ignore[arg-type]
+        n_sages=2, include_macro=False)
+    out = save_run(result, base_dir=tmp_path)
+    assert (out / "brief.md").exists()
+    assert (out / "verdict.json").exists()
+    assert (out / "details" / "data_quality.md").exists()
+    assert (out / "evidence.json").exists()
+    assert not (out / "details" / "council.md").exists()

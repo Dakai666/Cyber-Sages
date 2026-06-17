@@ -89,13 +89,20 @@ class AnalysisResult(BaseModel):
     aggression: str | None = None  # 四象限激進軸（conservative/aggressive/None＝大師會堂）——brief 標示
     store: EvidenceStore
     audit: AuditReport
-    reports: list[AnalystReport]
-    council: CouncilVerdict
+    # stage 3-7 的產物。audit.blocked（fatal）時管線在 stage 2 中止，這些留空——
+    # 故為 Optional/預設空，report 與 payload 會走「無法分析」短報告分支（見 report.py）。
+    reports: list[AnalystReport] = Field(default_factory=list)
+    council: CouncilVerdict | None = None
     bull: DebateArgument | None = None
     bear: DebateArgument | None = None
     debate: DebateVerdict | None = None
-    verdict: FinalVerdict
-    risk: RiskNote
+    verdict: FinalVerdict | None = None
+    risk: RiskNote | None = None
+
+    @property
+    def blocked(self) -> bool:
+        """資料閘門 fatal → 本次未產出大師團/裁定，只有「無法分析」短報告。"""
+        return self.audit.blocked
 
 
 async def _emit(cb: StageCallback | None, stage: str, status: StageStatus, detail: str = "") -> None:
@@ -164,6 +171,16 @@ async def run_pipeline(
     # [2] Audit gate
     await _emit(on_stage, "audit", "running", "deterministic checks + LLM auditor")
     audit = await run_audit(store, settings, gateway, fetch_failures=fetch_failures)
+    if audit.blocked:
+        # fatal：分析前提已壞，中止管線（不跑 analyst/council/debate/synthesis）。
+        # 仍回傳含 store + audit 的最小結果——save_run 會寫「無法分析」短報告留痕、可重跑。
+        await _emit(on_stage, "audit", "fail",
+                    f"BLOCKED — {len(audit.fatals)} fatal：" +
+                    "；".join(f.message for f in audit.fatals))
+        return AnalysisResult(
+            ticker=ticker, horizon=horizon, aggression=aggression,
+            store=store, audit=audit,
+        )
     if audit.degraded:
         await _emit(on_stage, "audit", "warn",
                     f"DEGRADED — {len(audit.errors)} error(s)，信心將封頂 0.5")
