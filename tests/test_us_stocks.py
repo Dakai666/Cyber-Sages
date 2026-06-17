@@ -43,6 +43,48 @@ def test_drop_phantom_bars_tolerates_missing_volume_column():
     assert len(drop_phantom_bars(df)) == 2  # 無 Volume 欄位時原樣返回，不炸
 
 
+class _FakeIntradayTicker:
+    def __init__(self, df):
+        self._df = df
+
+    def history(self, period, interval):
+        return self._df
+
+
+def _intraday_df(age, closes=(201.0, 202.0), vols=(1000, 2000)):
+    """構造 tz-aware 1m 線，最後一根距 now 為 age（timedelta）。"""
+    from datetime import datetime, timezone
+    last = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(age)
+    idx = pd.DatetimeIndex([last - pd.Timedelta(minutes=1), last][-len(closes):])
+    return pd.DataFrame({"Close": list(closes), "Volume": list(vols)}, index=idx)
+
+
+def test_intraday_evidence_fresh_emits_price_and_honest_volume_note():
+    from datetime import timedelta
+    evs = USStockProvider._intraday_evidence(
+        _FakeIntradayTicker(_intraday_df(timedelta(minutes=2))), "http://x")
+    fields = {e.field: e for e in evs}
+    assert fields["last_price_intraday"].value == 202.0
+    # 量的 note 據實說明盤中跑為部分累計（不謊稱當日 total）
+    assert "部分累計" in fields["intraday_volume"].note
+
+
+def test_intraday_evidence_skips_stale_session():
+    # #5：盤前/週末拿到上個 session 的末筆（>16h）→ 不當「當前價」發出，交給 cross_source 跳過揭露
+    from datetime import timedelta
+    evs = USStockProvider._intraday_evidence(
+        _FakeIntradayTicker(_intraday_df(timedelta(hours=20))), "http://x")
+    assert evs == []
+
+
+def test_intraday_evidence_keeps_spcx_like_overnight_gap():
+    # SPCX 情境：從台灣跑美股，last_ts 約 11.8h 前——仍算當前，不可被新鮮度守衛誤剔
+    from datetime import timedelta
+    evs = USStockProvider._intraday_evidence(
+        _FakeIntradayTicker(_intraday_df(timedelta(hours=11, minutes=48))), "http://x")
+    assert any(e.field == "last_price_intraday" for e in evs)
+
+
 def _usd_annual(val, end="2024-12-31", start="2024-01-01", fy=2024, form="10-K"):
     return {"form": form, "start": start, "end": end, "val": val, "fy": fy}
 

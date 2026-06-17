@@ -67,10 +67,13 @@ def test_cross_source_divergence_is_fatal():
     assert cs and all(f.severity == "fatal" for f in cs)
 
 
-def test_cross_source_skipped_without_intraday():
-    # 無盤中讀數時不做跨源比對（不退回 last_price vs latest_close 的舊「當前 vs 昨收」誤判）。
+def test_cross_source_skipped_emits_warning_not_silent():
+    # 無盤中讀數時不做「當前 vs 昨收」的舊誤判，但也不能默默跳過——加一條 warning，
+    # 否則讀者會把「無 finding」誤讀成「跨源通過」。
     store = healthy_store()
-    assert not any(f.check == "cross_source" for f in deterministic_checks(store, CFG))
+    cs = [f for f in deterministic_checks(store, CFG) if f.check == "cross_source"]
+    assert cs and all(f.severity == "warning" for f in cs)
+    assert "跳過" in cs[0].message
 
 
 def test_cross_source_agrees_within_threshold():
@@ -311,4 +314,5 @@ def test_health_card_fatal_blocks():
                        unit="USD", source="intraday", as_of=date.today()))  # vs 100 → fatal
     card = _card(store)
     assert card.overall == "blocked"
+    assert card.confidence_cap is None  # blocked 不套 cap（避免被當 0% 信心結論）
     assert card.dimensions["price"].status == "fatal"

@@ -73,7 +73,14 @@ halt 後產出 **「無法分析」短報告**（`brief.md` 仍寫，但只含�
 
 US 端 cross_source 比對需要**不同 feed**。方案：取盤中最後成交價（`history(period="1d", interval="1m")` 末筆，或第二 provider）作為 `last_price` 的獨立來源，與 daily-history `latest_close` 比對。SPCX 案例下 intraday=$202 vs daily=$192.5 → 5% 背離 > 2% → fatal 攔下。順帶把當日真實量、均量/量比（C1）發為 evidence。
 
-> 工程注意：盤中 1m 在盤前/收盤後/週末會回最近交易日，需以 bar 時間戳判斷新鮮度，避免拿到陳舊 intraday 反而誤判。
+> 工程注意：盤中 1m 在盤前/收盤後/週末會回最近交易日，需以 bar 時間戳判斷新鮮度，避免拿到陳舊 intraday 反而誤判。**已落地**：`_intraday_evidence` 以 bar 自身時區計年齡，逾 16h 視為非當前 → 不發（保 SPCX 的跨日 ~11.8h 通過），交給 cross_source「跳過」warning 揭露。
+>
+> **實作差異（PR #60，與草案不同）**：cross_source 改比兩條**當前價**（`last_price_intraday` vs `last_price`/fast_info），**非**草案的 intraday-vs-daily（後者是當前-vs-昨收、會把正常日內波動誤判）。
+>
+> **Evidence 量欄位語意**（避免讀者混淆兩個成交量）：
+> - `latest_volume` = 最近**已結算**日線的當日量（`drop_phantom_bars` 過後，SPCX 即 06-15 的 256M）。
+> - `intraday_volume` = 盤中 1m 累計量——**盤後跑＝當日總量，盤中跑＝部分累計**（note 已據實標明）。目前無 analyst/sage 引用，預留 P1+ 量價/flow 分析（C7）。
+> - `last_price_intraday` 沿用 `last_price_*` 命名與 `last_price`（fast_info）成對，標示兩者皆為「當前價」讀數、供跨源比對。
 
 ### 3. 分維度資料健康度評分卡（S7 + C8）
 

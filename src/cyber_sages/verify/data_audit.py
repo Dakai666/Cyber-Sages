@@ -102,8 +102,8 @@ class DimensionHealth(BaseModel):
 class DataHealthCard(BaseModel):
     dimensions: dict[str, DimensionHealth]
     overall: Literal["ok", "degraded", "blocked"]
-    # 由最壞維度推導的信心上限（None＝乾淨、不封頂）。fatal 走中止、不到合成，故此處只會是
-    # None / 0.5（核心降級）/ 0.7（僅周邊降級）。
+    # 由最壞維度推導的信心上限。None＝乾淨不封頂、或 blocked（走中止不套 cap）。降級時為
+    # 0.5（核心受損）/ 0.7（僅周邊受損）。blocked 的真相看 overall，不看 cap。
     confidence_cap: float | None = None
 
 
@@ -147,7 +147,9 @@ def build_health_card(audit: AuditReport, store: EvidenceStore) -> DataHealthCar
 
     capped = {d for d, h in dims.items() if h.status in ("degraded", "fatal")}
     if any(dims[d].status == "fatal" for d in dims):
-        overall, cap = "blocked", 0.0
+        # blocked 不到合成、不套 cap；給 0.0 會讓下游誤把「沒有結論」當「0% 信心結論」，
+        # 故 cap=None（overall=="blocked" 才是 blocked 的真相來源）。
+        overall, cap = "blocked", None
     elif capped:
         # D3：最壞維度決定——核心受損腰斬，僅周邊受損輕罰。
         overall = "degraded"
@@ -260,6 +262,15 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                             f"(max {cfg.max_price_divergence_pct}%) — 其一已 stale，當前價不可信",
                     evidence_ids=[live[0].id, intraday[0].id],
                 ))
+    elif live:
+        # 缺獨立的盤中讀數（盤前/週末/抓取失敗）→ 跨源把關「沒跑」，不是「通過」。明說出來，
+        # 否則讀者與 judge 會把「無 finding」誤讀成「跨源一致」。掛 last_price 的 id 讓它歸到
+        # health_card 的 price 維度揭露（warning 不降級，但讀者看得到把關缺席）。
+        findings.append(AuditFinding(
+            severity="warning", check="cross_source",
+            message="跨源檢查跳過：缺盤中最後成交讀數，當前價僅 fast_info 單一來源（無獨立驗證）",
+            evidence_ids=[live[0].id],
+        ))
 
     # 4. sanity：價格類數值必須為正。非正值報價＝分析前提已壞（不是「品質差一點」），
     #    後續整套估值/技術/行動計畫都建立在這個錯數上，故 fatal → 中止，不降級硬出報告。
