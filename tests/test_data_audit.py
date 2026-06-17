@@ -308,6 +308,37 @@ def test_health_card_missing_noncore_does_not_cap():
     assert card.dimensions["sentiment"].status == "missing"
 
 
+def test_pe_sanity_flags_meaningless_magnitude():
+    # S6：|forward_pe| 過大（SPCX −2242x）→ warning「勿用 multiple 估值」，不再無聲發出。
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="forward_pe", value=-2242.222,
+                       source="yfinance", as_of=date.today()))
+    findings = deterministic_checks(store, CFG)
+    pe = [f for f in findings if f.check == "pe_sanity"]
+    assert pe and all(f.severity == "warning" for f in pe)
+
+
+def test_forward_pe_internal_inconsistency_is_error():
+    # S6：forward_pe × forward_eps 與 last_price 嚴重偏離 → error（PE 對另一價算，疑 staleness）。
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="forward_pe", value=20.0,
+                       source="yf", as_of=date.today()))
+    store.add(Evidence(category="estimate", field="forward_eps", value=6.0,
+                       unit="USD/share", source="yf", as_of=date.today()))  # 20×6=120 vs 100 → 20%
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "internal_consistency" and "forward_pe" in f.message for f in found)
+
+
+def test_forward_pe_consistency_passes_when_aligned():
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="forward_pe", value=20.0,
+                       source="yf", as_of=date.today()))
+    store.add(Evidence(category="estimate", field="forward_eps", value=5.0,
+                       unit="USD/share", source="yf", as_of=date.today()))  # 20×5=100 ✓
+    assert not any(f.check == "internal_consistency" and "forward_pe" in f.message
+                   for f in deterministic_checks(store, CFG))
+
+
 def test_health_card_fatal_blocks():
     store = healthy_store()
     store.add(Evidence(category="quote", field="last_price_intraday", value=200.0,

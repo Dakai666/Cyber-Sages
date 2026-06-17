@@ -321,6 +321,35 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                                 f"(max {cfg.max_pe_divergence_pct:.0f}%; TTM-vs-TTM 口徑對齊)",
                         evidence_ids=[pe[0].id, eps_ttm[0].id, price[0].id],
                     ))
+
+        # 7. S6 — forward P/E 內部矛盾 sanity（US，同源 yfinance/estimate 的三角一致性）。
+        # (a) |P/E| 過大：EPS≈0 使比率爆量（SPCX forward_pe −2242x），此比率已無估值意義 →
+        #     warning 明示「勿用 multiple 估值」，避免分析師/讀者把它當有效估值錨點。
+        for field in ("trailing_pe", "forward_pe"):
+            for ev in field_evs("quote", field):
+                if abs(float(ev.value)) > cfg.max_abs_pe_meaningful:
+                    findings.append(AuditFinding(
+                        severity="warning", check="pe_sanity",
+                        message=f"{field} {ev.value} 絕對值過大（EPS≈0）—此比率無估值意義，"
+                                "勿用 P/E multiple 估值",
+                        evidence_ids=[ev.id],
+                    ))
+        # (b) forward_pe × forward_eps 應 ≈ last_price。偏離大＝PE 是對「另一個價」算的
+        #     （常是 staleness：fast_info 落後而 PE 用了真實當前價）→ error（資料內部矛盾）。
+        fpe = field_evs("quote", "forward_pe")
+        feps = field_evs("estimate", "forward_eps")
+        lp = field_evs("quote", "last_price")
+        if fpe and feps and lp and float(lp[0].value) > 0:
+            implied = float(fpe[0].value) * float(feps[0].value)
+            div = abs(implied - float(lp[0].value)) / float(lp[0].value) * 100
+            if div > cfg.max_forward_pe_consistency_pct:
+                findings.append(AuditFinding(
+                    severity="error", check="internal_consistency",
+                    message=f"forward_pe×forward_eps={implied:.2f} 與 last_price={lp[0].value} "
+                            f"偏離 {div:.0f}%（max {cfg.max_forward_pe_consistency_pct:.0f}%）"
+                            "—P/E 似對另一價計算，可能報價 stale 或來源錯配",
+                    evidence_ids=[fpe[0].id, feps[0].id, lp[0].id],
+                ))
     return findings
 
 
