@@ -135,6 +135,10 @@ class USStockProvider:
                 unit="shares", source="yfinance daily history", url=url, as_of=close_date,
             ))
 
+        # 第三條路徑（獨立於 fast_info/daily 的「當前價」讀數）：盤中最後成交。供 audit 比對
+        # 兩條同一時點的當前價——SPCX 案例 fast_info/daily 一起 stale 於 192.5、盤中真實 202。
+        evs += self._intraday_evidence(t, url)
+
         info = {}
         try:
             info = t.info or {}
@@ -163,6 +167,38 @@ class USStockProvider:
         evs += self._short_interest_evidence(info, url)
         # 產業估值 benchmark（Damodaran，US-only）——同樣複用 info 的 industry
         evs += industry_benchmark_evidence(info.get("industry"), url)
+        return evs
+
+    @staticmethod
+    def _intraday_evidence(t, url: str) -> list[Evidence]:
+        """盤中最後成交價 + 當日真實累計量。
+
+        這是獨立於 fast_info 與 daily-history 的第三條「當前價」讀數：同源 Yahoo 但走
+        不同 endpoint（chart 1m），經驗上能抓到未結算 feed 的 staleness——SPCX 2026-06-16
+        fast_info/daily 一起卡在 192.5，而 1m 線真實收 $202。真正異源的第二 provider 為
+        P2 follow-up（D4）。盤後/假日回最近 session 末筆，與 fast_info 同值故不誤報。"""
+        try:
+            intr = t.history(period="1d", interval="1m").dropna(subset=["Close"])
+        except Exception as e:
+            logger.warning("US intraday fetch failed: %s", e)
+            return []
+        if len(intr) == 0:
+            return []
+        last_ts = intr.index[-1]
+        evs = [Evidence(
+            category="quote", field="last_price_intraday",
+            value=round(float(intr.iloc[-1]["Close"]), 2), unit="USD",
+            source="yfinance intraday (1m last trade)", url=url, as_of=last_ts.date(),
+            note="盤中最後成交價（獨立於 fast_info/daily 的當前價讀數，供跨源比對）",
+        )]
+        # C1：當日真實累計量——讓「成交量」有第一手當日值，不再受 daily 佔位 bar 的 0 量誤導。
+        vol = int(intr["Volume"].sum())
+        if vol > 0:
+            evs.append(Evidence(
+                category="quote", field="intraday_volume", value=vol, unit="shares",
+                source="yfinance intraday (1m volume sum)", url=url, as_of=last_ts.date(),
+                note="當日盤中累計成交量",
+            ))
         return evs
 
     @staticmethod

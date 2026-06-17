@@ -158,19 +158,22 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                         f"(max {cfg.max_macro_age_days})",
             ))
 
-    # 3. 跨來源價格一致性
+    # 3. 跨來源價格一致性——比「同一時點的兩條當前價讀數」（fast_info 報價 vs 盤中最後成交）。
+    #    舊版比 last_price(當前) vs latest_close(昨收)＝不同時點的量，正常日內波動 >2% 就會
+    #    誤報；SPCX 案例更是兩條 Yahoo 路徑一起 stale 成同值（192.5）而漏接。改比兩條當前價：
+    #    背離＝其一已 stale/錯，當前價本身不可信 → fatal（分析前提已壞，見 Spec F S2）。
     live = field_evs("quote", "last_price")
-    close = field_evs("quote", "latest_close")
-    if live and close:
-        a, b = float(live[0].value), float(close[0].value)
+    intraday = field_evs("quote", "last_price_intraday")
+    if live and intraday:
+        a, b = float(live[0].value), float(intraday[0].value)
         if b > 0:
             div = abs(a - b) / b * 100
             if div > cfg.max_price_divergence_pct:
                 findings.append(AuditFinding(
-                    severity="error", check="cross_source",
-                    message=f"Price divergence {div:.1f}% between sources "
-                            f"({a} vs {b}, max {cfg.max_price_divergence_pct}%)",
-                    evidence_ids=[live[0].id, close[0].id],
+                    severity="fatal", check="cross_source",
+                    message=f"當前價跨源背離 {div:.1f}%：fast_info {a} vs 盤中最後成交 {b} "
+                            f"(max {cfg.max_price_divergence_pct}%) — 其一已 stale，當前價不可信",
+                    evidence_ids=[live[0].id, intraday[0].id],
                 ))
 
     # 4. sanity：價格類數值必須為正。非正值報價＝分析前提已壞（不是「品質差一點」），

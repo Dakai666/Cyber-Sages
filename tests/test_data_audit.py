@@ -55,13 +55,27 @@ def test_stale_quote_is_error():
     assert any(f.check == "freshness" for f in found)
 
 
-def test_cross_source_divergence_is_error():
+def test_cross_source_divergence_is_fatal():
+    # Spec F / S2：兩條當前價讀數（fast_info vs 盤中最後成交）背離 → fatal（當前價不可信）。
     store = healthy_store()
-    for e in store.items:
-        if e.field == "last_price":
-            e.value = 120.0  # 20% off latest_close
-    found = errors(deterministic_checks(store, CFG))
-    assert any(f.check == "cross_source" for f in found)
+    store.add(Evidence(category="quote", field="last_price_intraday", value=120.0,
+                       unit="USD", source="yfinance intraday", as_of=date.today()))
+    found = deterministic_checks(store, CFG)  # last_price=100 vs intraday=120 → 20%
+    cs = [f for f in found if f.check == "cross_source"]
+    assert cs and all(f.severity == "fatal" for f in cs)
+
+
+def test_cross_source_skipped_without_intraday():
+    # 無盤中讀數時不做跨源比對（不退回 last_price vs latest_close 的舊「當前 vs 昨收」誤判）。
+    store = healthy_store()
+    assert not any(f.check == "cross_source" for f in deterministic_checks(store, CFG))
+
+
+def test_cross_source_agrees_within_threshold():
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="last_price_intraday", value=101.0,
+                       unit="USD", source="yfinance intraday", as_of=date.today()))
+    assert not any(f.check == "cross_source" for f in deterministic_checks(store, CFG))
 
 
 def test_severely_stale_single_field_is_error():
