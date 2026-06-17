@@ -77,6 +77,20 @@ def test_intraday_evidence_skips_stale_session():
     assert evs == []
 
 
+def test_finnhub_quote_evidence_parses_current_price():
+    # D4：Finnhub /quote c=current price → last_price_finnhub（真正異源）
+    evs = USStockProvider._finnhub_quote_evidence({"c": 202.0, "t": 1_750_000_000}, "http://x")
+    assert len(evs) == 1
+    assert evs[0].field == "last_price_finnhub" and evs[0].value == 202.0
+    assert "independent" in evs[0].source.lower()
+
+
+def test_finnhub_quote_evidence_skips_zero_or_missing():
+    # Finnhub 對未知 symbol 回 c=0（非 error）→ 視為無資料、回 []（優雅降級到 intraday 比對）
+    assert USStockProvider._finnhub_quote_evidence({"c": 0, "t": 0}, "http://x") == []
+    assert USStockProvider._finnhub_quote_evidence({}, "http://x") == []
+
+
 def test_yf_fundamentals_fallback_marks_second_hand():
     # C2：無 SEC CIK → yfinance 二手 fallback。所有欄位 source 標 second-hand、note 標二手。
     info = {"totalRevenue": 1.0e9, "netIncomeToCommon": 2.0e8,

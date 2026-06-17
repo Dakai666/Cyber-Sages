@@ -1,5 +1,6 @@
 # Cyber-Sages Roadmap
 
+**Revision**: 2026-06-17（v10 — **Spec F 資料源頭強固**插隊於 Phase 5 前：SPCX 幽靈 bar live 事故觸發，P0（#60）+ P1（#61）已合併、P2 進行中。鐵律 1「資料正確」優先於決策結構。見 `docs/specs/2026-06-17-F-data-source-robustness.md`）
 **Revision**: 2026-06-14（v9 — **Phase 3 / Spec E1 全數完成（#38/#42/#44 合併、live 雙市場驗收通過）**。Phase 4 / Spec C **v2 大改寫**：DK 把 P4 擴大為「analyst 降級為數據源 + horizon(trading/value) 分流 + 大師為主體 + 陪審團結構」四條 PR；E2 量產延到「更後面」——先手工擴充大師（按類型）。E2 前置 issue #39/#40/#41/#43/#45）
 
 ## 願景
@@ -71,6 +72,7 @@
 | C | Pillar 2 分析主體 + Horizon 分流 + 陪審團結構 | **P8（analyst 降級）, P9（horizon 分流）**, P2, P3, P6, P7（P1 移入 E） | A + E1 |
 | D | Pillar 2 決策結構 | P4, P5 | A + C |
 | **E** | **Sage Runtime + Cyber-Nüwa 蒸餾引擎** | P1 + issue #2 全部 | E1 依賴 A+B；E2 依賴 C |
+| **F** | **資料源頭強固**（Pillar 1 回訪） | S1-S7 穩定性 + C1-C8 完整性（SPCX 幽靈 bar 觸發） | A + B（見 `docs/specs/2026-06-17-F-...md`） |
 
 ## 開發 Phase（正式計劃）
 
@@ -222,6 +224,22 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 - **大師會堂（預設）**：不給 `--aggression` 時全員出席、`n_sages=None` 不截斷——一併修掉舊 default `--sages 10` 把低權重大師（Trump/Taleb/Wood/Icahn）切掉的問題；`--sages N` 改為純手動省 token 上限。
 - brief / payload 揭露本次模式：激進陪審團偏多、保守陪審團偏空是「組成使然」非標的訊號，judge 須據此理解。
 - 動機：手工擴充時刻意補齊各性格原型避免 roster 偏斜；象限選擇讓使用者主動挑「想聽哪種性格的陪審團」——PLTR 實機證明「roster 平衡 ≠ verdict 平衡」，要後者得用戶自選。
+
+### Phase F — Spec F：資料源頭強固（Pillar 1 回訪，SPCX 幽靈 bar 觸發）
+
+插隊於 Phase 5 之前——鐵律 1「資料正確」優先。SPCX live run 報「昨日成交量 0」（實際漲到 ~$202）
+暴露三裂縫：幽靈 bar、跨源不獨立（兩條 Yahoo 路徑 correlated failure）、重大錯誤只降級不中止。
+
+- ✅ **P0**（PR #60）：fatal 級別 + stage 2 中止（S4）、幽靈/0 量 bar 防呆（S1）、盤中獨立
+  第二價格源 + 跨源 fatal（S2/C1）、分維度健康度評分卡取代全域封頂 0.5（S7）。
+- ✅ **P1**（PR #61）：IPO/短歷史明說承認不降級（S5，依 D1）、forward P/E sanity 確定性閘門
+  （S6）、二手 fundamentals 嚴格隔離（C2，DK option 2）、review follow-up #3/#7、
+  EvidenceStore id 改單調計數器。
+- 🚧 **P2**（PR 進行中）：Finnhub 真正異源第二價格源（D4，收口 correlated failure）、
+  市值 vs shares×price 矛盾 sanity（S6 延伸）、ROADMAP 更新。
+  待續：C5 台灣總經/匯率、C3 TW 現金流、C6 news 情緒、C7 ATR/RS（issue #62 收 review polish）。
+
+弱點編號沿用 spec 內 S1-S7（穩定性）/ C1-C8（完整性），不另佔 W 序號（W 系列為 Spec A/B 既有）。
 
 ### Phase 5 — Spec D：決策結構
 

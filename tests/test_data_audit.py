@@ -64,7 +64,21 @@ def test_cross_source_divergence_is_fatal():
                        unit="USD", source="yfinance intraday", as_of=date.today()))
     found = deterministic_checks(store, CFG)  # last_price=100 vs intraday=120 → 20%
     cs = [f for f in found if f.check == "cross_source"]
+    assert any(f.severity == "fatal" for f in cs)  # 背離 → fatal
+    # 無 Finnhub 時同時揭露「降級為同源 intraday」warning（D4 #1）
+    assert any(f.severity == "warning" and "降級" in f.message for f in cs)
+
+
+def test_cross_source_prefers_finnhub_over_intraday():
+    # D4：有 Finnhub（真正異源）時優先用它比對，而非同源 yfinance intraday。
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="last_price_finnhub", value=120.0,
+                       unit="USD", source="finnhub", as_of=date.today()))  # 100 vs 120 → 20%
+    store.add(Evidence(category="quote", field="last_price_intraday", value=100.5,
+                       unit="USD", source="yf", as_of=date.today()))  # intraday 反而吻合
+    cs = [f for f in deterministic_checks(store, CFG) if f.check == "cross_source"]
     assert cs and all(f.severity == "fatal" for f in cs)
+    assert "Finnhub" in cs[0].message  # 確認用 Finnhub 而非 intraday
 
 
 def test_cross_source_skipped_emits_warning_not_silent():
@@ -80,6 +94,17 @@ def test_cross_source_agrees_within_threshold():
     store = healthy_store()
     store.add(Evidence(category="quote", field="last_price_intraday", value=101.0,
                        unit="USD", source="yfinance intraday", as_of=date.today()))
+    cs = [f for f in deterministic_checks(store, CFG) if f.check == "cross_source"]
+    # 吻合 → 無 fatal；但用同源 intraday 仍揭露降級 warning（D4 #1）
+    assert not any(f.severity == "fatal" for f in cs)
+    assert all(f.severity == "warning" for f in cs)
+
+
+def test_cross_source_finnhub_no_degradation_warning():
+    # 有 Finnhub（真正異源）時不發降級 warning——確認降級揭露只在退回同源時觸發。
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="last_price_finnhub", value=101.0,
+                       unit="USD", source="finnhub", as_of=date.today()))
     assert not any(f.check == "cross_source" for f in deterministic_checks(store, CFG))
 
 
@@ -371,6 +396,27 @@ def test_forward_pe_internal_inconsistency_is_error():
                        unit="USD/share", source="yf", as_of=date.today()))  # 20×6=120 vs 100 → 20%
     found = errors(deterministic_checks(store, CFG))
     assert any(f.check == "internal_consistency" and "forward_pe" in f.message for f in found)
+
+
+def test_market_cap_inconsistency_is_error():
+    # S6 延伸：market_cap 與 shares×price 嚴重偏離 → error（ticker 錯配/來源不一致）。
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="market_cap", value=1e12,
+                       unit="USD", source="yf", as_of=date.today()))
+    store.add(Evidence(category="fundamentals", field="shares_outstanding", value=1e9,
+                       unit="shares", source="edgar", as_of=date.today()))  # 1e9×100=1e11 vs 1e12 → 90%
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "internal_consistency" and "market_cap" in f.message for f in found)
+
+
+def test_market_cap_consistency_passes_within_tolerance():
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="market_cap", value=1.05e11,
+                       unit="USD", source="yf", as_of=date.today()))
+    store.add(Evidence(category="fundamentals", field="shares_outstanding", value=1e9,
+                       unit="shares", source="edgar", as_of=date.today()))  # 1e11 vs 1.05e11 → ~5%
+    assert not any(f.check == "internal_consistency" and "market_cap" in f.message
+                   for f in deterministic_checks(store, CFG))
 
 
 def test_forward_pe_consistency_passes_when_aligned():

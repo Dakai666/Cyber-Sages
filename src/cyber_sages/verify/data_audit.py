@@ -271,18 +271,32 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     #    誤報；SPCX 案例更是兩條 Yahoo 路徑一起 stale 成同值（192.5）而漏接。改比兩條當前價：
     #    背離＝其一已 stale/錯，當前價本身不可信 → fatal（分析前提已壞，見 Spec F S2）。
     live = field_evs("quote", "last_price")
+    # 比對對象優先用「真正異源」的 Finnhub（非 Yahoo 系，D4）——比同源 yfinance intraday 更能
+    # 抓出 Yahoo feed 整體 stale 的 correlated failure；無 Finnhub 則退而用 intraday。
+    finnhub = field_evs("quote", "last_price_finnhub")
     intraday = field_evs("quote", "last_price_intraday")
-    if live and intraday:
-        a, b = float(live[0].value), float(intraday[0].value)
+    alt = finnhub or intraday
+    if live and alt:
+        a, b = float(live[0].value), float(alt[0].value)
+        label = "Finnhub 獨立報價" if finnhub else "盤中最後成交"
         if b > 0:
             div = abs(a - b) / b * 100
             if div > cfg.max_price_divergence_pct:
                 findings.append(AuditFinding(
                     severity="fatal", check="cross_source",
-                    message=f"當前價跨源背離 {div:.1f}%：fast_info {a} vs 盤中最後成交 {b} "
+                    message=f"當前價跨源背離 {div:.1f}%：fast_info {a} vs {label} {b} "
                             f"(max {cfg.max_price_divergence_pct}%) — 其一已 stale，當前價不可信",
-                    evidence_ids=[live[0].id, intraday[0].id],
+                    evidence_ids=[live[0].id, alt[0].id],
                 ))
+        # D4：用了同源 intraday（Finnhub 異源不可用）→ 揭露降級。否則讀者會以為跨源是用
+        # 真正異源把關，實際是「兩條 Yahoo 路徑」較弱比對（Yahoo 整體 stale 時仍可能一起漏接）。
+        if not finnhub:
+            findings.append(AuditFinding(
+                severity="warning", check="cross_source",
+                message="Finnhub 異源第二價格源不可用，跨源把關降級為同源 yfinance intraday"
+                        "（D4 已知限制：Yahoo 整體 stale 時同源比對仍可能漏接）",
+                evidence_ids=[live[0].id],
+            ))
     elif live:
         # 缺獨立的盤中讀數（盤前/週末/抓取失敗）→ 跨源把關「沒跑」，不是「通過」。明說出來，
         # 否則讀者與 judge 會把「無 finding」誤讀成「跨源一致」。掛 last_price 的 id 讓它歸到
@@ -381,6 +395,23 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                             f"偏離 {div:.0f}%（max {cfg.max_forward_pe_consistency_pct:.0f}%）"
                             "—P/E 似對另一價計算，可能報價 stale 或來源錯配",
                     evidence_ids=[fpe[0].id, feps[0].id, lp[0].id],
+                ))
+
+        # (c) S6 延伸：market_cap 應 ≈ shares_outstanding × last_price。偏離過大＝ticker 錯配/
+        #     來源不一致（如市值是 A 公司、股數是 B 公司）→ error。閾值寬鬆避免股數漂移誤報。
+        mcap = field_evs("quote", "market_cap")
+        shares = field_evs("fundamentals", "shares_outstanding")
+        if (mcap and shares and lp and float(mcap[0].value) > 0
+                and float(shares[0].value) > 0):
+            implied_mcap = float(shares[0].value) * float(lp[0].value)
+            div = abs(float(mcap[0].value) - implied_mcap) / float(mcap[0].value) * 100
+            if div > cfg.max_market_cap_consistency_pct:
+                findings.append(AuditFinding(
+                    severity="error", check="internal_consistency",
+                    message=f"market_cap={mcap[0].value:.0f} 與 shares×price={implied_mcap:.0f} "
+                            f"偏離 {div:.0f}%（max {cfg.max_market_cap_consistency_pct:.0f}%）"
+                            "—可能 ticker 錯配或市值/股數來源不一致",
+                    evidence_ids=[mcap[0].id, shares[0].id, lp[0].id],
                 ))
     return findings
 

@@ -98,8 +98,49 @@ class USStockProvider:
     # ---------- quote ----------
 
     async def get_quote(self, ticker: str) -> list[Evidence]:
-        return await to_thread_with_timeout(
+        evs = await to_thread_with_timeout(
             lambda: self._quote_sync(ticker), what=f"yfinance quote {ticker}", default=[])
+        # D4：Finnhub /quote 當「真正異源」的當前價（非 Yahoo 系）——讓跨源 fatal 檢查有真牙齒。
+        # best-effort：缺 FINNHUB_API_KEY 或回 0（無資料）則略過，退回 yfinance intraday 比對。
+        evs += await self._finnhub_quote(ticker)
+        return evs
+
+    async def _finnhub_quote(self, ticker: str) -> list[Evidence]:
+        key = os.environ.get("FINNHUB_API_KEY")
+        if not key:
+            return []
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                async def _fetch() -> httpx.Response:
+                    r = await client.get("https://finnhub.io/api/v1/quote",
+                                         params={"symbol": ticker, "token": key})
+                    r.raise_for_status()
+                    return r
+                resp = await with_retry(_fetch, what=f"finnhub quote {ticker}")
+            return self._finnhub_quote_evidence(resp.json(), f"https://finnhub.io/quote/{ticker}")
+        except Exception as e:
+            logger.warning("US finnhub quote failed for %s: %s", ticker, e)
+            return []
+
+    @staticmethod
+    def _finnhub_quote_evidence(data: dict, url: str) -> list[Evidence]:
+        """Finnhub /quote → 獨立當前價 evidence。`c`=current price、`t`=unix ts。
+
+        Finnhub 對未知 symbol 回 c=0（非 error）——故 c<=0 視為無資料、回 []（優雅降級到
+        yfinance intraday 比對）。抽純函式以便不打網路測試（同 _facts_to_evidence 範式）。"""
+        c = data.get("c")
+        if c is None or float(c) <= 0:
+            return []
+        as_of = None
+        ts = data.get("t")
+        if isinstance(ts, (int, float)) and ts > 0:
+            as_of = datetime.fromtimestamp(ts, tz=timezone.utc).date()
+        return [Evidence(
+            category="quote", field="last_price_finnhub", value=round(float(c), 2),
+            unit="USD", source="finnhub /quote (independent of Yahoo)", url=url, as_of=as_of,
+            note="真正異源（Finnhub，非 Yahoo 系）的當前價讀數，供跨源比對——D4；"
+                 "跨源比對與 SOP 引用皆優先於 last_price_intraday（後者同源 Yahoo）",
+        )]
 
     def _quote_sync(self, ticker: str) -> list[Evidence]:
         import yfinance as yf

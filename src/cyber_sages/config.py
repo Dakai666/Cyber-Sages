@@ -51,6 +51,9 @@ class AuditConfig(BaseModel):
     max_forward_pe_consistency_pct: float = 10.0
     # S6：|P/E| 超此值時該比率已無估值意義（EPS≈0 使 PE 爆量）→ 警示「勿用 multiple 估值」。
     max_abs_pe_meaningful: float = 1000.0
+    # S6 延伸：market_cap 應 ≈ shares_outstanding × last_price。偏離過大＝ticker 錯配或來源
+    # 不一致 → error。閾值放寬到 30%（股數 as_of 落後、回購/增發會自然漂移，避免誤報）。
+    max_market_cap_consistency_pct: float = 30.0
 
 
 class CitationConfig(BaseModel):
