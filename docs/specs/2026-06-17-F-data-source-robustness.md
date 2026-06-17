@@ -133,11 +133,15 @@ P0（2026-06-17 完成，commit 9e7a5ac/0c4b52e/15f147f/c38621d）：
 - [x] 全域 `confidence_cap=0.5` 改為 `DataHealthCard` 分維度推導（核心 0.5／周邊 0.7）；brief + verdict.json 逐維度揭露。
 - [x] 既有測試全綠 + 新增 fatal/halt/評分卡/幽靈 bar/跨源測試（149→278 期間基線；本批 +16，全綠）。
 
-P1（待續）：
+P1（PR 進行中，commit 201b24b/2121b2d/03dc09a）：
 
-- [ ] S5：歷史不足（<30 交易日）→ 偵測為 IPO/新上市特例，評分卡 technical=missing/limited + brief 明示「新上市、僅 N 交易日、技術面有限」，**不 fatal、不阻斷**（依 D1）。
-- [ ] S6：內部矛盾 sanity（|PE| 上限、市值 vs shares×price）命中 → fatal/error（目前僅 LLM 稽核員標 warning）。
-- [ ] C2：US fundamentals 無 CIK 時的 yfinance 二手 fallback。
+- [x] S5：歷史不足（<30 交易日）→ 偵測為 IPO/新上市特例（`short_history_evidence`），評分卡 technical=missing + reason 帶 N 交易日、brief 明示「新上市、僅 N 交易日、技術面有限」，**不 fatal、不阻斷**（依 D1）。
+- [x] S6：forward_pe 內部矛盾 sanity 確定性閘門——|PE|>1000 → warning「勿用 multiple 估值」；forward_pe×forward_eps vs last_price 偏離 → error（不再只靠 LLM 標 warning）。
+- [x] review #3：`drop_phantom_bars` 剔除留痕（`phantom_bars_dropped` 診斷 evidence）。
+- [x] review #7：blocked 短報告列出涉事壞值 evidence id。
+- [ ] C2：US fundamentals 無 CIK 時的 yfinance 二手 fallback。**獨立 PR**（引入二手財報是與第一手原則相關的設計決定，單獨 review）。
+- [ ] review #10 欄位命名：維持現狀（`last_price_intraday` 與 `last_price` 成對，理由見上）。
+- [ ] S6 延伸：市值 vs shares×price 矛盾檢查（本批先做 P/E 三角，市值檢查留後續）。
 - [ ] ROADMAP 更新：新增 Phase（Spec F）與 W11+ 弱點編號。
 
 ## 待定決議
