@@ -114,16 +114,24 @@ deterministic_checks 加一組「物理不可能」檢查：forward/trailing P/E
 - 跨資產（crypto/A 股/港股）。
 - 第二家商業 provider 接入（若 intraday 路徑足夠則不需要）。
 
-## 驗收條件（草案）
+## 驗收條件
 
-- [ ] SPCX（或構造的幽靈 bar fixture）跑 `analyze` → stage 2 halt，輸出「無法分析」短報告，**不**產出大師團/行動計畫。
-- [ ] `AuditFinding.severity` 支援 `fatal`；`AuditReport` 有 `blocked` 屬性與「fatal ⊆ 中止」不變式（import 時 assert）。
-- [ ] US quote/history 取最後一根前過濾 Volume=0／OHLC 平移退化 bar；有真實 bar 時退回該根並如實標 as_of。
-- [ ] US cross_source 用真正獨立的兩源（intraday vs daily）比對；構造 5% 背離 fixture → fatal。
-- [ ] 全域 `confidence_cap=0.5` 改為 `DataHealthCard` 分維度推導；brief 揭露逐維度呈現。
-- [ ] 內部矛盾 sanity（|PE| 上限等）命中 → fatal/error。
-- [ ] 既有測試全綠 + 新增 fatal/halt/評分卡/幽靈 bar 測試；測試數淨增。
-- [ ] ROADMAP 更新：新增 Phase（Spec F）與 W11–Wxx 弱點編號。
+P0（2026-06-17 完成，commit 9e7a5ac/0c4b52e/15f147f/c38621d）：
+
+- [x] SPCX 跑 `analyze` → stage 2 halt，輸出「無法分析」短報告，**不**產出大師團/行動計畫。
+      （live 驗證：跨源背離 4.7% → BLOCKED，`runs/SPCX-2026-06-17_155048`）
+- [x] `AuditFinding.severity` 支援 `fatal`；`AuditReport.blocked`；LLM 稽核員任何發現一律壓到 warning。
+- [x] US/TW quote/history 取最後一根前過濾 Volume=0 退化 bar（`drop_phantom_bars`）；退回真實 bar 並標其 as_of。
+- [x] cross_source 改比兩條當前價（intraday vs fast_info）→ 背離 fatal；無 intraday 跳過（不退回當前-vs-昨收誤判）。
+- [x] 全域 `confidence_cap=0.5` 改為 `DataHealthCard` 分維度推導（核心 0.5／周邊 0.7）；brief + verdict.json 逐維度揭露。
+- [x] 既有測試全綠 + 新增 fatal/halt/評分卡/幽靈 bar/跨源測試（149→278 期間基線；本批 +16，全綠）。
+
+P1（待續）：
+
+- [ ] S5：歷史不足（<30 交易日）納入 fatal 判準（依 D1：fatal 但誠實短報告）。
+- [ ] S6：內部矛盾 sanity（|PE| 上限、市值 vs shares×price）命中 → fatal/error（目前僅 LLM 稽核員標 warning）。
+- [ ] C2：US fundamentals 無 CIK 時的 yfinance 二手 fallback。
+- [ ] ROADMAP 更新：新增 Phase（Spec F）與 W11+ 弱點編號。
 
 ## 待定決議
 
