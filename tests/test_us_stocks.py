@@ -77,6 +77,23 @@ def test_intraday_evidence_skips_stale_session():
     assert evs == []
 
 
+def test_yf_fundamentals_fallback_marks_second_hand():
+    # C2：無 SEC CIK → yfinance 二手 fallback。所有欄位 source 標 second-hand、note 標二手。
+    info = {"totalRevenue": 1.0e9, "netIncomeToCommon": 2.0e8,
+            "trailingEps": 3.5, "totalAssets": 5.0e9}
+    evs = USStockProvider._yf_fundamentals_from_info(info, "http://x")
+    fields = {e.field: e for e in evs}
+    assert fields["revenue_annual"].value == 1.0e9 and fields["eps_ttm"].value == 3.5
+    assert all("second-hand" in e.source for e in evs)
+    assert all("二手" in (e.note or "") for e in evs)
+    assert all(e.category == "fundamentals" for e in evs)
+
+
+def test_yf_fundamentals_fallback_skips_missing_keys():
+    evs = USStockProvider._yf_fundamentals_from_info({"totalRevenue": 1.0e9}, "http://x")
+    assert [e.field for e in evs] == ["revenue_annual"]
+
+
 def test_intraday_evidence_keeps_spcx_like_overnight_gap():
     # SPCX 情境：從台灣跑美股，last_ts 約 11.8h 前——仍算當前，不可被新鮮度守衛誤剔
     from datetime import timedelta

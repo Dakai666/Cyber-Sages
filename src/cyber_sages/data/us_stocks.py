@@ -294,7 +294,12 @@ class USStockProvider:
         async with httpx.AsyncClient(headers=headers, timeout=30) as client:
             cik = await self._resolve_cik(client, ticker)
             if cik is None:
-                return []
+                # C2：無 SEC CIK（ADR/新上市）→ yfinance 二手 fallback。嚴格隔離：source 明標
+                # second-hand、audit 會把 fundamentals 維度標「二手降級」（見 data_audit provenance
+                # 檢查），不讓二手值被當第一手。寧可二手降級揭露，也不讓基本面整片空白。
+                return await to_thread_with_timeout(
+                    lambda: self._yf_fundamentals_sync(ticker),
+                    what=f"yfinance fundamentals fallback {ticker}", default=[])
 
             async def _fetch() -> httpx.Response:
                 r = await client.get(EDGAR_FACTS.format(cik=cik))
@@ -306,6 +311,47 @@ class USStockProvider:
 
         filing_base = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik:010d}"
         return self._facts_to_evidence(facts, filing_base)
+
+    # ---------- fundamentals 二手 fallback（C2：無 SEC CIK 時）----------
+
+    def _yf_fundamentals_sync(self, ticker: str) -> list[Evidence]:
+        import yfinance as yf
+
+        try:
+            info = yf.Ticker(ticker).info or {}
+        except Exception as e:
+            logger.warning("US yfinance fundamentals fallback failed for %s: %s", ticker, e)
+            return []
+        return self._yf_fundamentals_from_info(
+            info, f"https://finance.yahoo.com/quote/{ticker}/financials")
+
+    @staticmethod
+    def _yf_fundamentals_from_info(info: dict, url: str) -> list[Evidence]:
+        """yfinance `info` → canonical fundamentals evidence（**二手**，無 SEC CIK 時的 fallback）。
+
+        嚴格隔離（決議：做但隔離二手）：source 一律標 `(second-hand)`、note 明示「非 SEC 第一手」，
+        讓 audit 的 provenance 檢查把 fundamentals 維度標二手降級、下游不誤當第一手。抽純函式
+        以便不打網路測試（同 `_facts_to_evidence` / `_short_interest_evidence` 範式）。
+
+        欄位口徑：totalRevenue/netIncomeToCommon 為 yfinance 的 TTM 聚合值（非單一年報），故給
+        canonical `*_annual` 名以滿足下游與 audit 必要欄位，但 note 標明二手 TTM 口徑。"""
+        src = "yfinance financials (second-hand)"
+        note = "二手（yfinance），非 SEC 第一手——信心已降級，僅供基本面補充"
+        out: list[Evidence] = []
+        mapping = [
+            ("revenue_annual", "totalRevenue", "USD"),
+            ("net_income_annual", "netIncomeToCommon", "USD"),
+            ("eps_ttm", "trailingEps", "USD/shares"),
+            ("total_assets", "totalAssets", "USD"),
+        ]
+        for field, key, unit in mapping:
+            v = info.get(key)
+            if v is not None:
+                out.append(Evidence(
+                    category="fundamentals", field=field, value=round(float(v), 2),
+                    unit=unit, source=src, url=url, as_of=None, note=note,
+                ))
+        return out
 
     @classmethod
     def _facts_to_evidence(cls, facts: dict, filing_base: str) -> list[Evidence]:

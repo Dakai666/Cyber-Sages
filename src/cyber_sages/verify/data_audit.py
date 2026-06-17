@@ -318,6 +318,17 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                 evidence_ids=[eps[0].id, ni[0].id, sh[0].id],
             ))
 
+    # 5b. C2 — fundamentals 二手降級：無 SEC 第一手（ADR/新上市走 yfinance fallback）時，
+    # fundamentals 全為 second-hand 來源 → error，使 health card 的 fundamentals 維度標降級、
+    # 信心封頂。第一手原則：二手值可入（聊勝於無），但必須明顯降級揭露、不得當第一手用。
+    fund = store.by_category("fundamentals")
+    if fund and all("second-hand" in (e.source or "") for e in fund):
+        findings.append(AuditFinding(
+            severity="error", check="provenance",
+            message="fundamentals 全為二手來源（yfinance，無 SEC 第一手）—基本面 thesis 信心降級，勿當第一手",
+            evidence_ids=[fund[0].id],
+        ))
+
     # 6. W2 — US trailing P/E cross-check：yfinance 的 trailing_pe 是它自算的二手值，
     # 用 SEC 第一手 EPS 反算 implied P/E 比對，偏離過大代表二手值可疑 → error。
     # 僅 US：trailing_pe 由 yfinance info 提供，TW 端不發此欄位。

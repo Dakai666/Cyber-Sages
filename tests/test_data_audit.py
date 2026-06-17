@@ -333,6 +333,25 @@ def test_health_card_missing_noncore_does_not_cap():
     assert card.dimensions["sentiment"].status == "missing"
 
 
+def test_second_hand_fundamentals_degrades_provenance():
+    # C2：fundamentals 全為二手（yfinance fallback）→ provenance error → fundamentals 維度降級。
+    # 用乾淨 store（不重指派 store.items，避免 id 計數器失準產生重複 id）。
+    store = EvidenceStore(ticker="ADR")
+    store.add(Evidence(category="quote", field="last_price", value=100.0,
+                       unit="USD", source="a", as_of=date.today()))
+    for field in ("revenue_annual", "net_income_annual"):
+        store.add(Evidence(category="fundamentals", field=field, value=1e9, unit="USD",
+                           source="yfinance financials (second-hand)", as_of=date.today()))
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "provenance" for f in found)
+    assert _card(store).dimensions["fundamentals"].status == "degraded"
+
+
+def test_first_hand_fundamentals_no_provenance_flag():
+    # SEC 第一手 fundamentals → 不觸發 provenance 降級。
+    assert not any(f.check == "provenance" for f in deterministic_checks(healthy_store(), CFG))
+
+
 def test_pe_sanity_flags_meaningless_magnitude():
     # S6：|forward_pe| 過大（SPCX −2242x）→ warning「勿用 multiple 估值」，不再無聲發出。
     store = healthy_store()
