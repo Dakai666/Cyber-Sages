@@ -226,6 +226,7 @@ async def test_pipeline_halts_on_fatal(monkeypatch):
     brief = render_brief(result)
     assert "無法分析" in brief and "致命問題" in brief
     assert "行動計畫" not in brief or "不產出" in brief
+    assert "涉事證據" in brief  # #7：列出壞值 evidence id 供 debug
 
     # 機器可讀 payload 明示 blocked、無 verdict
     payload = build_agent_payload(result)

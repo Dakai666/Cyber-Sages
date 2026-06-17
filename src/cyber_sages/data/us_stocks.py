@@ -124,8 +124,17 @@ class USStockProvider:
 
         # 第二條路徑：日線最後收盤，供 audit 跨源比對
         # drop_phantom_bars：剔除未結算的 0 量佔位 bar（見 SPCX 案例），避免幻覺價/量入帳
-        hist = drop_phantom_bars(
-            t.history(period="5d", auto_adjust=False).dropna(subset=["Close"]))
+        raw_hist = t.history(period="5d", auto_adjust=False).dropna(subset=["Close"])
+        hist = drop_phantom_bars(raw_hist)
+        # #3 可回溯性：剔除了幾根、哪幾天——事後 debug（如 SPCX 幽靈 bar 在 6/16）才查得到
+        dropped = len(raw_hist) - len(hist)
+        if dropped > 0:
+            dates = [str(d.date()) for d in raw_hist.index if d not in hist.index]
+            evs.append(Evidence(
+                category="quote", field="phantom_bars_dropped", value=dropped, unit="bars",
+                source="drop_phantom_bars", url=url, as_of=date.today(),
+                note=f"剔除 {dropped} 根 0 量幽靈 bar（{', '.join(dates)}）—資料源未結算佔位，未入帳",
+            ))
         if len(hist) > 0:
             last_row = hist.iloc[-1]
             close_date = hist.index[-1].date()
