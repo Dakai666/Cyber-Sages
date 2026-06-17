@@ -147,7 +147,11 @@ P2（PR 進行中）：
 - [x] **D4 真正異源第二價格源**：Finnhub `/quote`（非 Yahoo 系，複用 FINNHUB_API_KEY）；cross_source 優先用 Finnhub-vs-Yahoo 比對，無則退而用 intraday。**退回同源 intraday 時 audit 發 warning 揭露降級**（不 silent，PR #63 review #1）。收口 SPCX 的 correlated-failure 風險。
 - [x] S6 延伸：市值 vs shares×price 矛盾 sanity（偏離 >30% → error，抓 ticker 錯配）。
 - [x] ROADMAP 更新：新增 Phase F 條目（弱點沿用 spec 內 S1-S7/C1-C8，不另佔 W 序號）。
-- [ ] C5 台灣總經/匯率、C3 TW 現金流、C6 news 情緒、C7 ATR/RS（後續批次）。
+- [x] **C5 台灣總經/匯率**：FRED `DEXTAUS`（TWD/USD）併入 macro（全市場共用）。台灣國內利率/CPI 不在 FRED 標準系列，留 TW 專屬總經源 follow-up。
+- [x] **C7 ATR / RS**：ATR(14)+ATR%（兩市場，OHLC 確定性算，停損距離）；RS（個股 3 月報酬 − 大盤）**US-only vs ^GSPC**——TW RS（^TWII）因 `get_history` async inline、同步 benchmark fetch 會阻塞 event loop，留 follow-up。
+- [ ] **C3 TW 現金流量表**：FinMind 給 YTD 累計需去累計化拆季，複雜度高、中等價值——獨立小心做（defer）。
+- [ ] **C6 news 情緒量化**：LLM 情緒分數非確定性、非第一手，**與反幻覺鐵律衝突**——須走確定性詞典法或另立 sentiment phase（defer，需設計決議）。
+- [ ] TW RS（^TWII）：需 async-safe benchmark fetch（follow-up）。
 - [ ] review polish minors（issue #62）。
 
 ## 待定決議

@@ -28,6 +28,9 @@ def short_history_evidence(n_days: int, *, url: str | None, source: str) -> list
 def compute_indicator_evidence(
     close,                      # pandas.Series of closing prices, 時間升冪
     *,
+    high=None,                  # pandas.Series 最高價（可選；給了才算 ATR）
+    low=None,                   # pandas.Series 最低價
+    benchmark_close=None,       # pandas.Series 大盤收盤（可選；給了才算相對強弱 RS）
     as_of: date,
     url: str | None,
     source: str,
@@ -83,4 +86,25 @@ def compute_indicator_evidence(
     signal = macd.ewm(span=9, adjust=False).mean()
     evs.append(ev("macd_histogram", (macd - signal).iloc[-1],
                   note="positive = bullish momentum"))
+
+    # ATR(14)（C7）：短線大師用來定停損距離與波動尺度。需 high/low（OHLC），給了才算。
+    # True Range = max(high-low, |high-prev_close|, |low-prev_close|)；無 pandas import，
+    # 用 Series.combine 逐元素取 max。emit 絕對 ATR 與 ATR%（佔現價，跨標的可比的波動尺度）。
+    if high is not None and low is not None and len(close) >= 15:
+        prev_close = close.shift(1)
+        tr = (high - low).combine((high - prev_close).abs(), max) \
+                         .combine((low - prev_close).abs(), max)
+        atr = tr.rolling(14).mean().iloc[-1]
+        if atr == atr and last:  # atr==atr 濾 NaN
+            evs.append(ev("atr_14", atr, price_unit, note="14 日平均真實波幅（停損距離參考）"))
+            evs.append(ev("atr_pct", atr / last * 100, "%",
+                          note="ATR 佔現價百分比（波動尺度，跨標的可比；停損常取 1.5-3×ATR）"))
+
+    # 相對強弱 RS（C7）：個股 3 月報酬 − 大盤 3 月報酬。正＝跑贏大盤（Minervini/動能選股核心）。
+    # 各自用自身序列的 iloc[-63]（≈3 月）算報酬，避免兩序列交易日對不齊；需大盤 ≥64 筆。
+    if benchmark_close is not None and len(benchmark_close) >= 64 and len(close) >= 64:
+        stock_3m = (close.iloc[-1] / close.iloc[-63] - 1) * 100
+        bench_3m = (benchmark_close.iloc[-1] / benchmark_close.iloc[-63] - 1) * 100
+        evs.append(ev("rs_vs_benchmark_3m_pct", stock_3m - bench_3m, "%",
+                      note="3 月相對強弱：個股報酬 − 大盤報酬（正=跑贏大盤）"))
     return evs

@@ -173,14 +173,17 @@ class TWStockProvider:
                 source="FinMind daily (insufficient bars)")
         import pandas as pd
 
-        close = pd.Series(
-            [float(r["close"]) for r in rows],
-            index=pd.to_datetime([r["date"] for r in rows]),
-        )
+        idx = pd.to_datetime([r["date"] for r in rows])
+        close = pd.Series([float(r["close"]) for r in rows], index=idx)
+        # ATR（C7）需高/低價——FinMind TaiwanStockPrice 有 max/min，全有才建（否則 graceful 略過）
+        high = low = None
+        if all(r.get("max") is not None and r.get("min") is not None for r in rows):
+            high = pd.Series([float(r["max"]) for r in rows], index=idx)
+            low = pd.Series([float(r["min"]) for r in rows], index=idx)
         return compute_indicator_evidence(
-            close, as_of=date.fromisoformat(rows[-1]["date"]),
+            close, high=high, low=low, as_of=date.fromisoformat(rows[-1]["date"]),
             url=f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/technical-analysis",
-            source="computed from FinMind 1y daily closes", price_unit="TWD",
+            source="computed from FinMind 1y daily OHLC", price_unit="TWD",
             trading_days=245,  # 台股年交易日約 245（W10）
         )
 
