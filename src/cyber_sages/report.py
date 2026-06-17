@@ -20,6 +20,12 @@ from pathlib import Path
 
 from cyber_sages.agents.schemas import PriceLevel
 from cyber_sages.pipeline import AnalysisResult
+from cyber_sages.verify.data_audit import build_health_card
+
+# 維度中文標籤（評分卡揭露用）
+_DIM_ZH = {"price": "當前價", "technical": "技術面", "fundamentals": "基本面",
+           "sentiment": "情緒/籌碼", "macro": "總經"}
+_STATUS_ZH = {"healthy": "健康", "degraded": "降級", "missing": "缺", "fatal": "致命"}
 
 STANCE_ZH = {"bullish": "看多 🐂", "bearish": "看空 🐻", "neutral": "中性 ⚖️"}
 ACTION_ZH = {
@@ -168,8 +174,17 @@ def render_brief(result: AnalysisResult) -> str:
     if v.dissent_summary:
         lines.append(f"**少數派**：{v.dissent_summary}")
 
-    dq = "⚠️ 降級（信心已封頂 0.5）" if result.audit.degraded else \
-        f"✅ 通過（{len(result.audit.findings)} 項提示）" if result.audit.findings else "✅ 乾淨"
+    # S7：分維度健康度揭露——讓讀者一眼看出壞在哪一維度，對自己關心的 thesis 精準折價，
+    # 不再只有「降級 0.5」一句全域標籤。
+    card = build_health_card(result.audit, result.store)
+    dim_str = "／".join(f"{_DIM_ZH[d]} {_STATUS_ZH[h.status]}"
+                        for d, h in card.dimensions.items())
+    if card.overall == "degraded":
+        dq = f"⚠️ 降級（信心上限 {card.confidence_cap}）· {dim_str}"
+    elif result.audit.findings:
+        dq = f"✅ 通過（{len(result.audit.findings)} 項提示）· {dim_str}"
+    else:
+        dq = f"✅ 乾淨 · {dim_str}"
     flat = [(r.analyst, u) for r in result.reports for u in r.unverified]
     flat += [("首席 brief", u) for u in v.unverified]  # W7：chief 主體未過驗證的數字
     uv = f" · {len(flat)} 條 claim 未過引用驗證" if flat else ""
@@ -265,6 +280,15 @@ def render_data_quality(result: AnalysisResult) -> str:
     stamp = result.generated_at.strftime("%Y-%m-%d %H:%M:%S %Z")
     commit = f" · commit `{result.git_commit}`" if result.git_commit else ""
     lines = [f"# 資料品質 · {result.ticker}", f"產出於 {stamp}{commit}"]
+    # S7：分維度評分卡——逐維度狀態 + 受損原因 + 證據筆數/最舊日期，留痕可回溯（C8）。
+    card = build_health_card(result.audit, result.store)
+    lines += ["", f"## 健康度評分卡（overall: {card.overall}"
+              + (f"，信心上限 {card.confidence_cap}" if card.confidence_cap is not None else "")
+              + ")", "", "| 維度 | 狀態 | 證據數 | 最舊日期 | 受損原因 |", "|---|---|---|---|---|"]
+    for d, h in card.dimensions.items():
+        lines.append(f"| {_DIM_ZH[d]} | {_STATUS_ZH[h.status]} | {h.evidence_count} | "
+                     f"{h.oldest_as_of or '—'} | {h.reason or '—'} |")
+    lines.append("")
     if result.audit.blocked:
         lines.append("\n**⛔ 中止模式**：審核命中 fatal，管線在分析前中止，未產出大師團/裁定。")
     elif result.audit.degraded:
@@ -320,6 +344,7 @@ def build_agent_payload(result: AnalysisResult) -> dict:
             "data_quality": {
                 "blocked": True,
                 "degraded": True,
+                "health_card": build_health_card(result.audit, result.store).model_dump(mode="json"),
                 "fatals": [{"check": f.check, "message": f.message,
                             "evidence_ids": f.evidence_ids} for f in result.audit.fatals],
                 "errors": [f.message for f in result.audit.errors],
@@ -368,6 +393,8 @@ def build_agent_payload(result: AnalysisResult) -> dict:
         "data_quality": {
             "blocked": False,
             "degraded": result.audit.degraded,
+            # S7：分維度健康度評分卡——judge 可據此判斷壞的是不是自己在乎的維度
+            "health_card": build_health_card(result.audit, result.store).model_dump(mode="json"),
             "errors": [f.message for f in result.audit.errors],
             "warnings": [f.message for f in result.audit.findings
                          if f.severity == "warning"],

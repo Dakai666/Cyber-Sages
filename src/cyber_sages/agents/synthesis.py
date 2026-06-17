@@ -14,7 +14,7 @@ from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
 from cyber_sages.verify.citation_check import Claim, check_claims
-from cyber_sages.verify.data_audit import AuditReport
+from cyber_sages.verify.data_audit import AuditReport, build_health_card
 
 # W7：chief brief 主體（thesis / 風險 / 翻盤條件）過 cite-check 的重試次數。
 # 決議 5：retry 1 次（驗證錯誤回饋進 prompt，與 analyst 階段同機制）→ 仍失敗則標
@@ -160,9 +160,16 @@ async def run_synthesis(
 
     adj = max(-0.3, min(0.0, risk.conviction_adjustment))
     verdict.conviction = round(max(0.0, min(1.0, verdict.conviction + adj)), 2)
-    if audit.degraded:
-        verdict.conviction = round(min(verdict.conviction, 0.5), 2)  # 髒資料封頂
-        verdict.key_risks.insert(0, "資料品質降級（audit gate 有 error），信心上限 0.5")
+    # S7：信心上限由「分維度健康度評分卡」的最壞維度推導，取代舊的全域一律封頂 0.5。
+    # 核心維度（price/technical/fundamentals）受損才腰斬 0.5；僅周邊（sentiment/macro）受損
+    # 輕罰 0.7——讓 macro 缺不再無謂腰斬一個短線技術裁定。揭露明確指出壞在哪一維度。
+    card = build_health_card(audit, store)
+    if card.confidence_cap is not None:
+        verdict.conviction = round(min(verdict.conviction, card.confidence_cap), 2)
+        hurt = [f"{d}（{h.status}）" for d, h in card.dimensions.items()
+                if h.status in ("degraded", "fatal")]
+        verdict.key_risks.insert(
+            0, f"資料品質降級：{'、'.join(hurt)} 受損，信心上限 {card.confidence_cap}")
     return verdict, risk
 
 

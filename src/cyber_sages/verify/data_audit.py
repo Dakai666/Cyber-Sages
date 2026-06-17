@@ -72,6 +72,91 @@ CATEGORY_SEVERITY: dict[str, Severity] = {
 assert CORE_CATEGORIES == tuple(k for k, v in CATEGORY_SEVERITY.items() if v == "error")
 
 
+# ---------- Spec F / S7：分維度資料健康度評分卡 ----------
+# 全域「信心一律封頂 0.5」太粗魯——讀者無法判斷壞的是不是自己在乎的維度（macro 缺對短線
+# 技術裁定無傷，但財報過期專打 value thesis）。把資料品質拆成五個維度逐一評級，揭露明確
+# 指出壞在哪，confidence_cap 由最壞維度推導（核心維度受損才腰斬，僅周邊受損則輕罰）。
+
+# 維度 → evidence 類別。price=當前價可信度；technical=技術面；fundamentals=基本面；
+# sentiment=情緒/籌碼；macro=總經背景。
+DIMENSION_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "price": ("quote",),
+    "technical": ("history",),
+    "fundamentals": ("fundamentals",),
+    "sentiment": ("news", "chips"),
+    "macro": ("macro",),
+}
+# 核心維度受損 → 信心腰斬（0.5）；僅周邊（sentiment/macro）受損 → 輕罰（0.7）。
+CORE_DIMENSIONS: frozenset[str] = frozenset({"price", "technical", "fundamentals"})
+_CATEGORY_DIMENSION: dict[str, str] = {
+    c: dim for dim, cats in DIMENSION_CATEGORIES.items() for c in cats}
+
+
+class DimensionHealth(BaseModel):
+    status: Literal["healthy", "degraded", "missing", "fatal"]
+    reason: str = ""
+    evidence_count: int = 0
+    oldest_as_of: date | None = None
+
+
+class DataHealthCard(BaseModel):
+    dimensions: dict[str, DimensionHealth]
+    overall: Literal["ok", "degraded", "blocked"]
+    # 由最壞維度推導的信心上限（None＝乾淨、不封頂）。fatal 走中止、不到合成，故此處只會是
+    # None / 0.5（核心降級）/ 0.7（僅周邊降級）。
+    confidence_cap: float | None = None
+
+
+def _finding_dimension(f: AuditFinding, store: EvidenceStore) -> str | None:
+    """把一條 finding 歸到某個維度：先看其 evidence 類別，再退而求其次解析訊息中的類別字。"""
+    for eid in f.evidence_ids:
+        ev = next((e for e in store.items if e.id == eid), None)
+        if ev and ev.category in _CATEGORY_DIMENSION:
+            return _CATEGORY_DIMENSION[ev.category]
+    for cat, dim in _CATEGORY_DIMENSION.items():
+        if cat in f.message:  # "Missing quote data" / "macro series" / "chips 來源抓取失敗"
+            return dim
+    return None
+
+
+def build_health_card(audit: AuditReport, store: EvidenceStore) -> DataHealthCard:
+    """從 audit findings + store 攤出五維度健康度。LLM 稽核員的 warning 不降級維度
+    （與全域 degraded 語意一致：只有確定性閘門的 error/fatal 才算數）。"""
+    by_dim: dict[str, list[AuditFinding]] = {d: [] for d in DIMENSION_CATEGORIES}
+    for f in audit.findings:
+        dim = _finding_dimension(f, store)
+        if dim in by_dim:
+            by_dim[dim].append(f)
+
+    dims: dict[str, DimensionHealth] = {}
+    for dim, cats in DIMENSION_CATEGORIES.items():
+        items = [e for e in store.items if e.category in cats]
+        fs = by_dim[dim]
+        if any(f.severity == "fatal" for f in fs):
+            status = "fatal"
+        elif any(f.severity == "error" for f in fs):
+            status = "degraded"
+        elif not items:
+            status = "missing"  # 周邊類別缺（核心缺會產生 error → 上面已歸 degraded）
+        else:
+            status = "healthy"
+        reason = "；".join(f.message for f in fs if f.severity in ("fatal", "error"))[:240]
+        oldest = min((e.as_of for e in items if e.as_of), default=None)
+        dims[dim] = DimensionHealth(status=status, reason=reason,
+                                    evidence_count=len(items), oldest_as_of=oldest)
+
+    capped = {d for d, h in dims.items() if h.status in ("degraded", "fatal")}
+    if any(dims[d].status == "fatal" for d in dims):
+        overall, cap = "blocked", 0.0
+    elif capped:
+        # D3：最壞維度決定——核心受損腰斬，僅周邊受損輕罰。
+        overall = "degraded"
+        cap = 0.5 if capped & CORE_DIMENSIONS else 0.7
+    else:
+        overall, cap = "ok", None
+    return DataHealthCard(dimensions=dims, overall=overall, confidence_cap=cap)
+
+
 def _etf_relaxed(category: str, store: EvidenceStore) -> bool:
     """ETF 無發行人損益表：fundamentals 缺屬預期口徑，降級與訊息都據此放寬。
     ETF 例外的唯一真相來源——severity 與 message 都查它，不在兩處各判一次。"""
