@@ -135,16 +135,16 @@ P0（2026-06-17 完成，commit 9e7a5ac/0c4b52e/15f147f/c38621d）：
 
 P1（待續）：
 
-- [ ] S5：歷史不足（<30 交易日）納入 fatal 判準（依 D1：fatal 但誠實短報告）。
+- [ ] S5：歷史不足（<30 交易日）→ 偵測為 IPO/新上市特例，評分卡 technical=missing/limited + brief 明示「新上市、僅 N 交易日、技術面有限」，**不 fatal、不阻斷**（依 D1）。
 - [ ] S6：內部矛盾 sanity（|PE| 上限、市值 vs shares×price）命中 → fatal/error（目前僅 LLM 稽核員標 warning）。
 - [ ] C2：US fundamentals 無 CIK 時的 yfinance 二手 fallback。
 - [ ] ROADMAP 更新：新增 Phase（Spec F）與 W11+ 弱點編號。
 
 ## 待定決議
 
-> **2026-06-17 預設定案（Loom 自行定案，DK review 可推翻）**：為不阻塞 P0 動工，以下取保守預設，皆可回頭改。
+> **2026-06-17 定案**：D1 由 DK 拍板（見下）；D2/D3/D4 DK ack「按 Loom 偏好、大方向如規劃」採用。
 
-- **D1**：歷史過短（S5）→ **fatal 但出誠實短報告**。新標的不硬出帶錨點的行動計畫，但明說「僅 N 天觀察、不足以判讀」。（待 S5 實作確認）
-- **D2**：fatal halt **仍寫 `runs/<TICKER>-.../`** 留痕、可重跑，verdict 標 `無法分析`。（S4 已實作為此）
-- **D3**：分維度 `confidence_cap` **由最壞維度直接決定**（最簡單、最保守）。（待 S7 實作）
-- **D4**：獨立第二價格源 **P0 先用 yfinance intraday**（零新依賴）驗證價值，不夠再接第二 provider。（待 S2 實作）
+- **D1（DK 2026-06-17 定案）**：歷史過短**屬 IPO/新上市特例，不視為資料錯誤、不 fatal halt**——明說承認即可。S5 的處理：`drop_phantom_bars` 過後若 < 30 交易日 → 評分卡 technical 標 missing/limited，brief 明示「本標的為新上市，僅 N 個交易日，技術面有限」，**仍依基本面/新聞/情緒繼續分析**（不阻斷、不硬出技術錨點）。
+- **D2（採用）**：fatal halt **仍寫 `runs/<TICKER>-.../`** 留痕、可重跑，verdict 標 `無法分析`。（S4 已實作）
+- **D3（採用）**：分維度 `confidence_cap` **由最壞維度決定**（核心 0.5／周邊 0.7）。（S7 已實作）
+- **D4（採用，含已知限制）**：獨立第二價格源 P0 用 yfinance intraday（零新依賴）；同源 Yahoo、不同 endpoint＝非完全異源，correlated-failure 風險仍存，真正異源第二 provider 為 **P2 必要 follow-up**。（S2 已實作 + 新鮮度守衛）
