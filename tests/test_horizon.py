@@ -100,10 +100,10 @@ async def test_trading_horizon_seats_only_trading_sages():
                                _settings(), _gw(), horizon="trading", n_sages=None)
     seated = {s.sage for s in council.signals}
     # 只有 trading 適用者出席（Livermore / Minervini / Raschke 純交易 + Druckenmiller / Taleb /
-    # Soros 兼職 + Trump 催化劑型 + Roaring Kitty 散戶情緒）。純價值大師一律 abstain。
+    # Soros 兼職 + Trump 催化劑型 + Roaring Kitty 散戶情緒 + PTJ 防禦型短線）。純價值大師一律 abstain。
     assert seated <= {"Jesse Livermore", "Mark Minervini", "Linda Raschke",
                       "Stanley Druckenmiller", "Nassim Taleb", "Donald Trump",
-                      "George Soros", "Keith Gill (Roaring Kitty)"}
+                      "George Soros", "Keith Gill (Roaring Kitty)", "Paul Tudor Jones"}
     assert {"Jesse Livermore", "Mark Minervini", "Linda Raschke"} <= seated  # 純交易者皆出席
     assert "Warren Buffett" in council.abstained      # 價值大師對短線 abstain
     assert "Charlie Munger" in council.abstained

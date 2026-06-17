@@ -76,9 +76,9 @@ uv run cyber-sages analyze NVDA --json             # stdout 輸出 verdict.json�
 （如 owner earnings / 趨勢排列分數，程式算不讓 LLM 算）。缺欄位時誠實記 `not_evaluable`，
 不假裝算得出。新增大師：放一個 Pack 目錄，零程式碼。
 
-**Roster（18 人）**：value/quality（Buffett, Munger, Graham, Damodaran, Lynch, Burry, Wood,
+**Roster（19 人）**：value/quality（Buffett, Munger, Graham, Damodaran, Lynch, Burry, Wood,
 Chanos 鑑識空頭, Icahn 行動派, Son power-law 賭徒）、trading（Livermore, Minervini, Raschke,
-Roaring Kitty 散戶情緒）、tail-risk（Taleb）、policy/reflexive（Trump 政策催化劑, Soros 反身性宏觀）。
+Roaring Kitty 散戶情緒, PTJ 防禦型短線）、tail-risk（Taleb）、policy/reflexive（Trump 政策催化劑, Soros 反身性宏觀）。
 
 **五種模式（兩條分席軸）**：每位大師宣告 `horizons`（時間軸）與 `aggression`（保守/激進性格軸，
 中庸者兩者皆列）。組合出 5 種陪審團——**大師會堂**（預設，不給 `--aggression`：該 horizon 全員出席、

@@ -61,11 +61,15 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert ps["roaringkitty"].is_pack and ps["roaringkitty"].epoch == 2021
     assert len(ps["roaringkitty"].pack.hard_rules) == 2
     assert ps["son"].is_pack and ps["son"].epoch is None
-    assert len(load_personas()) >= 18  # 加 persona 不該壞此測試（PR#57 review #4）
+    # Phase 4.5 Batch 3：PTJ（保守型短線交易者，補最瘦的保守×短期象限；帶 skill + 200DMA rule）
+    assert ps["ptj"].is_pack and ps["ptj"].horizons == ["trading"]
+    assert ps["ptj"].aggression == ["conservative"]
+    assert len(ps["ptj"].pack.skills) == 1 and len(ps["ptj"].pack.hard_rules) == 1
+    assert len(load_personas()) >= 19  # 加 persona 不該壞此測試（PR#57 review #4）
     # 必載名單：守住 key 不被 typo 改掉（比脆性總數斷言更耐 roster 成長）
     for k in ("buffett", "munger", "graham", "damodaran", "lynch", "burry", "wood",
               "taleb", "druckenmiller", "livermore", "minervini", "raschke",
-              "trump", "chanos", "icahn", "soros", "roaringkitty", "son"):
+              "trump", "chanos", "icahn", "soros", "roaringkitty", "son", "ptj"):
         assert k in ps, f"persona {k} 必載"
     # 舊單檔已退役（migrate 成目錄 Pack）
     names = [p.name for p in load_personas()]
@@ -79,7 +83,7 @@ def test_sop_only_personas_have_wellformed_sop():
     # 不存在的 category 溜進 production（look_at 在 council 僅 render 成 prompt 提示字串）。
     known_categories = {"quote", "fundamentals", "history", "news", "profile", "chips", "macro"}
     ps = {p.key: p for p in load_personas()}
-    for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty"):
+    for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty", "ptj"):
         sop = ps[key].pack.sop
         assert len(sop) >= 3, f"{key} SOP 應至少 3 步"
         assert all(s.step and s.ask for s in sop), f"{key} 每步應有 step 名與 ask"
@@ -248,6 +252,66 @@ def test_roaringkitty_rules_not_evaluable_on_tw_data():
         _pack("roaringkitty").pack.hard_rules, rule_values(tw))}
     assert outcomes["heavy-short-interest"].not_evaluable
     assert outcomes["many-days-to-cover"].not_evaluable
+
+
+# ---------- PTJ skill + rule：200DMA 防線（skill 算衍生欄位 → rule 對它判定，Phase 4.5 Batch 3）----------
+
+
+def _price_store(last: float, sma_200: float) -> EvidenceStore:
+    store = EvidenceStore(ticker="X", market="US")
+    store.add_all([
+        Evidence(category="quote", field="last_price", value=last, source="test"),
+        Evidence(category="history", field="sma_200", value=sma_200, source="test"),
+    ])
+    return store
+
+
+def test_ptj_skill_computes_distance_from_200dma():
+    ptj = _pack("ptj")
+    private, not_eval = run_skills(ptj.pack.skills, _price_store(110.0, 100.0), key="ptj")
+    by_id = {e.id: e for e in private}
+    assert not_eval == []
+    assert round(by_id["S-ptj-price_vs_sma_200_pct"].value, 6) == 10.0   # (110/100 − 1)×100
+
+
+def test_ptj_below_200dma_rule_fires_and_floors_bearish():
+    ptj = _pack("ptj")
+    # skill 先算 price_vs_sma_200_pct，併入 sage_store 後 rule 才看得到（同 council 三段執行）
+    private, _ = run_skills(ptj.pack.skills, _price_store(90.0, 100.0), key="ptj")
+    sage_store = EvidenceStore(ticker="X", market="US")
+    sage_store.add_all([*_price_store(90.0, 100.0).items, *private])
+    outcomes = evaluate_rules(ptj.pack.hard_rules, rule_values(sage_store))
+    by_id = {o.rule_id: o for o in outcomes}
+    assert by_id["below-200dma"].triggered          # 90 < 200DMA 100 → −10% < 0
+    # 同向 bearish → floor 0.55；反向 bullish 不翻轉、記衝突（「年線下不站多」是鐵則）
+    conf, conflicts = clamp_confidence("bearish", 0.3, outcomes)
+    assert conf == 0.55 and conflicts == []
+    conf2, conflicts2 = clamp_confidence("bullish", 0.7, outcomes)
+    assert conf2 == 0.7 and len(conflicts2) == 1
+
+
+def test_ptj_rule_silent_above_200dma():
+    ptj = _pack("ptj")
+    private, _ = run_skills(ptj.pack.skills, _price_store(120.0, 100.0), key="ptj")
+    sage_store = EvidenceStore(ticker="X", market="US")
+    sage_store.add_all([*_price_store(120.0, 100.0).items, *private])
+    outcomes = {o.rule_id: o for o in evaluate_rules(ptj.pack.hard_rules, rule_values(sage_store))}
+    assert not outcomes["below-200dma"].triggered   # +20% 在年線之上
+
+
+def test_ptj_rule_not_evaluable_when_skill_missing_input():
+    # 「rule 依賴 skill 輸出」pattern 的核心 cascade：缺 sma_200 → skill not_evaluable →
+    # price_vs_sma_200_pct 不在 values → rule 也 not_evaluable（不靜默失效、不假裝觸發）。
+    # 守住 field 名漂移 / skill 改名 / requires 變動時不會 silently 讓鐵則失靈。
+    ptj = _pack("ptj")
+    store = EvidenceStore(ticker="X", market="US")
+    store.add_all([_fund("last_price", 100.0, category="quote")])  # 故意缺 sma_200
+    private, not_eval = run_skills(ptj.pack.skills, store, key="ptj")
+    assert any("price_vs_sma_200_pct" in n for n in not_eval)   # skill 確實 not_evaluable
+    sage_store = EvidenceStore(ticker="X", market="US")
+    sage_store.add_all([*store.items, *private])
+    outcomes = {o.rule_id: o for o in evaluate_rules(ptj.pack.hard_rules, rule_values(sage_store))}
+    assert outcomes["below-200dma"].not_evaluable              # rule 跟著 not_evaluable
 
 
 # ---------- 三段執行整合（run_council 的 pack 路徑，真實 Pack 檔） ----------

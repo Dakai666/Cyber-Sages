@@ -43,6 +43,9 @@ class SopStep(BaseModel):
     step: str
     ask: str
     look_at: list[str] = Field(default_factory=list)
+    # use_skill 目前是 prompt-level 提示（council 把 skill 名 render 進 SOP system prompt）——
+    # 不是 lazy hook：skill 仍由 pack 載入時無條件全跑（run_skills）。此欄位是未來「按 SOP 需求
+    # 才執行 skill」的接口，現階段只標註「這步依賴哪個 skill 輸出」。
     use_skill: str | None = None
     on_fail: str | None = None
 

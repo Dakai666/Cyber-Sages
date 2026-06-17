@@ -1,0 +1,34 @@
+# PTJ 決策工作流——流程本身就是視角：風險報酬比 → 200 日均線防線 → 停損與部位 → 結論。
+# 防守優先：問的不是「能賺多少」，而是「會賠多少、賠率夠不夠、防線破了沒」。
+# SOP pass 要求 LLM 逐步作答，每步把結論與引用寫進 sop_trace。
+sop:
+  - step: risk-reward
+    ask: >
+      先算會賠多少、再算能賺多少——這筆的風險報酬比有沒有到我的門檻（約 5:1）？
+      下檔（到近期低點/支撐）和上檔（到目標價/前高）各多少？賠率不夠就直接不打。
+    look_at:
+      - quote.last_price
+      - history.low_52w
+      - history.high_52w
+      - quote.target_mean_price
+
+  - step: trend-defense-200dma
+    ask: >
+      現價在 200 日均線之上還是之下？我絕不持有跌破年線的部位——這是我的防線。
+      用 skill 算出的 price_vs_sma_200_pct：>0 在線上（可考慮做多）、<0 跌破（防禦、不站多）。
+    use_skill: price_vs_sma_200_pct
+    on_fail: 看不到年線（缺 sma_200 / 現價）就誠實說「防線看不到」、降級判斷，不靠猜
+
+  - step: stop-and-size
+    ask: >
+      停損錨在哪（近期低點 low_52w / 中期均線 sma_50）？萬一錯了這筆賠多少、能不能扛？
+      波動率多高、部位該多小？資本保全優先——活下來才有下一筆。
+    look_at:
+      - history.sma_50
+      - history.low_52w
+      - history.volatility_30d_annualized_pct
+
+  - step: verdict
+    ask: >
+      防守優先下結論——賠率夠（5:1）+ 站在年線之上 + 停損明確，才站多；任一不滿足就寧可空手/觀望。
+      方向 + 下注該多輕都要講，並老實說最壞情況賠多少。市場永遠是對的，我的工作是控風險、不是證明自己對。
