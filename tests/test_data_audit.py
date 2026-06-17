@@ -67,6 +67,18 @@ def test_cross_source_divergence_is_fatal():
     assert cs and all(f.severity == "fatal" for f in cs)
 
 
+def test_cross_source_prefers_finnhub_over_intraday():
+    # D4：有 Finnhub（真正異源）時優先用它比對，而非同源 yfinance intraday。
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="last_price_finnhub", value=120.0,
+                       unit="USD", source="finnhub", as_of=date.today()))  # 100 vs 120 → 20%
+    store.add(Evidence(category="quote", field="last_price_intraday", value=100.5,
+                       unit="USD", source="yf", as_of=date.today()))  # intraday 反而吻合
+    cs = [f for f in deterministic_checks(store, CFG) if f.check == "cross_source"]
+    assert cs and all(f.severity == "fatal" for f in cs)
+    assert "Finnhub" in cs[0].message  # 確認用 Finnhub 而非 intraday
+
+
 def test_cross_source_skipped_emits_warning_not_silent():
     # 無盤中讀數時不做「當前 vs 昨收」的舊誤判，但也不能默默跳過——加一條 warning，
     # 否則讀者會把「無 finding」誤讀成「跨源通過」。

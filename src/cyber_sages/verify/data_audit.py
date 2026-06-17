@@ -271,17 +271,22 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     #    誤報；SPCX 案例更是兩條 Yahoo 路徑一起 stale 成同值（192.5）而漏接。改比兩條當前價：
     #    背離＝其一已 stale/錯，當前價本身不可信 → fatal（分析前提已壞，見 Spec F S2）。
     live = field_evs("quote", "last_price")
+    # 比對對象優先用「真正異源」的 Finnhub（非 Yahoo 系，D4）——比同源 yfinance intraday 更能
+    # 抓出 Yahoo feed 整體 stale 的 correlated failure；無 Finnhub 則退而用 intraday。
+    finnhub = field_evs("quote", "last_price_finnhub")
     intraday = field_evs("quote", "last_price_intraday")
-    if live and intraday:
-        a, b = float(live[0].value), float(intraday[0].value)
+    alt = finnhub or intraday
+    if live and alt:
+        a, b = float(live[0].value), float(alt[0].value)
+        label = "Finnhub 獨立報價" if finnhub else "盤中最後成交"
         if b > 0:
             div = abs(a - b) / b * 100
             if div > cfg.max_price_divergence_pct:
                 findings.append(AuditFinding(
                     severity="fatal", check="cross_source",
-                    message=f"當前價跨源背離 {div:.1f}%：fast_info {a} vs 盤中最後成交 {b} "
+                    message=f"當前價跨源背離 {div:.1f}%：fast_info {a} vs {label} {b} "
                             f"(max {cfg.max_price_divergence_pct}%) — 其一已 stale，當前價不可信",
-                    evidence_ids=[live[0].id, intraday[0].id],
+                    evidence_ids=[live[0].id, alt[0].id],
                 ))
     elif live:
         # 缺獨立的盤中讀數（盤前/週末/抓取失敗）→ 跨源把關「沒跑」，不是「通過」。明說出來，
