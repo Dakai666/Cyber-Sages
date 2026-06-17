@@ -139,7 +139,7 @@ P1（PR 進行中，commit 201b24b/2121b2d/03dc09a）：
 - [x] S6：forward_pe 內部矛盾 sanity 確定性閘門——|PE|>1000 → warning「勿用 multiple 估值」；forward_pe×forward_eps vs last_price 偏離 → error（不再只靠 LLM 標 warning）。
 - [x] review #3：`drop_phantom_bars` 剔除留痕（`phantom_bars_dropped` 診斷 evidence）。
 - [x] review #7：blocked 短報告列出涉事壞值 evidence id。
-- [ ] C2：US fundamentals 無 CIK 時的 yfinance 二手 fallback。**獨立 PR**（引入二手財報是與第一手原則相關的設計決定，單獨 review）。
+- [x] C2：US fundamentals 無 CIK（ADR/新上市）→ yfinance 二手 fallback，**嚴格隔離**（DK option 2）：source 標 `(second-hand)`、provenance 檢查使 fundamentals 維度降級封頂、不得當第一手。併入 PR #61（DK 拍板後分離理由消失）。
 - [ ] review #10 欄位命名：維持現狀（`last_price_intraday` 與 `last_price` 成對，理由見上）。
 - [ ] S6 延伸：市值 vs shares×price 矛盾檢查（本批先做 P/E 三角，市值檢查留後續）。
 - [ ] ROADMAP 更新：新增 Phase（Spec F）與 W11+ 弱點編號。
