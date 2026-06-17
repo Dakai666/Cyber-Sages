@@ -40,6 +40,44 @@ def _evmap(evs) -> dict[str, float]:
     return {e.field: e.value for e in evs}
 
 
+def test_atr_emitted_with_high_low():
+    # C7：給 high/low → 算 ATR(14) + ATR%。用固定日內幅度的序列可手算 ATR。
+    # n=80（避開既有 return_3m 用 iloc[-63] 的下限，與本測試無關）。
+    close = _linear_closes(80)              # 100..179，每日 +1
+    high = close + 2.0                      # 每日高 = close+2
+    low = close - 2.0                       # 每日低 = close-2
+    m = _evmap(compute_indicator_evidence(
+        close, high=high, low=low, as_of=date.today(), url="u", source="s"))
+    # TR 每日 = max(high-low=4, |high-prev_close|=3, |low-prev_close|=1) = 4 → ATR(14)=4
+    assert m["atr_14"] == 4.0
+    # ATR% = 4 / 179 × 100
+    assert m["atr_pct"] == round(4.0 / 179.0 * 100, 2)
+
+
+def test_atr_skipped_without_high_low():
+    # 不給 high/low（如 TW 缺 max/min）→ 不算 ATR，其餘指標照常
+    m = _evmap(compute_indicator_evidence(
+        _linear_closes(80), as_of=date.today(), url="u", source="s"))
+    assert "atr_14" not in m and "atr_pct" not in m
+    assert "sma_20" in m  # 其餘指標不受影響
+
+
+def test_rs_vs_benchmark_emitted():
+    # C7：個股 3 月報酬 − 大盤 3 月報酬。個股漲、大盤平 → RS 正。
+    close = _linear_closes(80)                 # 100..179，3 月報酬 = 179/116-1
+    bench = pd.Series([100.0] * 80, index=close.index)  # 大盤完全持平 → bench_3m=0
+    m = _evmap(compute_indicator_evidence(
+        close, benchmark_close=bench, as_of=date.today(), url="u", source="s"))
+    expected = (close.iloc[-1] / close.iloc[-63] - 1) * 100  # 個股 3m，bench=0
+    assert m["rs_vs_benchmark_3m_pct"] == round(expected, 2)
+
+
+def test_rs_skipped_without_benchmark():
+    m = _evmap(compute_indicator_evidence(
+        _linear_closes(80), as_of=date.today(), url="u", source="s"))
+    assert "rs_vs_benchmark_3m_pct" not in m
+
+
 def test_too_short_returns_empty():
     assert compute_indicator_evidence(
         _linear_closes(29), as_of=date.today(), url=None, source="t"

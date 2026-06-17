@@ -26,6 +26,10 @@ LEVEL_SERIES: list[tuple[str, str, str, str]] = [
     ("DGS2", "treasury_2y", "%", "2年期公債殖利率"),
     ("T10Y2Y", "yield_curve_10y_2y", "%", "10年減2年利差，負值=殖利率倒掛（衰退訊號）"),
     ("UNRATE", "unemployment_rate", "%", "失業率"),
+    # C5：新台幣兌美元匯率（全市場共用——對台股出口商、持台資產的美企皆是宏觀變數）。
+    # FRED DEXTAUS = TWD per 1 USD，數值升＝台幣貶。Taiwan 國內利率/CPI 不在 FRED 標準系列，
+    # 留待 TW 專屬總經源（follow-up）；本批先補最關鍵且 FRED 穩定可得的 FX。
+    ("DEXTAUS", "twd_usd_fx", "TWD/USD", "新台幣兌美元匯率（升=台幣貶值，影響台股出口商與輸入成本）"),
 ]
 
 

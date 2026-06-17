@@ -76,6 +76,18 @@ def _ua() -> str:
     return os.environ.get("EDGAR_USER_AGENT", "Cyber-Sages research bot contact@example.com")
 
 
+def _benchmark_close(symbol: str):
+    """大盤收盤序列（供 RS 相對強弱計算）。best-effort：抓取失敗/不足回 None（RS 略過、不致命）。
+    僅在已於背景執行緒的 _history_sync 內呼叫（同步 yfinance 安全）。"""
+    try:
+        import yfinance as yf
+        s = yf.Ticker(symbol).history(period="1y", auto_adjust=True).dropna(subset=["Close"])
+        return s["Close"] if len(s) >= 64 else None
+    except Exception as e:
+        logger.warning("benchmark %s fetch failed: %s", symbol, e)
+        return None
+
+
 def drop_phantom_bars(hist):
     """剔除 yfinance「未結算佔位」日線 bar：Volume=0（美股交易日幾乎不存在真實 0 量日，
     0 量＝資料源尚未結算的 artifact）。
@@ -323,9 +335,11 @@ class USStockProvider:
                 len(hist), url=f"https://finance.yahoo.com/quote/{ticker}/history",
                 source="yfinance 1y daily (insufficient bars)")
         return compute_indicator_evidence(
-            hist["Close"], as_of=hist.index[-1].date(),
+            hist["Close"], high=hist["High"], low=hist["Low"],
+            benchmark_close=_benchmark_close("^GSPC"),  # RS vs S&P 500（best-effort）
+            as_of=hist.index[-1].date(),
             url=f"https://finance.yahoo.com/quote/{ticker}/history",
-            source="computed from yfinance 1y daily closes", price_unit="USD",
+            source="computed from yfinance 1y daily OHLC", price_unit="USD",
         )
 
     # ---------- fundamentals (SEC EDGAR 第一手) ----------
