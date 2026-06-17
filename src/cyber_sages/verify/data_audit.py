@@ -387,6 +387,23 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                             "—P/E 似對另一價計算，可能報價 stale 或來源錯配",
                     evidence_ids=[fpe[0].id, feps[0].id, lp[0].id],
                 ))
+
+        # (c) S6 延伸：market_cap 應 ≈ shares_outstanding × last_price。偏離過大＝ticker 錯配/
+        #     來源不一致（如市值是 A 公司、股數是 B 公司）→ error。閾值寬鬆避免股數漂移誤報。
+        mcap = field_evs("quote", "market_cap")
+        shares = field_evs("fundamentals", "shares_outstanding")
+        if (mcap and shares and lp and float(mcap[0].value) > 0
+                and float(shares[0].value) > 0):
+            implied_mcap = float(shares[0].value) * float(lp[0].value)
+            div = abs(float(mcap[0].value) - implied_mcap) / float(mcap[0].value) * 100
+            if div > cfg.max_market_cap_consistency_pct:
+                findings.append(AuditFinding(
+                    severity="error", check="internal_consistency",
+                    message=f"market_cap={mcap[0].value:.0f} 與 shares×price={implied_mcap:.0f} "
+                            f"偏離 {div:.0f}%（max {cfg.max_market_cap_consistency_pct:.0f}%）"
+                            "—可能 ticker 錯配或市值/股數來源不一致",
+                    evidence_ids=[mcap[0].id, shares[0].id, lp[0].id],
+                ))
     return findings
 
 

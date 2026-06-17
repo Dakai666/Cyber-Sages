@@ -385,6 +385,27 @@ def test_forward_pe_internal_inconsistency_is_error():
     assert any(f.check == "internal_consistency" and "forward_pe" in f.message for f in found)
 
 
+def test_market_cap_inconsistency_is_error():
+    # S6 延伸：market_cap 與 shares×price 嚴重偏離 → error（ticker 錯配/來源不一致）。
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="market_cap", value=1e12,
+                       unit="USD", source="yf", as_of=date.today()))
+    store.add(Evidence(category="fundamentals", field="shares_outstanding", value=1e9,
+                       unit="shares", source="edgar", as_of=date.today()))  # 1e9×100=1e11 vs 1e12 → 90%
+    found = errors(deterministic_checks(store, CFG))
+    assert any(f.check == "internal_consistency" and "market_cap" in f.message for f in found)
+
+
+def test_market_cap_consistency_passes_within_tolerance():
+    store = healthy_store()  # last_price=100
+    store.add(Evidence(category="quote", field="market_cap", value=1.05e11,
+                       unit="USD", source="yf", as_of=date.today()))
+    store.add(Evidence(category="fundamentals", field="shares_outstanding", value=1e9,
+                       unit="shares", source="edgar", as_of=date.today()))  # 1e11 vs 1.05e11 → ~5%
+    assert not any(f.check == "internal_consistency" and "market_cap" in f.message
+                   for f in deterministic_checks(store, CFG))
+
+
 def test_forward_pe_consistency_passes_when_aligned():
     store = healthy_store()  # last_price=100
     store.add(Evidence(category="quote", field="forward_pe", value=20.0,

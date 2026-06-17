@@ -140,9 +140,15 @@ P1（PR 進行中，commit 201b24b/2121b2d/03dc09a）：
 - [x] review #3：`drop_phantom_bars` 剔除留痕（`phantom_bars_dropped` 診斷 evidence）。
 - [x] review #7：blocked 短報告列出涉事壞值 evidence id。
 - [x] C2：US fundamentals 無 CIK（ADR/新上市）→ yfinance 二手 fallback，**嚴格隔離**（DK option 2）：source 標 `(second-hand)`、provenance 檢查使 fundamentals 維度降級封頂、不得當第一手。併入 PR #61（DK 拍板後分離理由消失）。
-- [ ] review #10 欄位命名：維持現狀（`last_price_intraday` 與 `last_price` 成對，理由見上）。
-- [ ] S6 延伸：市值 vs shares×price 矛盾檢查（本批先做 P/E 三角，市值檢查留後續）。
-- [ ] ROADMAP 更新：新增 Phase（Spec F）與 W11+ 弱點編號。
+- [x] review #10 欄位命名：維持現狀（`last_price_intraday` 與 `last_price` 成對，理由見上）。
+
+P2（PR 進行中）：
+
+- [x] **D4 真正異源第二價格源**：Finnhub `/quote`（非 Yahoo 系，複用 FINNHUB_API_KEY）；cross_source 優先用 Finnhub-vs-Yahoo 比對，無則退而用 intraday。收口 SPCX 的 correlated-failure 風險。
+- [x] S6 延伸：市值 vs shares×price 矛盾 sanity（偏離 >30% → error，抓 ticker 錯配）。
+- [x] ROADMAP 更新：新增 Phase F 條目（弱點沿用 spec 內 S1-S7/C1-C8，不另佔 W 序號）。
+- [ ] C5 台灣總經/匯率、C3 TW 現金流、C6 news 情緒、C7 ATR/RS（後續批次）。
+- [ ] review polish minors（issue #62）。
 
 ## 待定決議
 
