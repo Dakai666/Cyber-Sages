@@ -299,6 +299,21 @@ def test_ptj_rule_silent_above_200dma():
     assert not outcomes["below-200dma"].triggered   # +20% 在年線之上
 
 
+def test_ptj_rule_not_evaluable_when_skill_missing_input():
+    # 「rule 依賴 skill 輸出」pattern 的核心 cascade：缺 sma_200 → skill not_evaluable →
+    # price_vs_sma_200_pct 不在 values → rule 也 not_evaluable（不靜默失效、不假裝觸發）。
+    # 守住 field 名漂移 / skill 改名 / requires 變動時不會 silently 讓鐵則失靈。
+    ptj = _pack("ptj")
+    store = EvidenceStore(ticker="X", market="US")
+    store.add_all([_fund("last_price", 100.0, category="quote")])  # 故意缺 sma_200
+    private, not_eval = run_skills(ptj.pack.skills, store, key="ptj")
+    assert any("price_vs_sma_200_pct" in n for n in not_eval)   # skill 確實 not_evaluable
+    sage_store = EvidenceStore(ticker="X", market="US")
+    sage_store.add_all([*store.items, *private])
+    outcomes = {o.rule_id: o for o in evaluate_rules(ptj.pack.hard_rules, rule_values(sage_store))}
+    assert outcomes["below-200dma"].not_evaluable              # rule 跟著 not_evaluable
+
+
 # ---------- 三段執行整合（run_council 的 pack 路徑，真實 Pack 檔） ----------
 
 

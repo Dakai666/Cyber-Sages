@@ -213,7 +213,7 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 **進度**：
 - ✅ Batch 1（PR #56）：Trump（政策催化劑，weight 0.7）/ Chanos（鑑識空頭，帶 2 條 hard rules）/ Icahn（行動派，純 SOP）。
 - ✅ Batch 2（PR #57）：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，epoch=2021）/ Masayoshi Son（power-law 集中豪賭）——刻意補「敢站多的賭徒」平衡目前偏空/保守的 roster（價值紀律派 + Taleb + Chanos 預設都壓低信心）。PLTR 實機驗證「roster 平衡 ≠ verdict 平衡」：要後者得靠下方四象限選擇讓使用者自組陪審團。
-- ✅ Batch 3（PR 待開）：**Paul Tudor Jones**（防禦型短線交易者）——補「保守×短期」最瘦象限（2→3 席：Taleb/Raschke/PTJ）。招牌『絕不持有跌破 200 日均線的部位』靠 skill 算 `price_vs_sma_200_pct` 衍生欄位 + `below-200dma` 硬規則落地（DSL 無法直接比 last_price<sma_200 雙欄）。與 Livermore/Minervini 進攻型趨勢區隔：他們追突破、PTJ 先問「會賠多少」。
+- ✅ Batch 3（PR #59）：**Paul Tudor Jones**（防禦型短線交易者）——補「保守×短期」最瘦象限（2→3 席：Taleb/Raschke/PTJ）。招牌『絕不持有跌破 200 日均線的部位』靠 skill 算 `price_vs_sma_200_pct` 衍生欄位 + `below-200dma` 硬規則落地（DSL 無法直接比 last_price<sma_200 雙欄）。與 Livermore/Minervini 進攻型趨勢區隔：他們追突破、PTJ 先問「會賠多少」。
 - 🔜 Batch 4+（待定）：剩餘候選原型——量化/系統化、PE/私募控制、央行/政策制定者視角。
 
 **象限化選擇（DK 2026-06-15 定調，✅ 已實作）**：「**保守↔激進 × 短期↔長期**」四象限組合來組 council，加上不過濾的「大師會堂」＝五種模式。
