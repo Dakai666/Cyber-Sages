@@ -4,7 +4,11 @@
 1. 確定性檢查（程式）：必要資料齊全、新鮮度、跨來源一致性、基本 sanity。
 2. LLM 稽核員：找程式抓不到的語意異常（如 EPS 與 net_income/shares 對不上）。
 
+fatal → 管線在 stage 2 中止（分析前提已壞，後續一切無意義，產「無法分析」短報告）；
 error → 管線降級（degraded mode，最終報告強制揭露）；warning → 通過但標記。
+
+fatal 只由確定性閘門產生——LLM 稽核員（非確定性）的任何發現一律壓到 warning，
+不能讓模型獨自把整場分析喊停（見 run_audit 的 clamp）。
 """
 
 from __future__ import annotations
@@ -18,7 +22,8 @@ from cyber_sages.config import AuditConfig, Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
 
-Severity = Literal["error", "warning"]
+# 三級嚴重度：fatal（中止）> error（降級）> warning（通過但標記）。
+Severity = Literal["fatal", "error", "warning"]
 
 
 class AuditFinding(BaseModel):
@@ -33,12 +38,22 @@ class AuditReport(BaseModel):
     auditor_summary: str = ""
 
     @property
+    def fatals(self) -> list[AuditFinding]:
+        return [f for f in self.findings if f.severity == "fatal"]
+
+    @property
     def errors(self) -> list[AuditFinding]:
         return [f for f in self.findings if f.severity == "error"]
 
     @property
+    def blocked(self) -> bool:
+        """分析前提已壞 → 管線應在 stage 2 中止，不產出大師團/行動計畫。"""
+        return len(self.fatals) > 0
+
+    @property
     def degraded(self) -> bool:
-        return len(self.errors) > 0
+        """核心維度受損但分析仍可進行 → 降級 + 揭露。fatal 同時意味降級。"""
+        return len(self.errors) > 0 or self.blocked
 
 
 # W9 — 缺漏分級表（Spec B 決議 3，模組常數，不散落在 if 裡）。
@@ -55,6 +70,93 @@ CATEGORY_SEVERITY: dict[str, Severity] = {
 }
 # 不變式：核心類別 ≡ 降級類別（決議 3）。鎖在 import 時，未來改分級忘了同步即炸。
 assert CORE_CATEGORIES == tuple(k for k, v in CATEGORY_SEVERITY.items() if v == "error")
+
+
+# ---------- Spec F / S7：分維度資料健康度評分卡 ----------
+# 全域「信心一律封頂 0.5」太粗魯——讀者無法判斷壞的是不是自己在乎的維度（macro 缺對短線
+# 技術裁定無傷，但財報過期專打 value thesis）。把資料品質拆成五個維度逐一評級，揭露明確
+# 指出壞在哪，confidence_cap 由最壞維度推導（核心維度受損才腰斬，僅周邊受損則輕罰）。
+
+# 維度 → evidence 類別。price=當前價可信度；technical=技術面；fundamentals=基本面；
+# sentiment=情緒/籌碼；macro=總經背景。
+DIMENSION_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "price": ("quote",),
+    "technical": ("history",),
+    "fundamentals": ("fundamentals",),
+    "sentiment": ("news", "chips"),
+    "macro": ("macro",),
+}
+# 核心維度受損 → 信心腰斬（0.5）；僅周邊（sentiment/macro）受損 → 輕罰（0.7）。
+CORE_DIMENSIONS: frozenset[str] = frozenset({"price", "technical", "fundamentals"})
+_CATEGORY_DIMENSION: dict[str, str] = {
+    c: dim for dim, cats in DIMENSION_CATEGORIES.items() for c in cats}
+
+
+class DimensionHealth(BaseModel):
+    status: Literal["healthy", "degraded", "missing", "fatal"]
+    reason: str = ""
+    evidence_count: int = 0
+    oldest_as_of: date | None = None
+
+
+class DataHealthCard(BaseModel):
+    dimensions: dict[str, DimensionHealth]
+    overall: Literal["ok", "degraded", "blocked"]
+    # 由最壞維度推導的信心上限。None＝乾淨不封頂、或 blocked（走中止不套 cap）。降級時為
+    # 0.5（核心受損）/ 0.7（僅周邊受損）。blocked 的真相看 overall，不看 cap。
+    confidence_cap: float | None = None
+
+
+def _finding_dimension(f: AuditFinding, store: EvidenceStore) -> str | None:
+    """把一條 finding 歸到某個維度：先看其 evidence 類別，再退而求其次解析訊息中的類別字。"""
+    for eid in f.evidence_ids:
+        ev = next((e for e in store.items if e.id == eid), None)
+        if ev and ev.category in _CATEGORY_DIMENSION:
+            return _CATEGORY_DIMENSION[ev.category]
+    for cat, dim in _CATEGORY_DIMENSION.items():
+        if cat in f.message:  # "Missing quote data" / "macro series" / "chips 來源抓取失敗"
+            return dim
+    return None
+
+
+def build_health_card(audit: AuditReport, store: EvidenceStore) -> DataHealthCard:
+    """從 audit findings + store 攤出五維度健康度。LLM 稽核員的 warning 不降級維度
+    （與全域 degraded 語意一致：只有確定性閘門的 error/fatal 才算數）。"""
+    by_dim: dict[str, list[AuditFinding]] = {d: [] for d in DIMENSION_CATEGORIES}
+    for f in audit.findings:
+        dim = _finding_dimension(f, store)
+        if dim in by_dim:
+            by_dim[dim].append(f)
+
+    dims: dict[str, DimensionHealth] = {}
+    for dim, cats in DIMENSION_CATEGORIES.items():
+        items = [e for e in store.items if e.category in cats]
+        fs = by_dim[dim]
+        if any(f.severity == "fatal" for f in fs):
+            status = "fatal"
+        elif any(f.severity == "error" for f in fs):
+            status = "degraded"
+        elif not items:
+            status = "missing"  # 周邊類別缺（核心缺會產生 error → 上面已歸 degraded）
+        else:
+            status = "healthy"
+        reason = "；".join(f.message for f in fs if f.severity in ("fatal", "error"))[:240]
+        oldest = min((e.as_of for e in items if e.as_of), default=None)
+        dims[dim] = DimensionHealth(status=status, reason=reason,
+                                    evidence_count=len(items), oldest_as_of=oldest)
+
+    capped = {d for d, h in dims.items() if h.status in ("degraded", "fatal")}
+    if any(dims[d].status == "fatal" for d in dims):
+        # blocked 不到合成、不套 cap；給 0.0 會讓下游誤把「沒有結論」當「0% 信心結論」，
+        # 故 cap=None（overall=="blocked" 才是 blocked 的真相來源）。
+        overall, cap = "blocked", None
+    elif capped:
+        # D3：最壞維度決定——核心受損腰斬，僅周邊受損輕罰。
+        overall = "degraded"
+        cap = 0.5 if capped & CORE_DIMENSIONS else 0.7
+    else:
+        overall, cap = "ok", None
+    return DataHealthCard(dimensions=dims, overall=overall, confidence_cap=cap)
 
 
 def _etf_relaxed(category: str, store: EvidenceStore) -> bool:
@@ -143,27 +245,40 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                         f"(max {cfg.max_macro_age_days})",
             ))
 
-    # 3. 跨來源價格一致性
+    # 3. 跨來源價格一致性——比「同一時點的兩條當前價讀數」（fast_info 報價 vs 盤中最後成交）。
+    #    舊版比 last_price(當前) vs latest_close(昨收)＝不同時點的量，正常日內波動 >2% 就會
+    #    誤報；SPCX 案例更是兩條 Yahoo 路徑一起 stale 成同值（192.5）而漏接。改比兩條當前價：
+    #    背離＝其一已 stale/錯，當前價本身不可信 → fatal（分析前提已壞，見 Spec F S2）。
     live = field_evs("quote", "last_price")
-    close = field_evs("quote", "latest_close")
-    if live and close:
-        a, b = float(live[0].value), float(close[0].value)
+    intraday = field_evs("quote", "last_price_intraday")
+    if live and intraday:
+        a, b = float(live[0].value), float(intraday[0].value)
         if b > 0:
             div = abs(a - b) / b * 100
             if div > cfg.max_price_divergence_pct:
                 findings.append(AuditFinding(
-                    severity="error", check="cross_source",
-                    message=f"Price divergence {div:.1f}% between sources "
-                            f"({a} vs {b}, max {cfg.max_price_divergence_pct}%)",
-                    evidence_ids=[live[0].id, close[0].id],
+                    severity="fatal", check="cross_source",
+                    message=f"當前價跨源背離 {div:.1f}%：fast_info {a} vs 盤中最後成交 {b} "
+                            f"(max {cfg.max_price_divergence_pct}%) — 其一已 stale，當前價不可信",
+                    evidence_ids=[live[0].id, intraday[0].id],
                 ))
+    elif live:
+        # 缺獨立的盤中讀數（盤前/週末/抓取失敗）→ 跨源把關「沒跑」，不是「通過」。明說出來，
+        # 否則讀者與 judge 會把「無 finding」誤讀成「跨源一致」。掛 last_price 的 id 讓它歸到
+        # health_card 的 price 維度揭露（warning 不降級，但讀者看得到把關缺席）。
+        findings.append(AuditFinding(
+            severity="warning", check="cross_source",
+            message="跨源檢查跳過：缺盤中最後成交讀數，當前價僅 fast_info 單一來源（無獨立驗證）",
+            evidence_ids=[live[0].id],
+        ))
 
-    # 4. sanity：價格類數值必須為正
+    # 4. sanity：價格類數值必須為正。非正值報價＝分析前提已壞（不是「品質差一點」），
+    #    後續整套估值/技術/行動計畫都建立在這個錯數上，故 fatal → 中止，不降級硬出報告。
     for ev in store.by_category("quote"):
         if ev.field in ("last_price", "latest_close") and float(ev.value) <= 0:
             findings.append(AuditFinding(
-                severity="error", check="sanity",
-                message=f"Non-positive price in {ev.id}: {ev.value}",
+                severity="fatal", check="sanity",
+                message=f"Non-positive price in {ev.id}: {ev.value} — 報價無效，無法分析",
                 evidence_ids=[ev.id],
             ))
 
@@ -274,12 +389,12 @@ async def run_audit(
             prompt=f"Ticker: {store.ticker}\n\nEvidence dump:\n{store.digest()}",
             schema=AuditorOutput,
         )
-        # LLM 稽核員只當「語意顧問」：其發現一律降為 warning，不獨自觸發降級。
-        # 降級（信心封頂 0.5）保留給可信的確定性閘門，避免非確定性的稽核員
-        # 在相同資料上忽高忽低地把 conviction 砍半（曾因「未來日期」幻覺誤判全表）。
+        # LLM 稽核員只當「語意顧問」：其發現一律壓到 warning，不獨自觸發降級或中止。
+        # 降級/中止保留給可信的確定性閘門，避免非確定性的稽核員在相同資料上忽高忽低地
+        # 把 conviction 砍半、甚至誤判 fatal 把整場喊停（曾因「未來日期」幻覺誤判全表）。
         for f in out.findings:
-            findings.append(f.model_copy(update={"severity": "warning"})
-                            if f.severity == "error" else f)
+            findings.append(f if f.severity == "warning"
+                            else f.model_copy(update={"severity": "warning"}))
         summary = out.summary
     except Exception as e:
         findings.append(AuditFinding(

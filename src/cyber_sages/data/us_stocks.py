@@ -76,6 +76,22 @@ def _ua() -> str:
     return os.environ.get("EDGAR_USER_AGENT", "Cyber-Sages research bot contact@example.com")
 
 
+def drop_phantom_bars(hist):
+    """剔除 yfinance「未結算佔位」日線 bar：Volume=0（美股交易日幾乎不存在真實 0 量日，
+    0 量＝資料源尚未結算的 artifact）。
+
+    SPCX 2026-06-16 實例：日線回 OHLC 全 = 前一日收 192.5、Volume = 0，但同日 1 分線
+    真實收 $202、成交 5.4 億股。舊碼直接取 `iloc[-1]` 把這個幻覺值當第一手 latest_close/
+    latest_volume 發出，整份 brief 圍繞「零成交量＝懸浮標價」立論。取最新報價/算指標前
+    一律剔除這種 bar，寧可用稍舊但真實的 bar，也不用最新但虛構的值。純函式以便不打網路測試。
+
+    語意：`Volume > 0` 同時剔除 Volume=0、NaN（pandas 比較為 False）與負值（理論上不該出現）。
+    後人若改成 `>=` 會 silently 放行 0 量幽靈 bar——勿改。"""
+    if hasattr(hist, "columns") and "Volume" in hist.columns:
+        return hist[hist["Volume"] > 0]
+    return hist
+
+
 class USStockProvider:
     market = "US"
 
@@ -107,7 +123,9 @@ class USStockProvider:
             ))
 
         # 第二條路徑：日線最後收盤，供 audit 跨源比對
-        hist = t.history(period="5d", auto_adjust=False).dropna(subset=["Close"])
+        # drop_phantom_bars：剔除未結算的 0 量佔位 bar（見 SPCX 案例），避免幻覺價/量入帳
+        hist = drop_phantom_bars(
+            t.history(period="5d", auto_adjust=False).dropna(subset=["Close"]))
         if len(hist) > 0:
             last_row = hist.iloc[-1]
             close_date = hist.index[-1].date()
@@ -119,6 +137,10 @@ class USStockProvider:
                 category="quote", field="latest_volume", value=int(last_row["Volume"]),
                 unit="shares", source="yfinance daily history", url=url, as_of=close_date,
             ))
+
+        # 第三條路徑（獨立於 fast_info/daily 的「當前價」讀數）：盤中最後成交。供 audit 比對
+        # 兩條同一時點的當前價——SPCX 案例 fast_info/daily 一起 stale 於 192.5、盤中真實 202。
+        evs += self._intraday_evidence(t, url)
 
         info = {}
         try:
@@ -148,6 +170,53 @@ class USStockProvider:
         evs += self._short_interest_evidence(info, url)
         # 產業估值 benchmark（Damodaran，US-only）——同樣複用 info 的 industry
         evs += industry_benchmark_evidence(info.get("industry"), url)
+        return evs
+
+    @staticmethod
+    def _intraday_evidence(t, url: str) -> list[Evidence]:
+        """盤中最後成交價 + 當日真實累計量。
+
+        這是獨立於 fast_info 與 daily-history 的第三條「當前價」讀數：同源 Yahoo 但走
+        不同 endpoint（chart 1m），經驗上能抓到未結算 feed 的 staleness——SPCX 2026-06-16
+        fast_info/daily 一起卡在 192.5，而 1m 線真實收 $202。真正異源的第二 provider 為
+        P2 follow-up（D4）。盤後/假日回最近 session 末筆，與 fast_info 同值故不誤報。"""
+        try:
+            intr = t.history(period="1d", interval="1m").dropna(subset=["Close"])
+        except Exception as e:
+            logger.warning("US intraday fetch failed: %s", e)
+            return []
+        if len(intr) == 0:
+            return []
+        last_ts = intr.index[-1]
+        # 新鮮度守衛：盤前/週末/長假時 1m 只回「上個 session」，last_ts 會落後。拿陳舊的
+        # 末筆當「當前價」與 fast_info 比會誤判（盤前指示價 vs 昨日盤中末筆 → 假背離 fatal）。
+        # 以 bar 自身時區計年齡（避免從台灣跑美股時 date.today() 的時區錯位——SPCX 即此情境，
+        # last_ts=06-16 ET、本地已 06-17；改比時間差 ~11.8h 仍算當前）。逾 16h 視為非當前 → 不發，
+        # 交給 audit 的 cross_source「跳過」warning 如實揭露缺獨立源。
+        try:
+            now = datetime.now(last_ts.tzinfo) if last_ts.tzinfo else datetime.now()
+            age_h = (now - last_ts.to_pydatetime()).total_seconds() / 3600
+        except Exception:
+            age_h = 0.0
+        if age_h > 16:
+            logger.info("US intraday last bar %s is %.1fh old; skip as non-current", last_ts, age_h)
+            return []
+        evs = [Evidence(
+            category="quote", field="last_price_intraday",
+            value=round(float(intr.iloc[-1]["Close"]), 2), unit="USD",
+            source="yfinance intraday (1m last trade)", url=url, as_of=last_ts.date(),
+            note="盤中最後成交價（獨立於 fast_info/daily 的當前價讀數，供跨源比對）",
+        )]
+        # C1：盤中 1m 累計量——讓「成交量」有第一手值，不再受 daily 佔位 bar 的 0 量誤導。
+        # ⚠ 1m 盤中跑只回「目前為止」的 bars，故此值盤後跑＝當日總量、盤中跑＝部分累計。
+        # note 據實標明，避免被當成「日 total」誤用（目前無人引用，預留 P1+ 量價/flow 分析 C7）。
+        vol = int(intr["Volume"].sum())
+        if vol > 0:
+            evs.append(Evidence(
+                category="quote", field="intraday_volume", value=vol, unit="shares",
+                source="yfinance intraday (1m volume sum)", url=url, as_of=last_ts.date(),
+                note="盤中 1m 累計成交量；盤後跑＝當日總量，盤中跑＝部分累計（非當日 total）",
+            ))
         return evs
 
     @staticmethod
@@ -195,7 +264,9 @@ class USStockProvider:
         import yfinance as yf
 
         t = yf.Ticker(ticker)
-        hist = t.history(period="1y", auto_adjust=True).dropna(subset=["Close"])
+        # 同 quote：剔除 0 量佔位 bar，避免幽靈尾 bar 污染 SMA/RSI/MACD 與 as_of 日期
+        hist = drop_phantom_bars(
+            t.history(period="1y", auto_adjust=True).dropna(subset=["Close"]))
         if len(hist) < 30:
             return []
         return compute_indicator_evidence(

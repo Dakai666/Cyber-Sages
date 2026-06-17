@@ -20,6 +20,12 @@ from pathlib import Path
 
 from cyber_sages.agents.schemas import PriceLevel
 from cyber_sages.pipeline import AnalysisResult
+from cyber_sages.verify.data_audit import build_health_card
+
+# 維度中文標籤（評分卡揭露用）
+_DIM_ZH = {"price": "當前價", "technical": "技術面", "fundamentals": "基本面",
+           "sentiment": "情緒/籌碼", "macro": "總經"}
+_STATUS_ZH = {"healthy": "健康", "degraded": "降級", "missing": "缺", "fatal": "致命"}
 
 STANCE_ZH = {"bullish": "看多 🐂", "bearish": "看空 🐻", "neutral": "中性 ⚖️"}
 ACTION_ZH = {
@@ -49,7 +55,44 @@ def _level_row(label: str, lv: PriceLevel) -> str:
 
 # ---------- brief.md ----------
 
+def _render_blocked_brief(result: AnalysisResult) -> str:
+    """資料閘門 fatal → 「無法分析」短報告：只說壞在哪、缺什麼、可否重跑，
+    不演大師團/行動計畫（在錯的資料上產出帶錨點的裁定，比沒有裁定更危險）。"""
+    a = result.audit
+    commit = f" · commit `{result.git_commit}`" if result.git_commit else ""
+    lines = [
+        f"# {result.ticker}（{result.store.market}）決策簡報 · "
+        f"{result.generated_at.strftime('%Y-%m-%d %H:%M:%S %Z')}{commit}",
+        "",
+        "## 裁定：⛔ 無法分析（資料閘門中止）",
+        "**本次分析的資料前提無法成立——下列致命問題若不修正，任何裁定、陪審團投票與"
+        "行動計畫都是建立在錯誤數字上，故管線在資料審核階段即中止，不產出大師團與行動計畫。**",
+        "",
+        "## 致命問題（fatal）",
+        *[f"- 🛑 **[{f.check}]** {f.message}"
+          + (f"（{' '.join(f.evidence_ids)}）" if f.evidence_ids else "")
+          for f in a.fatals],
+        "",
+    ]
+    others = [f for f in a.findings if f.severity != "fatal"]
+    if others:
+        lines += ["## 其他資料品質提示",
+                  *[f"- {'🔴' if f.severity == 'error' else '🟡'} [{f.check}] {f.message}"
+                    for f in others], ""]
+    lines += [
+        "## 如何重跑",
+        "- 確認資料源（行情/財報）已回補真實值後重跑 `analyze`；",
+        "- 若為新上市/識別錯配的標的，請確認 ticker 與市場路由正確。",
+        "",
+        f"已收集 {len(result.store.items)} 筆證據（見 `evidence.json`），"
+        "但因致命問題未進入分析階段。",
+    ]
+    return "\n".join(lines)
+
+
 def render_brief(result: AnalysisResult) -> str:
+    if result.blocked:
+        return _render_blocked_brief(result)
     v = result.verdict
     plan = v.action_plan
     c = result.council
@@ -131,8 +174,17 @@ def render_brief(result: AnalysisResult) -> str:
     if v.dissent_summary:
         lines.append(f"**少數派**：{v.dissent_summary}")
 
-    dq = "⚠️ 降級（信心已封頂 0.5）" if result.audit.degraded else \
-        f"✅ 通過（{len(result.audit.findings)} 項提示）" if result.audit.findings else "✅ 乾淨"
+    # S7：分維度健康度揭露——讓讀者一眼看出壞在哪一維度，對自己關心的 thesis 精準折價，
+    # 不再只有「降級 0.5」一句全域標籤。
+    card = build_health_card(result.audit, result.store)
+    dim_str = "／".join(f"{_DIM_ZH[d]} {_STATUS_ZH[h.status]}"
+                        for d, h in card.dimensions.items())
+    if card.overall == "degraded":
+        dq = f"⚠️ 降級（信心上限 {card.confidence_cap}）· {dim_str}"
+    elif result.audit.findings:
+        dq = f"✅ 通過（{len(result.audit.findings)} 項提示）· {dim_str}"
+    else:
+        dq = f"✅ 乾淨 · {dim_str}"
     flat = [(r.analyst, u) for r in result.reports for u in r.unverified]
     flat += [("首席 brief", u) for u in v.unverified]  # W7：chief 主體未過驗證的數字
     uv = f" · {len(flat)} 條 claim 未過引用驗證" if flat else ""
@@ -228,19 +280,31 @@ def render_data_quality(result: AnalysisResult) -> str:
     stamp = result.generated_at.strftime("%Y-%m-%d %H:%M:%S %Z")
     commit = f" · commit `{result.git_commit}`" if result.git_commit else ""
     lines = [f"# 資料品質 · {result.ticker}", f"產出於 {stamp}{commit}"]
-    if result.audit.degraded:
+    # S7：分維度評分卡——逐維度狀態 + 受損原因 + 證據筆數/最舊日期，留痕可回溯（C8）。
+    card = build_health_card(result.audit, result.store)
+    lines += ["", f"## 健康度評分卡（overall: {card.overall}"
+              + (f"，信心上限 {card.confidence_cap}" if card.confidence_cap is not None else "")
+              + ")", "", "| 維度 | 狀態 | 證據數 | 最舊日期 | 受損原因 |", "|---|---|---|---|---|"]
+    for d, h in card.dimensions.items():
+        lines.append(f"| {_DIM_ZH[d]} | {_STATUS_ZH[h.status]} | {h.evidence_count} | "
+                     f"{h.oldest_as_of or '—'} | {h.reason or '—'} |")
+    lines.append("")
+    if result.audit.blocked:
+        lines.append("\n**⛔ 中止模式**：審核命中 fatal，管線在分析前中止，未產出大師團/裁定。")
+    elif result.audit.degraded:
         lines.append("\n**⚠️ 降級模式**：審核有 error，最終信心已封頂 0.5。")
     if result.audit.findings:
         lines.append("")
+        icons = {"fatal": "🛑", "error": "🔴", "warning": "🟡"}
         for f in result.audit.findings:
-            icon = "🔴" if f.severity == "error" else "🟡"
             ids = f" `[{', '.join(f.evidence_ids)}]`" if f.evidence_ids else ""
-            lines.append(f"- {icon} [{f.check}] {f.message}{ids}")
+            lines.append(f"- {icons.get(f.severity, '🟡')} [{f.check}] {f.message}{ids}")
     else:
         lines.append("\n- ✅ 所有確定性檢查通過，稽核員無異常發現")
     if result.audit.auditor_summary:
         lines += ["", f"稽核員總結：{result.audit.auditor_summary}"]
-    if result.risk.concerns:
+    # risk 在 blocked 時為 None（未跑 synthesis）——僅非中止時呈現風控官意見。
+    if result.risk and result.risk.concerns:
         lines += ["", "## 風控官意見", *[f"- {x}" for x in result.risk.concerns]]
     return "\n".join(lines)
 
@@ -264,6 +328,35 @@ def render_evidence(result: AnalysisResult) -> str:
 
 def build_agent_payload(result: AnalysisResult) -> dict:
     price, price_id = _current_price(result)
+    if result.blocked:
+        # 資料閘門 fatal → 無大師團/裁定。機器可讀 payload 只報「無法分析」與致命原因，
+        # 讓 AI judge 一眼知道這不是低信心結論、而是根本沒有結論。
+        return {
+            "ticker": result.ticker,
+            "market": result.store.market,
+            "horizon": result.horizon,
+            "aggression": result.aggression,
+            "generated_at": result.generated_at.isoformat(),
+            "commit": result.git_commit,
+            "current_price": {"value": price, "evidence_id": price_id},
+            "verdict": None,
+            "blocked": True,
+            "data_quality": {
+                "blocked": True,
+                "degraded": True,
+                "health_card": build_health_card(result.audit, result.store).model_dump(mode="json"),
+                "fatals": [{"check": f.check, "message": f.message,
+                            "evidence_ids": f.evidence_ids} for f in result.audit.fatals],
+                "errors": [f.message for f in result.audit.errors],
+                "warnings": [f.message for f in result.audit.findings
+                             if f.severity == "warning"],
+            },
+            "note_to_judge": (
+                "資料審核閘門命中 fatal，管線在分析前中止：本次沒有裁定、沒有陪審團、"
+                "沒有行動計畫。這不是低信心結論，而是資料前提無法成立。"
+                "請勿據此 payload 做任何買賣判斷；修正 data_quality.fatals 後重跑。"
+            ),
+        }
     c = result.council
     return {
         "ticker": result.ticker,
@@ -298,7 +391,10 @@ def build_agent_payload(result: AnalysisResult) -> dict:
         },
         "debate": result.debate.model_dump(mode="json") if result.debate else None,
         "data_quality": {
+            "blocked": False,
             "degraded": result.audit.degraded,
+            # S7：分維度健康度評分卡——judge 可據此判斷壞的是不是自己在乎的維度
+            "health_card": build_health_card(result.audit, result.store).model_dump(mode="json"),
             "errors": [f.message for f in result.audit.errors],
             "warnings": [f.message for f in result.audit.findings
                          if f.severity == "warning"],
@@ -332,9 +428,12 @@ def save_run(result: AnalysisResult, base_dir: Path | None = None) -> Path:
     with open(out / "verdict.json", "w", encoding="utf-8") as f:
         json.dump(build_agent_payload(result), f, ensure_ascii=False, indent=2)
 
-    (details / "analysts.md").write_text(render_analysts(result), encoding="utf-8")
-    (details / "council.md").write_text(render_council(result), encoding="utf-8")
-    (details / "debate.md").write_text(render_debate(result), encoding="utf-8")
+    # blocked（fatal 中止）時沒有 analyst/council/debate 產物——只寫資料品質與證據留痕，
+    # 跳過會在 None council 上炸的明細檔。
+    if not result.blocked:
+        (details / "analysts.md").write_text(render_analysts(result), encoding="utf-8")
+        (details / "council.md").write_text(render_council(result), encoding="utf-8")
+        (details / "debate.md").write_text(render_debate(result), encoding="utf-8")
     (details / "data_quality.md").write_text(render_data_quality(result), encoding="utf-8")
     (details / "evidence.md").write_text(render_evidence(result), encoding="utf-8")
 

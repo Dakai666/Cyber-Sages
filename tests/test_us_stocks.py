@@ -7,10 +7,82 @@
 
 from datetime import date
 
+import pandas as pd
+
 from cyber_sages.config import AuditConfig
 from cyber_sages.data.evidence import Evidence, EvidenceStore
-from cyber_sages.data.us_stocks import USStockProvider
+from cyber_sages.data.us_stocks import USStockProvider, drop_phantom_bars
 from cyber_sages.verify.data_audit import deterministic_checks
+
+
+# ---------- Spec F / S1：幽靈 bar 防呆 ----------
+
+def _bars(rows):
+    """rows: list of (close, volume) → DataFrame，模擬 yfinance 日線（時間升冪）。"""
+    idx = pd.to_datetime([f"2026-06-{12 + i:02d}" for i in range(len(rows))])
+    return pd.DataFrame({"Close": [c for c, _ in rows],
+                         "Volume": [v for _, v in rows]}, index=idx)
+
+
+def test_drop_phantom_bars_removes_zero_volume_tail():
+    # SPCX 實例：最後一根 0 量佔位 bar 被剔除，取到前一根真實 bar
+    hist = _bars([(160.9, 519_000_000), (192.5, 256_000_000), (192.5, 0)])
+    cleaned = drop_phantom_bars(hist)
+    assert len(cleaned) == 2
+    assert float(cleaned.iloc[-1]["Close"]) == 192.5
+    assert int(cleaned.iloc[-1]["Volume"]) == 256_000_000
+
+
+def test_drop_phantom_bars_keeps_all_real_bars():
+    hist = _bars([(100.0, 1_000), (101.0, 2_000), (102.0, 3_000)])
+    assert len(drop_phantom_bars(hist)) == 3
+
+
+def test_drop_phantom_bars_tolerates_missing_volume_column():
+    df = pd.DataFrame({"Close": [1.0, 2.0]})
+    assert len(drop_phantom_bars(df)) == 2  # 無 Volume 欄位時原樣返回，不炸
+
+
+class _FakeIntradayTicker:
+    def __init__(self, df):
+        self._df = df
+
+    def history(self, period, interval):
+        return self._df
+
+
+def _intraday_df(age, closes=(201.0, 202.0), vols=(1000, 2000)):
+    """構造 tz-aware 1m 線，最後一根距 now 為 age（timedelta）。"""
+    from datetime import datetime, timezone
+    last = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(age)
+    idx = pd.DatetimeIndex([last - pd.Timedelta(minutes=1), last][-len(closes):])
+    return pd.DataFrame({"Close": list(closes), "Volume": list(vols)}, index=idx)
+
+
+def test_intraday_evidence_fresh_emits_price_and_honest_volume_note():
+    from datetime import timedelta
+    evs = USStockProvider._intraday_evidence(
+        _FakeIntradayTicker(_intraday_df(timedelta(minutes=2))), "http://x")
+    fields = {e.field: e for e in evs}
+    assert fields["last_price_intraday"].value == 202.0
+    # 量的 note 據實說明盤中跑為部分累計（不謊稱當日 total）
+    assert "部分累計" in fields["intraday_volume"].note
+
+
+def test_intraday_evidence_skips_stale_session():
+    # #5：盤前/週末拿到上個 session 的末筆（>16h）→ 不當「當前價」發出，交給 cross_source 跳過揭露
+    from datetime import timedelta
+    evs = USStockProvider._intraday_evidence(
+        _FakeIntradayTicker(_intraday_df(timedelta(hours=20))), "http://x")
+    assert evs == []
+
+
+def test_intraday_evidence_keeps_spcx_like_overnight_gap():
+    # SPCX 情境：從台灣跑美股，last_ts 約 11.8h 前——仍算當前，不可被新鮮度守衛誤剔
+    from datetime import timedelta
+    evs = USStockProvider._intraday_evidence(
+        _FakeIntradayTicker(_intraday_df(timedelta(hours=11, minutes=48))), "http://x")
+    assert any(e.field == "last_price_intraday" for e in evs)
 
 
 def _usd_annual(val, end="2024-12-31", start="2024-01-01", fy=2024, form="10-K"):
