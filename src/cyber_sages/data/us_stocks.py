@@ -135,23 +135,41 @@ class USStockProvider:
             return []
 
     @staticmethod
-    def _finnhub_quote_evidence(data: dict, url: str) -> list[Evidence]:
+    def _finnhub_quote_evidence(data: dict, url: str,
+                                now: datetime | None = None) -> list[Evidence]:
         """Finnhub /quote → 獨立當前價 evidence。`c`=current price、`t`=unix ts。
 
         Finnhub 對未知 symbol 回 c=0（非 error）——故 c<=0 視為無資料、回 []（優雅降級到
-        yfinance intraday 比對）。抽純函式以便不打網路測試（同 _facts_to_evidence 範式）。"""
+        yfinance intraday 比對）。`now` 可注入以便不打網路測試（同 _facts_to_evidence 範式）。
+
+        #63-6：penny stock（0<c<0.01）與 c<=0（無資料）分流——極低價股仍 emit，但用 4 位
+        精度（round(_,2) 會把 $0.003 抹成 0.00 看似無資料）並 note 標明。
+        #63-3：對齊 intraday 的 16h staleness guard——`t` 逾 16h 視為非當前 → 回 []（跨時區下
+        僅留 date 會誤導）。Finnhub 盤後回最近成交，週末/長假 t 落後屬正常，退 intraday fallback。"""
         c = data.get("c")
         if c is None or float(c) <= 0:
             return []
+        c = float(c)
         as_of = None
         ts = data.get("t")
         if isinstance(ts, (int, float)) and ts > 0:
-            as_of = datetime.fromtimestamp(ts, tz=timezone.utc).date()
+            ts_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            age_h = ((now or datetime.now(timezone.utc)) - ts_dt).total_seconds() / 3600
+            if age_h > 16:
+                logger.info("US finnhub quote ts %s is %.1fh old; skip as non-current",
+                            ts_dt, age_h)
+                return []
+            as_of = ts_dt.date()
+        is_penny = c < 0.01
+        note = ("真正異源（Finnhub，非 Yahoo 系）的當前價讀數，供跨源比對——D4；"
+                "跨源比對與 SOP 引用皆優先於 last_price_intraday（後者同源 Yahoo）")
+        if is_penny:
+            note += "；⚠ penny stock（<$0.01），4 位精度，極小價差佔比放大需謹慎解讀"
         return [Evidence(
-            category="quote", field="last_price_finnhub", value=round(float(c), 2),
+            category="quote", field="last_price_finnhub",
+            value=round(c, 4 if is_penny else 2),
             unit="USD", source="finnhub /quote (independent of Yahoo)", url=url, as_of=as_of,
-            note="真正異源（Finnhub，非 Yahoo 系）的當前價讀數，供跨源比對——D4；"
-                 "跨源比對與 SOP 引用皆優先於 last_price_intraday（後者同源 Yahoo）",
+            note=note,
         )]
 
     def _quote_sync(self, ticker: str) -> list[Evidence]:
@@ -337,6 +355,7 @@ class USStockProvider:
         return compute_indicator_evidence(
             hist["Close"], high=hist["High"], low=hist["Low"],
             benchmark_close=_benchmark_close("^GSPC"),  # RS vs S&P 500（best-effort）
+            benchmark_name="S&P 500 (^GSPC)",
             as_of=hist.index[-1].date(),
             url=f"https://finance.yahoo.com/quote/{ticker}/history",
             source="computed from yfinance 1y daily OHLC", price_unit="USD",
@@ -381,7 +400,8 @@ class USStockProvider:
             info, f"https://finance.yahoo.com/quote/{ticker}/financials")
 
     @staticmethod
-    def _yf_fundamentals_from_info(info: dict, url: str) -> list[Evidence]:
+    def _yf_fundamentals_from_info(info: dict, url: str,
+                                   as_of: date | None = None) -> list[Evidence]:
         """yfinance `info` → canonical fundamentals evidence（**二手**，無 SEC CIK 時的 fallback）。
 
         嚴格隔離（決議：做但隔離二手）：source 一律標 `(second-hand)`、note 明示「非 SEC 第一手」，
@@ -389,9 +409,13 @@ class USStockProvider:
         以便不打網路測試（同 `_facts_to_evidence` / `_short_interest_evidence` 範式）。
 
         欄位口徑：totalRevenue/netIncomeToCommon 為 yfinance 的 TTM 聚合值（非單一年報），故給
-        canonical `*_annual` 名以滿足下游與 audit 必要欄位，但 note 標明二手 TTM 口徑。"""
+        canonical `*_annual` 名以滿足下游與 audit 必要欄位，但 note 標明二手 TTM 口徑。
+
+        #61-4：`as_of` 帶抓取當日（非 None）——二手 TTM 無明確財報截止日，但 health card 的
+        `oldest_as_of=None` 會讓讀者誤以為「沒有時間戳」；用抓取日標明「此為當下二手快照」更誠實。"""
+        as_of = as_of or date.today()
         src = "yfinance financials (second-hand)"
-        note = "二手（yfinance），非 SEC 第一手——信心已降級，僅供基本面補充"
+        note = "二手（yfinance）TTM 快照，非 SEC 第一手——as_of 為抓取日（非財報截止日），信心已降級"
         out: list[Evidence] = []
         mapping = [
             ("revenue_annual", "totalRevenue", "USD"),
@@ -404,7 +428,7 @@ class USStockProvider:
             if v is not None:
                 out.append(Evidence(
                     category="fundamentals", field=field, value=round(float(v), 2),
-                    unit=unit, source=src, url=url, as_of=None, note=note,
+                    unit=unit, source=src, url=url, as_of=as_of, note=note,
                 ))
         return out
 

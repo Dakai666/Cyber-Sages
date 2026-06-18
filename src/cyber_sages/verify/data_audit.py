@@ -95,6 +95,11 @@ _CATEGORY_DIMENSION: dict[str, str] = {
 class DimensionHealth(BaseModel):
     status: Literal["healthy", "degraded", "missing", "fatal"]
     reason: str = ""
+    # #63-5：reason 是「全部 fatal/error finding 以『；』串接後截斷 240 字」的總覽；
+    # primary_finding 是其中「最嚴重單一 finding」的錨點（fatal 優先於 error），不受 240
+    # 截斷影響。下游（brief/health card）渲染時優先顯示 primary，確保關鍵矛盾（跨源 fatal、
+    # 市值失調）必達讀者，不會在多 finding 串接時被擠掉。
+    primary_finding: str = ""
     evidence_count: int = 0
     oldest_as_of: date | None = None
 
@@ -140,14 +145,18 @@ def build_health_card(audit: AuditReport, store: EvidenceStore) -> DataHealthCar
             status = "missing"  # 周邊類別缺（核心缺會產生 error → 上面已歸 degraded）
         else:
             status = "healthy"
-        reason = "；".join(f.message for f in fs if f.severity in ("fatal", "error"))[:240]
+        serious = [f for f in fs if f.severity in ("fatal", "error")]
+        reason = "；".join(f.message for f in serious)[:240]
+        # #63-5：最嚴重單一 finding 不截斷——fatal 優先於 error，供下游確保關鍵矛盾必達讀者。
+        primary = next((f.message for f in serious if f.severity == "fatal"),
+                       serious[0].message if serious else "")
         # D1：technical 缺若因 IPO/新上市，明說承認（reason 帶 N 交易日），不是「資料壞了」。
         if dim == "technical" and status == "missing":
             ipo_days = _short_history_days(store)
             if ipo_days is not None:
                 reason = f"僅 {ipo_days} 個交易日歷史（疑新上市 IPO），技術面有限"
         oldest = min((e.as_of for e in items if e.as_of), default=None)
-        dims[dim] = DimensionHealth(status=status, reason=reason,
+        dims[dim] = DimensionHealth(status=status, reason=reason, primary_finding=primary,
                                     evidence_count=len(items), oldest_as_of=oldest)
 
     capped = {d for d, h in dims.items() if h.status in ("degraded", "fatal")}
@@ -336,11 +345,23 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     # fundamentals 全為 second-hand 來源 → error，使 health card 的 fundamentals 維度標降級、
     # 信心封頂。第一手原則：二手值可入（聊勝於無），但必須明顯降級揭露、不得當第一手用。
     fund = store.by_category("fundamentals")
-    if fund and all("second-hand" in (e.source or "") for e in fund):
+    _second_hand = [e for e in fund if "second-hand" in (e.source or "")]
+    if fund and len(_second_hand) == len(fund):
         findings.append(AuditFinding(
             severity="error", check="provenance",
             message="fundamentals 全為二手來源（yfinance，無 SEC 第一手）—基本面 thesis 信心降級，勿當第一手",
             evidence_ids=[fund[0].id],
+        ))
+    elif _second_hand:
+        # #61-7：混合來源（部分二手）——既非全壞、也非全第一手。不腰斬（避免單一二手欄位
+        # 拖垮整片第一手基本面），但 warning 揭露，提醒讀者逐欄查 source 標籤。
+        # #66-1：列出二手欄位名，讀者看到比例（1/2）即知是哪些，不必再翻 evidence.json。
+        _sh_fields = "、".join(e.field for e in _second_hand)
+        findings.append(AuditFinding(
+            severity="warning", check="provenance",
+            message=f"fundamentals 含 {len(_second_hand)}/{len(fund)} 個二手欄位（{_sh_fields}，"
+                    "yfinance）—請逐欄檢查 source 標籤，二手欄位不得當第一手用",
+            evidence_ids=[_second_hand[0].id],
         ))
 
     # 6. W2 — US trailing P/E cross-check：yfinance 的 trailing_pe 是它自算的二手值，
