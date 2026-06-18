@@ -153,7 +153,9 @@ P2（PR 進行中）：
 - [x] S6 延伸：市值 vs shares×price 矛盾 sanity（偏離 >30% → error，抓 ticker 錯配）。
 - [x] ROADMAP 更新：新增 Phase F 條目（弱點沿用 spec 內 S1-S7/C1-C8，不另佔 W 序號）。
 - [x] **C5 台灣總經/匯率**：FRED `DEXTAUS`（TWD per USD）併入 macro（全市場共用）。台灣國內利率/CPI 不在 FRED 標準系列，留 TW 專屬總經源 follow-up。
-  > **TW 專屬總經源規劃（#62-64-5）**：FRED 僅穩定提供 TWD/USD FX，台灣國內利率/CPI 需另接本土源——**央行（CBC）重貼現率/政策利率**、**主計總處（DGBAS）CPI 年增率**。設計原則：**不硬塞非標準 FRED series**（FRED 的台灣序列稀疏且更新延遲），改寫獨立 `TwMacroProvider`（CBC/DGBAS open data API），與 `FredMacroProvider` 並列由 macro 層合併。屬獨立 follow-up（見 #65），本批僅補 FX。
+  > **TW 專屬總經源規劃（#62-64-5）**：FRED 僅穩定提供 TWD/USD FX，台灣國內利率/CPI 需另接本土源——**央行（CBC）重貼現率/政策利率**、**主計總處（DGBAS）CPI 年增率**。設計原則：**不硬塞非標準 FRED series**（FRED 的台灣序列稀疏且更新延遲），改寫獨立 `TWMacroProvider`，與 `FredMacroProvider` 並列由 macro 層合併。
+  > **已落地（PR #69，重貼現率）**：`TWMacroProvider` 走央行統計資料庫 API（`cpx.cbc.gov.tw/API/DataAPI/Get?FileName=EG2AM01`，無需金鑰），取**重貼現率**（政策利率，期底值，`tw_discount_rate`）。`make_macro_provider(market)` 合併多源——FRED 全市場、央行**僅 TW 市場併入**（台灣國內利率對美股無關，不污染 US run），任一源失敗 best-effort 不拖垮其餘。
+  > **CPI 仍 defer**：DGBAS 無乾淨即時 JSON 源——政府開放資料為**年度 XML**、物價統計資料庫為 **PXWeb POST 查詢**、FRED 台灣 CPI **季度且已停更**。硬接任一者都違反「資料正確」鐵律，留待專屬 PXWeb client follow-up（仍掛 #68）。
 - [x] **C7 ATR / RS**：ATR(14)+ATR%（兩市場，OHLC 確定性算，停損距離）；RS（個股 3 月報酬 − 大盤）**US-only vs ^GSPC**——TW RS（^TWII）因 `get_history` async inline、同步 benchmark fetch 會阻塞 event loop，留 follow-up。
 - [ ] **C3 TW 現金流量表**：FinMind 給 YTD 累計需去累計化拆季，複雜度高、中等價值——獨立小心做（defer）。
 - [ ] **C6 news 情緒量化**：LLM 情緒分數非確定性、非第一手，**與反幻覺鐵律衝突**——須走確定性詞典法或另立 sentiment phase（defer，需設計決議）。
