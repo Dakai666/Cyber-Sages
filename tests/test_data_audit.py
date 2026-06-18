@@ -377,6 +377,47 @@ def test_first_hand_fundamentals_no_provenance_flag():
     assert not any(f.check == "provenance" for f in deterministic_checks(healthy_store(), CFG))
 
 
+def test_mixed_provenance_warns_not_degrades():
+    # #61-7：fundamentals 混合來源（部分二手）→ warning（非 error），不腰斬整片第一手基本面，
+    # 但揭露提醒逐欄查 source 標籤。
+    store = EvidenceStore(ticker="MIX")
+    store.add(Evidence(category="quote", field="last_price", value=100.0,
+                       unit="USD", source="a", as_of=date.today()))
+    store.add(Evidence(category="fundamentals", field="revenue_annual", value=1e9,
+                       unit="USD", source="SEC EDGAR companyfacts (10-K)", as_of=date.today()))
+    store.add(Evidence(category="fundamentals", field="eps_ttm", value=3.5, unit="USD/shares",
+                       source="yfinance financials (second-hand)", as_of=date.today()))
+    findings = deterministic_checks(store, CFG)
+    prov = [f for f in findings if f.check == "provenance"]
+    assert prov and all(f.severity == "warning" for f in prov)  # 非 error
+    assert "1/2" in prov[0].message
+    assert _card(store).dimensions["fundamentals"].status == "healthy"  # warning 不降級
+
+
+def test_health_card_primary_finding_survives_truncation():
+    # #63-5：reason 多 finding 串接被 240 字截斷時，primary_finding（最嚴重單一句）仍保留。
+    # message 含 "quote" → 歸 price 維度（_finding_dimension 退而解析訊息中的類別字）。
+    findings = [
+        AuditFinding(severity="error", check="freshness", message="quote " + "X" * 200),
+        AuditFinding(severity="error", check="internal_consistency",
+                     message="quote market_cap 與 shares×price 偏離 90%（關鍵矛盾）"),
+    ]
+    card = build_health_card(AuditReport(findings=findings), healthy_store())
+    price = card.dimensions["price"]
+    assert len(price.reason) <= 240                  # reason 仍受截斷保護
+    assert price.primary_finding == "quote " + "X" * 200  # 第一個 serious finding（無 fatal 時）
+
+
+def test_health_card_primary_finding_prefers_fatal():
+    # primary_finding 在有 fatal 時優先取 fatal（保證最嚴重者必達），即使排在 error 之後。
+    findings = [
+        AuditFinding(severity="error", check="freshness", message="quote 一般過期"),
+        AuditFinding(severity="fatal", check="cross_source", message="quote 跨源價背離 fatal"),
+    ]
+    card = build_health_card(AuditReport(findings=findings), healthy_store())
+    assert card.dimensions["price"].primary_finding == "quote 跨源價背離 fatal"
+
+
 def test_pe_sanity_flags_meaningless_magnitude():
     # S6：|forward_pe| 過大（SPCX −2242x）→ warning「勿用 multiple 估值」，不再無聲發出。
     store = healthy_store()

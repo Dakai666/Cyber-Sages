@@ -24,6 +24,14 @@ def test_short_history_evidence_empty_when_no_data():
     assert short_history_evidence(0, url="http://x", source="yf") == []
 
 
+def test_short_history_evidence_empty_when_enough_history():
+    # #61-1 契約守衛：n>=30 應回 []——足量歷史走 compute_indicator_evidence 出真指標，
+    # 不靠 caller 夾 if len<30。邊界 30 即回空。
+    assert short_history_evidence(30, url="http://x", source="yf") == []
+    assert short_history_evidence(252, url="http://x", source="yf") == []
+    assert len(short_history_evidence(29, url="http://x", source="yf")) == 1  # 29 仍標記
+
+
 def _linear_closes(n: int, start: float = 100.0, step: float = 1.0) -> pd.Series:
     """嚴格遞增的收盤序列：SMA / 報酬率可手算，pct_change 標準差仍 > 0（可算波動）。"""
     idx = pd.date_range("2024-01-01", periods=n, freq="D")
@@ -62,14 +70,28 @@ def test_atr_skipped_without_high_low():
     assert "sma_20" in m  # 其餘指標不受影響
 
 
+def test_atr_skipped_on_length_mismatch():
+    # #64-7 防呆：high/low/close 不等長（refactor 風險）→ 靜默略過 ATR，不引入錯位 TR。
+    close = _linear_closes(80)
+    high = (close + 2.0).iloc[:-1]   # 少一筆 → 長度不齊
+    low = close - 2.0
+    m = _evmap(compute_indicator_evidence(
+        close, high=high, low=low, as_of=date.today(), url="u", source="s"))
+    assert "atr_14" not in m and "atr_pct" not in m
+    assert "sma_20" in m  # 其餘指標照常
+
+
 def test_rs_vs_benchmark_emitted():
     # C7：個股 3 月報酬 − 大盤 3 月報酬。個股漲、大盤平 → RS 正。
     close = _linear_closes(80)                 # 100..179，3 月報酬 = 179/116-1
     bench = pd.Series([100.0] * 80, index=close.index)  # 大盤完全持平 → bench_3m=0
-    m = _evmap(compute_indicator_evidence(
-        close, benchmark_close=bench, as_of=date.today(), url="u", source="s"))
+    m = compute_indicator_evidence(
+        close, benchmark_close=bench, benchmark_name="S&P 500 (^GSPC)",
+        as_of=date.today(), url="u", source="s")
+    rs = next(e for e in m if e.field == "rs_vs_benchmark_3m_pct")
     expected = (close.iloc[-1] / close.iloc[-63] - 1) * 100  # 個股 3m，bench=0
-    assert m["rs_vs_benchmark_3m_pct"] == round(expected, 2)
+    assert rs.value == round(expected, 2)
+    assert "S&P 500 (^GSPC)" in rs.note  # #64-3：benchmark 名進 note
 
 
 def test_rs_skipped_without_benchmark():

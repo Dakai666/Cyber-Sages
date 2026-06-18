@@ -199,7 +199,15 @@ def render_brief(result: AnalysisResult) -> str:
     # D1：IPO/新上市明說承認——讓讀者知道技術面有限是「標的太新」而非「資料壞了」。
     tech = card.dimensions.get("technical")
     if tech and tech.status == "missing" and "新上市" in (tech.reason or ""):
-        lines.append(f"ℹ️ {tech.reason}——技術面分析有限，請偏重基本面/新聞/情緒。")
+        # [:120] 截斷：reason 未來若混入其他 error 訊息，不讓 ℹ️ 行擠爆 brief（#61-5）。
+        lines.append(f"ℹ️ {(tech.reason or '')[:120]}——技術面分析有限，請偏重基本面/新聞/情緒。")
+
+    # #61-2：幽靈 bar 剔除揭露——只揭露、不進 health card、不影響 cap（資料源未結算佔位，
+    # 剔除是正確處置而非降級）。讓讀者知道「為何 latest_close 不是日曆最新一天」。
+    phantom = next((e for e in result.store.items
+                    if e.category == "quote" and e.field == "phantom_bars_dropped"), None)
+    if phantom is not None and phantom.value:
+        lines.append(f"ℹ️ 已剔除 {int(phantom.value)} 根 0 量幽靈 bar（資料源未結算佔位，未污染指標）。")
 
     # 引用驗證未過清單：brief 一頁可判斷會不會動搖裁定，不必每次再深挖 details/
     if flat:
@@ -294,8 +302,13 @@ def render_data_quality(result: AnalysisResult) -> str:
               + (f"，信心上限 {card.confidence_cap}" if card.confidence_cap is not None else "")
               + ")", "", "| 維度 | 狀態 | 證據數 | 最舊日期 | 受損原因 |", "|---|---|---|---|---|"]
     for d, h in card.dimensions.items():
+        # #63-5：primary_finding（最嚴重單一 finding）保證進表——reason 多 finding 串接被 240
+        # 截斷時，關鍵矛盾（fatal/市值失調）不會被擠掉。primary 已是 reason 前綴時不重複顯示。
+        cell = h.reason or "—"
+        if h.primary_finding and not cell.startswith(h.primary_finding[:30]):
+            cell = f"⚠ {h.primary_finding}｜{cell}"
         lines.append(f"| {_DIM_ZH[d]} | {_STATUS_ZH[h.status]} | {h.evidence_count} | "
-                     f"{h.oldest_as_of or '—'} | {h.reason or '—'} |")
+                     f"{h.oldest_as_of or '—'} | {cell} |")
     lines.append("")
     if result.audit.blocked:
         lines.append("\n**⛔ 中止模式**：審核命中 fatal，管線在分析前中止，未產出大師團/裁定。")

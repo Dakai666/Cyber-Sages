@@ -16,8 +16,9 @@ def short_history_evidence(n_days: int, *, url: str | None, source: str) -> list
 
     讓 audit 能把「缺技術指標」辨識為 IPO/新上市特例（降為 warning + 明說承認），而非當成
     資料錯誤而降級（Spec F S5 / D1：歷史過短屬特例，不 fatal、不腰斬）。n_days<=0（完全抓不到）
-    回 []——那是真的缺資料/抓取失敗，仍走 error。"""
-    if n_days <= 0:
+    回 []——那是真的缺資料/抓取失敗，仍走 error。n_days>=30 也回 []：此函式契約是
+    「歷史過短才標記」，足量歷史應走 compute_indicator_evidence 出真指標，不靠 caller 夾條件。"""
+    if n_days <= 0 or n_days >= 30:
         return []
     return [Evidence(
         category="profile", field="trading_days_available", value=n_days, unit="days",
@@ -31,6 +32,7 @@ def compute_indicator_evidence(
     high=None,                  # pandas.Series 最高價（可選；給了才算 ATR）
     low=None,                   # pandas.Series 最低價
     benchmark_close=None,       # pandas.Series 大盤收盤（可選；給了才算相對強弱 RS）
+    benchmark_name: str = "大盤",  # RS note 顯示的 benchmark 名（如 "S&P 500 (^GSPC)"）
     as_of: date,
     url: str | None,
     source: str,
@@ -90,7 +92,10 @@ def compute_indicator_evidence(
     # ATR(14)（C7）：短線大師用來定停損距離與波動尺度。需 high/low（OHLC），給了才算。
     # True Range = max(high-low, |high-prev_close|, |low-prev_close|)；無 pandas import，
     # 用 Series.combine 逐元素取 max。emit 絕對 ATR 與 ATR%（佔現價，跨標的可比的波動尺度）。
-    if high is not None and low is not None and len(close) >= 15:
+    # 防呆：high/low/close 必須等長且共索引，否則逐元素 combine 會引入 NaN/錯位 TR。
+    # provider 端理應對齊（同一 OHLC frame），這裡是 refactor 安全網——不齊則靜默略過 ATR。
+    if (high is not None and low is not None and len(close) >= 15
+            and len(high) == len(low) == len(close)):
         prev_close = close.shift(1)
         tr = (high - low).combine((high - prev_close).abs(), max) \
                          .combine((low - prev_close).abs(), max)
@@ -98,7 +103,8 @@ def compute_indicator_evidence(
         if atr == atr and last:  # atr==atr 濾 NaN
             evs.append(ev("atr_14", atr, price_unit, note="14 日平均真實波幅（停損距離參考）"))
             evs.append(ev("atr_pct", atr / last * 100, "%",
-                          note="ATR 佔現價百分比（波動尺度，跨標的可比；停損常取 1.5-3×ATR）"))
+                          note="ATR 佔現價百分比（ATR-based 短期波動尺度，跨標的可比；停損常取 "
+                               "1.5-3×ATR）。有別於 volatility_30d_annualized_pct（日報酬 std 年化）"))
 
     # 相對強弱 RS（C7）：個股 3 月報酬 − 大盤 3 月報酬。正＝跑贏大盤（Minervini/動能選股核心）。
     # 各自用自身序列的 iloc[-63]（≈3 月）算報酬，避免兩序列交易日對不齊；需大盤 ≥64 筆。
@@ -106,5 +112,5 @@ def compute_indicator_evidence(
         stock_3m = (close.iloc[-1] / close.iloc[-63] - 1) * 100
         bench_3m = (benchmark_close.iloc[-1] / benchmark_close.iloc[-63] - 1) * 100
         evs.append(ev("rs_vs_benchmark_3m_pct", stock_3m - bench_3m, "%",
-                      note="3 月相對強弱：個股報酬 − 大盤報酬（正=跑贏大盤）"))
+                      note=f"3 月相對強弱：個股報酬 − {benchmark_name}報酬（正=跑贏{benchmark_name}）"))
     return evs

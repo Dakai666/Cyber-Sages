@@ -5,7 +5,7 @@
 毛利率/ROE/net-net）的算術。W2 P/E cross-check 直接構造 EvidenceStore 測 audit。
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -79,7 +79,10 @@ def test_intraday_evidence_skips_stale_session():
 
 def test_finnhub_quote_evidence_parses_current_price():
     # D4：Finnhub /quote c=current price → last_price_finnhub（真正異源）
-    evs = USStockProvider._finnhub_quote_evidence({"c": 202.0, "t": 1_750_000_000}, "http://x")
+    # now 注入：固定 t 後 1h 為「當下」，避免 16h staleness guard 把 fixture 當陳舊（#63-3）。
+    ts = 1_750_000_000
+    now = datetime.fromtimestamp(ts, tz=timezone.utc) + timedelta(hours=1)
+    evs = USStockProvider._finnhub_quote_evidence({"c": 202.0, "t": ts}, "http://x", now=now)
     assert len(evs) == 1
     assert evs[0].field == "last_price_finnhub" and evs[0].value == 202.0
     assert "independent" in evs[0].source.lower()
@@ -89,6 +92,23 @@ def test_finnhub_quote_evidence_skips_zero_or_missing():
     # Finnhub 對未知 symbol 回 c=0（非 error）→ 視為無資料、回 []（優雅降級到 intraday 比對）
     assert USStockProvider._finnhub_quote_evidence({"c": 0, "t": 0}, "http://x") == []
     assert USStockProvider._finnhub_quote_evidence({}, "http://x") == []
+
+
+def test_finnhub_quote_evidence_stale_ts_skipped():
+    # #63-3：t 逾 16h → 視為非當前、回 []（跨時區僅留 date 會誤導，退 intraday fallback）。
+    ts = 1_750_000_000
+    now = datetime.fromtimestamp(ts, tz=timezone.utc) + timedelta(hours=20)
+    assert USStockProvider._finnhub_quote_evidence({"c": 202.0, "t": ts}, "http://x", now=now) == []
+
+
+def test_finnhub_quote_evidence_penny_stock_kept_with_precision():
+    # #63-6：penny stock（0<c<0.01）與 c<=0（無資料）分流——仍 emit，4 位精度不被抹成 0.00。
+    ts = 1_750_000_000
+    now = datetime.fromtimestamp(ts, tz=timezone.utc) + timedelta(hours=1)
+    evs = USStockProvider._finnhub_quote_evidence({"c": 0.0034, "t": ts}, "http://x", now=now)
+    assert len(evs) == 1
+    assert evs[0].value == 0.0034  # round(_, 4)，未被 round(_, 2) 抹成 0.0
+    assert "penny" in evs[0].note.lower()
 
 
 def test_yf_fundamentals_fallback_marks_second_hand():
@@ -101,6 +121,10 @@ def test_yf_fundamentals_fallback_marks_second_hand():
     assert all("second-hand" in e.source for e in evs)
     assert all("二手" in (e.note or "") for e in evs)
     assert all(e.category == "fundamentals" for e in evs)
+    # #61-4：as_of 帶抓取日（非 None），避免 health card oldest_as_of=None 讓讀者疑惑。
+    assert all(e.as_of == date(2026, 1, 2) for e in
+               USStockProvider._yf_fundamentals_from_info(info, "http://x", as_of=date(2026, 1, 2)))
+    assert all(e.as_of is not None for e in evs)  # 預設亦回 date.today()，非 None
 
 
 def test_yf_fundamentals_fallback_skips_missing_keys():
