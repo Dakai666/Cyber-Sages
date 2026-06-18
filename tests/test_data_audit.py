@@ -391,6 +391,7 @@ def test_mixed_provenance_warns_not_degrades():
     prov = [f for f in findings if f.check == "provenance"]
     assert prov and all(f.severity == "warning" for f in prov)  # 非 error
     assert "1/2" in prov[0].message
+    assert "eps_ttm" in prov[0].message  # #66-1：列出具體二手欄位名
     assert _card(store).dimensions["fundamentals"].status == "healthy"  # warning 不降級
 
 

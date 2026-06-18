@@ -26,6 +26,9 @@ from cyber_sages.verify.data_audit import build_health_card
 _DIM_ZH = {"price": "當前價", "technical": "技術面", "fundamentals": "基本面",
            "sentiment": "情緒/籌碼", "macro": "總經"}
 _STATUS_ZH = {"healthy": "健康", "degraded": "降級", "missing": "缺", "fatal": "致命"}
+# brief IPO ℹ️ 行的 reason 顯示上限——render 層顯示常數（非 audit 邏輯閾值，故不進 AuditConfig），
+# 防 reason 未來混入其他 error 訊息時擠爆單行。
+_BRIEF_IPO_REASON_LIMIT = 120
 
 STANCE_ZH = {"bullish": "看多 🐂", "bearish": "看空 🐻", "neutral": "中性 ⚖️"}
 ACTION_ZH = {
@@ -199,8 +202,9 @@ def render_brief(result: AnalysisResult) -> str:
     # D1：IPO/新上市明說承認——讓讀者知道技術面有限是「標的太新」而非「資料壞了」。
     tech = card.dimensions.get("technical")
     if tech and tech.status == "missing" and "新上市" in (tech.reason or ""):
-        # [:120] 截斷：reason 未來若混入其他 error 訊息，不讓 ℹ️ 行擠爆 brief（#61-5）。
-        lines.append(f"ℹ️ {(tech.reason or '')[:120]}——技術面分析有限，請偏重基本面/新聞/情緒。")
+        # 截斷：reason 未來若混入其他 error 訊息，不讓 ℹ️ 行擠爆 brief（#61-5）。
+        reason = (tech.reason or "")[:_BRIEF_IPO_REASON_LIMIT]
+        lines.append(f"ℹ️ {reason}——技術面分析有限，請偏重基本面/新聞/情緒。")
 
     # #61-2：幽靈 bar 剔除揭露——只揭露、不進 health card、不影響 cap（資料源未結算佔位，
     # 剔除是正確處置而非降級）。讓讀者知道「為何 latest_close 不是日曆最新一天」。

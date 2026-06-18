@@ -95,8 +95,10 @@ _CATEGORY_DIMENSION: dict[str, str] = {
 class DimensionHealth(BaseModel):
     status: Literal["healthy", "degraded", "missing", "fatal"]
     reason: str = ""
-    # #63-5：最嚴重單一 finding，永不被 reason 的 240 字截斷擠掉——下游（brief/health card）
-    # 渲染時可優先顯示此句，確保關鍵矛盾（如跨源 fatal、市值失調）必達讀者。
+    # #63-5：reason 是「全部 fatal/error finding 以『；』串接後截斷 240 字」的總覽；
+    # primary_finding 是其中「最嚴重單一 finding」的錨點（fatal 優先於 error），不受 240
+    # 截斷影響。下游（brief/health card）渲染時優先顯示 primary，確保關鍵矛盾（跨源 fatal、
+    # 市值失調）必達讀者，不會在多 finding 串接時被擠掉。
     primary_finding: str = ""
     evidence_count: int = 0
     oldest_as_of: date | None = None
@@ -353,10 +355,12 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     elif _second_hand:
         # #61-7：混合來源（部分二手）——既非全壞、也非全第一手。不腰斬（避免單一二手欄位
         # 拖垮整片第一手基本面），但 warning 揭露，提醒讀者逐欄查 source 標籤。
+        # #66-1：列出二手欄位名，讀者看到比例（1/2）即知是哪些，不必再翻 evidence.json。
+        _sh_fields = "、".join(e.field for e in _second_hand)
         findings.append(AuditFinding(
             severity="warning", check="provenance",
-            message=f"fundamentals 含 {len(_second_hand)}/{len(fund)} 個二手欄位（yfinance）—"
-                    "請逐欄檢查 source 標籤，二手欄位不得當第一手用",
+            message=f"fundamentals 含 {len(_second_hand)}/{len(fund)} 個二手欄位（{_sh_fields}，"
+                    "yfinance）—請逐欄檢查 source 標籤，二手欄位不得當第一手用",
             evidence_ids=[_second_hand[0].id],
         ))
 

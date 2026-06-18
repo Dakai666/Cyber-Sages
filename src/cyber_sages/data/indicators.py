@@ -92,10 +92,11 @@ def compute_indicator_evidence(
     # ATR(14)（C7）：短線大師用來定停損距離與波動尺度。需 high/low（OHLC），給了才算。
     # True Range = max(high-low, |high-prev_close|, |low-prev_close|)；無 pandas import，
     # 用 Series.combine 逐元素取 max。emit 絕對 ATR 與 ATR%（佔現價，跨標的可比的波動尺度）。
-    # 防呆：high/low/close 必須等長且共索引，否則逐元素 combine 會引入 NaN/錯位 TR。
-    # provider 端理應對齊（同一 OHLC frame），這裡是 refactor 安全網——不齊則靜默略過 ATR。
+    # 防呆：high/low/close 必須共索引，否則逐元素 combine 會按 index 對齊引入 NaN（等長但
+    # index 錯位也會中招，故用 index.equals 而非僅比長度）。provider 端理應對齊（同一 OHLC
+    # frame），這裡是 refactor 安全網——不齊則靜默略過 ATR。
     if (high is not None and low is not None and len(close) >= 15
-            and len(high) == len(low) == len(close)):
+            and high.index.equals(close.index) and low.index.equals(close.index)):
         prev_close = close.shift(1)
         tr = (high - low).combine((high - prev_close).abs(), max) \
                          .combine((low - prev_close).abs(), max)

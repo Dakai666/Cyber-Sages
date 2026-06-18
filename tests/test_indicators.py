@@ -81,6 +81,19 @@ def test_atr_skipped_on_length_mismatch():
     assert "sma_20" in m  # 其餘指標照常
 
 
+def test_atr_skipped_on_index_misalignment():
+    # #66-4 防呆：等長但 index 錯位（如 close 是 2024 dates、high 是 2025 dates）→ 略過 ATR。
+    # combine 按 index 對齊會引入 NaN，僅比長度擋不住，故用 index.equals。
+    close = _linear_closes(80)
+    shifted_idx = pd.date_range("2025-06-01", periods=80, freq="D")  # 同長度、不同 index
+    high = pd.Series((close + 2.0).values, index=shifted_idx)
+    low = pd.Series((close - 2.0).values, index=shifted_idx)
+    m = _evmap(compute_indicator_evidence(
+        close, high=high, low=low, as_of=date.today(), url="u", source="s"))
+    assert "atr_14" not in m and "atr_pct" not in m
+    assert "sma_20" in m
+
+
 def test_rs_vs_benchmark_emitted():
     # C7：個股 3 月報酬 − 大盤 3 月報酬。個股漲、大盤平 → RS 正。
     close = _linear_closes(80)                 # 100..179，3 月報酬 = 179/116-1
