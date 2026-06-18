@@ -87,9 +87,43 @@ def make_provider(market: str) -> MarketDataProvider:
     return USStockProvider()
 
 
-def make_macro_provider() -> MacroProvider | None:
-    """總經來源工廠：有 FRED_API_KEY 才回 provider，否則 None（管線據此跳過總經、如實標註）。
+class _MergedMacroProvider:
+    """多個總經來源的合併視圖——讓 pipeline 仍只面對單一 `MacroProvider.get_macro()`。
+    各源獨立 best-effort：任一源拋例外只丟棄該源結果、不拖垮其餘（與 collect 層 gather 同調）。"""
 
-    把「可用性」收斂到工廠，呼叫端只需判斷 `is not None`，與各能力協議的偵測語意一致。"""
+    market = "MACRO"
+
+    def __init__(self, providers: list[MacroProvider]) -> None:
+        self._providers = providers
+
+    async def get_macro(self) -> list[Evidence]:
+        import asyncio
+
+        results = await asyncio.gather(
+            *(p.get_macro() for p in self._providers), return_exceptions=True)
+        evs: list[Evidence] = []
+        for r in results:
+            if not isinstance(r, BaseException):
+                evs.extend(r)
+        return evs
+
+
+def make_macro_provider(market: str | None = None) -> MacroProvider | None:
+    """總經來源工廠：合併所有可用源——FRED（全市場：利率/殖利率曲線/CPI/就業 + TWD/USD FX）
+    + 台灣專屬央行源（**僅 TW 市場併入**：重貼現率等台灣國內貨幣政策，對美股無關故不污染）。
+
+    把「可用性」收斂到工廠：無可用源回 None、單一源直接回該 provider、多源回合併視圖。
+    呼叫端只需判斷 `is not None` 並呼叫 `get_macro()`，與各能力協議的偵測語意一致。"""
     from cyber_sages.data.macro import FredMacroProvider
-    return FredMacroProvider() if FredMacroProvider.available() else None
+
+    providers: list[MacroProvider] = []
+    if FredMacroProvider.available():
+        providers.append(FredMacroProvider())
+    if market == "TW":
+        from cyber_sages.data.tw_macro import TWMacroProvider
+
+        if TWMacroProvider.available():
+            providers.append(TWMacroProvider())
+    if not providers:
+        return None
+    return providers[0] if len(providers) == 1 else _MergedMacroProvider(providers)

@@ -132,8 +132,10 @@ async def run_pipeline(
 
     # [1] Collect — 個股四路 + 台股籌碼（若 provider 支援）+ 總經（全市場共用）
     src_label = "FinMind / yfinance .TW" if market == "TW" else "yfinance / SEC EDGAR"
-    macro_provider = make_macro_provider() if include_macro else None
-    macro_note = " + FRED 總經" if macro_provider is not None else ""
+    macro_provider = make_macro_provider(market) if include_macro else None
+    # 總經來源由工廠依市場合併（FRED 全市場 + 台灣央行僅 TW）；dashboard 只標有/無，
+    # 實際來源混合見 evidence 的 source 欄，不在此猜測組合避免標錯。
+    macro_note = " + 總經" if macro_provider is not None else ""
     await _emit(on_stage, "collect", "running",
                 f"[{market}] {src_label} for {ticker}{macro_note}")
     store = EvidenceStore(ticker=ticker, market=market,
