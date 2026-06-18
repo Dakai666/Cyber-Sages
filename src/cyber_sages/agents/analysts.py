@@ -88,6 +88,9 @@ STRICT EVIDENCE RULES — violations get your report rejected:
    淨流出 — never cite its positive magnitude.
 4. If evidence is missing for something important, say so in your summary instead
    of guessing.
+5. A valuation multiple that is implausible — e.g. a P/E that is negative or huge
+   because EPS is ≈0 — is not a usable number. Do not present it as a valuation
+   level; flag it as "multiple not meaningful here" and move on. (#62 pe_sanity)
 
 Write `summary` and claim texts in Traditional Chinese (繁體中文), keeping tickers
 and technical terms in English."""

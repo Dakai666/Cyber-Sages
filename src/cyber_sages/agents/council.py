@@ -63,6 +63,13 @@ Rules (apply through whatever investment philosophy you are assigned next):
 - Ground your thesis in the provided evidence; reference evidence ids in
   key_evidence_ids. No outside numbers.
 - It is perfectly acceptable (and in character) to disagree with the analysts.
+- A valuation multiple that is implausible — e.g. a P/E that is negative or
+  enormous because EPS is ≈0 (a loss-making or barely-profitable name) — carries
+  no valuation signal. Do NOT anchor a price target on it; you may cite it only as
+  evidence that "this multiple is not usable here". (#62 pe_sanity)
+- When several "current price" readings disagree, prefer the one whose source is
+  tagged as an INDEPENDENT cross-source (e.g. Finnhub, non-Yahoo) over a
+  same-feed intraday reading — the independent source is the cross-check of record.
 - confidence: how strongly your philosophy speaks on THIS stock (0.2 = barely
   in your circle of competence, 0.9 = textbook case for you).
 - If your stance is `neutral`, you MUST set `neutral_reason`. Decide in THIS order:
