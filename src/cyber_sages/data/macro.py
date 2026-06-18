@@ -29,7 +29,9 @@ LEVEL_SERIES: list[tuple[str, str, str, str]] = [
     # C5：新台幣兌美元匯率（全市場共用——對台股出口商、持台資產的美企皆是宏觀變數）。
     # FRED DEXTAUS = TWD per 1 USD，數值升＝台幣貶。Taiwan 國內利率/CPI 不在 FRED 標準系列，
     # 留待 TW 專屬總經源（follow-up）；本批先補最關鍵且 FRED 穩定可得的 FX。
-    ("DEXTAUS", "twd_usd_fx", "TWD/USD", "新台幣兌美元匯率（升=台幣貶值，影響台股出口商與輸入成本）"),
+    ("DEXTAUS", "twd_usd_fx", "TWD per USD",
+     "新台幣兌美元匯率（FRED DEXTAUS=每 1 USD 兌新台幣，如 32.0 即 USDTWD 報 32；"
+     "升=台幣貶值，影響台股出口商與輸入成本）"),
 ]
 
 

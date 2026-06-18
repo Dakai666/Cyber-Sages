@@ -107,6 +107,10 @@ DataHealthCard:
 
 deterministic_checks 加一組「物理不可能」檢查：forward/trailing P/E 絕對值超上限（暫定 |PE| > 1000）、市值與 shares×price 嚴重背離、EPS 與 PE 反推價格與報價矛盾等。命中 → fatal（資料源錯配，如 ticker 重用）或至少 error。閾值寫進 `AuditConfig`。
 
+> **覆蓋範圍（#62-8 補述）**：`pe_sanity` 上限同時套 `trailing_pe` 與 `forward_pe`。兩者皆會在 EPS≈0（虧損股或微利股）時讓比率爆量——forward 因分析師預估 EPS 趨零、trailing 因實際 TTM EPS 趨零，故不分前向/後向一律檢查，命中即標「此 multiple 不可用於估值」。
+>
+> **市值容差合理性（#62-63-4 補述）**：市值 vs shares×price 的 30% 閾值是「絕對失調」門檻（抓 ticker 錯配/單位錯誤等結構性矛盾），不是「精確一致」要求。市值與報價的 as_of 微小時差造成的漂移（盤中價動、shares 半年更新一次）屬正常，落在 30% 內由 `freshness` 檢查負責，不在此誤報。
+
 ## 範圍
 
 ### In scope（本 spec）
@@ -145,9 +149,11 @@ P1（PR 進行中，commit 201b24b/2121b2d/03dc09a）：
 P2（PR 進行中）：
 
 - [x] **D4 真正異源第二價格源**：Finnhub `/quote`（非 Yahoo 系，複用 FINNHUB_API_KEY）；cross_source 優先用 Finnhub-vs-Yahoo 比對，無則退而用 intraday。**退回同源 intraday 時 audit 發 warning 揭露降級**（不 silent，PR #63 review #1）。收口 SPCX 的 correlated-failure 風險。
+  > **已知侷限（#62-63-9）**：Finnhub-vs-Yahoo 在**盤後/穩定期**最可靠（兩源皆收斂到結算價）。**盤中急拉急殺**時，兩源的 tick 取樣時點若差數秒，可能出現「假背離」——非資料錯誤而是真實波動下的時點差。緩解：Finnhub `t` 已加 16h staleness guard（#62-63-3），逾時退 intraday fallback；極端盤中波動下若 Finnhub-vs-Yahoo 觸 fatal，讀者應參照 intraday-vs-fast_info 的同步比對交叉判斷。
 - [x] S6 延伸：市值 vs shares×price 矛盾 sanity（偏離 >30% → error，抓 ticker 錯配）。
 - [x] ROADMAP 更新：新增 Phase F 條目（弱點沿用 spec 內 S1-S7/C1-C8，不另佔 W 序號）。
-- [x] **C5 台灣總經/匯率**：FRED `DEXTAUS`（TWD/USD）併入 macro（全市場共用）。台灣國內利率/CPI 不在 FRED 標準系列，留 TW 專屬總經源 follow-up。
+- [x] **C5 台灣總經/匯率**：FRED `DEXTAUS`（TWD per USD）併入 macro（全市場共用）。台灣國內利率/CPI 不在 FRED 標準系列，留 TW 專屬總經源 follow-up。
+  > **TW 專屬總經源規劃（#62-64-5）**：FRED 僅穩定提供 TWD/USD FX，台灣國內利率/CPI 需另接本土源——**央行（CBC）重貼現率/政策利率**、**主計總處（DGBAS）CPI 年增率**。設計原則：**不硬塞非標準 FRED series**（FRED 的台灣序列稀疏且更新延遲），改寫獨立 `TwMacroProvider`（CBC/DGBAS open data API），與 `FredMacroProvider` 並列由 macro 層合併。屬獨立 follow-up（見 #65），本批僅補 FX。
 - [x] **C7 ATR / RS**：ATR(14)+ATR%（兩市場，OHLC 確定性算，停損距離）；RS（個股 3 月報酬 − 大盤）**US-only vs ^GSPC**——TW RS（^TWII）因 `get_history` async inline、同步 benchmark fetch 會阻塞 event loop，留 follow-up。
 - [ ] **C3 TW 現金流量表**：FinMind 給 YTD 累計需去累計化拆季，複雜度高、中等價值——獨立小心做（defer）。
 - [ ] **C6 news 情緒量化**：LLM 情緒分數非確定性、非第一手，**與反幻覺鐵律衝突**——須走確定性詞典法或另立 sentiment phase（defer，需設計決議）。
