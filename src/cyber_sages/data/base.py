@@ -55,6 +55,20 @@ class MacroProvider(Protocol):
     async def get_macro(self) -> list[Evidence]: ...
 
 
+# 真正異源（與 Yahoo 系 feed 不相關）的報價來源標記。跨源把關只有「兩條不相關 feed」才
+# 有意義（Spec F S2 correlated-failure：兩條 Yahoo 路徑會一起 stale 而漏接）。集中定義避免
+# 散落各處的命名巧合——us_stocks 發 evidence 的 source 字串、audit 的獨立性判斷共用同一份
+# 真相；未來加 IEX 等新異源只需在此登記一行（#67-4）。
+_INDEPENDENT_SOURCE_MARKERS = ("finnhub",)
+
+
+def is_independent_source(source: str | None) -> bool:
+    """evidence 的 source 是否標示「真正異源」（非 Yahoo 系）的報價來源。子字串、大小寫不敏感。
+    供跨源把關判斷「手上的第二價格源是否真獨立」，不靠 field 命名巧合（如 last_price_finnhub）。"""
+    s = (source or "").lower()
+    return any(marker in s for marker in _INDEPENDENT_SOURCE_MARKERS)
+
+
 def detect_market(ticker: str) -> str:
     """從代號推斷市場。台股：`.TW`/`.TWO` 字尾，或 4-6 位純數字（含 ETF 00xxxx）。"""
     t = ticker.upper().strip()

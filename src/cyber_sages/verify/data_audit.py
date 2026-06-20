@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from cyber_sages.config import AuditConfig, Settings
+from cyber_sages.data.base import is_independent_source
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
 
@@ -282,12 +283,15 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
     live = field_evs("quote", "last_price")
     # 比對對象優先用「真正異源」的 Finnhub（非 Yahoo 系，D4）——比同源 yfinance intraday 更能
     # 抓出 Yahoo feed 整體 stale 的 correlated failure；無 Finnhub 則退而用 intraday。
-    finnhub = field_evs("quote", "last_price_finnhub")
+    # 以 source 字串驗證「真異源」（集中定義 is_independent_source，不靠 field 名巧合）——
+    # 防呆：若某源誤掛 last_price_finnhub 卻非異源，不該被當獨立把關用（#67-4）。
+    independent = [e for e in field_evs("quote", "last_price_finnhub")
+                   if is_independent_source(e.source)]
     intraday = field_evs("quote", "last_price_intraday")
-    alt = finnhub or intraday
+    alt = independent or intraday
     if live and alt:
         a, b = float(live[0].value), float(alt[0].value)
-        label = "Finnhub 獨立報價" if finnhub else "盤中最後成交"
+        label = "Finnhub 獨立報價" if independent else "盤中最後成交"
         if b > 0:
             div = abs(a - b) / b * 100
             if div > cfg.max_price_divergence_pct:
@@ -299,7 +303,7 @@ def deterministic_checks(store: EvidenceStore, cfg: AuditConfig) -> list[AuditFi
                 ))
         # D4：用了同源 intraday（Finnhub 異源不可用）→ 揭露降級。否則讀者會以為跨源是用
         # 真正異源把關，實際是「兩條 Yahoo 路徑」較弱比對（Yahoo 整體 stale 時仍可能一起漏接）。
-        if not finnhub:
+        if not independent:
             findings.append(AuditFinding(
                 severity="warning", check="cross_source",
                 message="Finnhub 異源第二價格源不可用，跨源把關降級為同源 yfinance intraday"

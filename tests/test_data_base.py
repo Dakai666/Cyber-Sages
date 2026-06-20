@@ -5,6 +5,7 @@ from cyber_sages.data.base import (
     ChipsProvider,
     MacroProvider,
     MarketDataProvider,
+    is_independent_source,
     make_macro_provider,
     make_provider,
 )
@@ -16,6 +17,17 @@ from cyber_sages.data.us_stocks import USStockProvider
 def test_stock_providers_satisfy_market_protocol():
     assert isinstance(USStockProvider(), MarketDataProvider)
     assert isinstance(TWStockProvider(), MarketDataProvider)
+
+
+def test_is_independent_source():
+    # 真異源（Finnhub，非 Yahoo 系）→ True；子字串、大小寫不敏感。
+    assert is_independent_source("finnhub /quote (independent of Yahoo)") is True
+    assert is_independent_source("FINNHUB") is True
+    # Yahoo 系同源（yfinance fast_info / intraday）→ False，跨源把關不可拿它當獨立第二源。
+    assert is_independent_source("yfinance fast_info") is False
+    assert is_independent_source("yfinance intraday 1m") is False
+    assert is_independent_source("") is False
+    assert is_independent_source(None) is False
 
 
 def test_only_tw_provides_chips():
