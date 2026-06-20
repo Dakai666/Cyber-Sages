@@ -47,21 +47,25 @@ def test_make_macro_provider_gated_on_fred_key(monkeypatch):
     assert isinstance(mp, MacroProvider) and isinstance(mp, FredMacroProvider)
 
 
-def test_make_macro_provider_tw_includes_cbc(monkeypatch):
-    from cyber_sages.data.tw_macro import TWMacroProvider
+def test_make_macro_provider_tw_includes_cbc_and_cpi(monkeypatch):
+    from cyber_sages.data.base import _MergedMacroProvider
+    from cyber_sages.data.tw_macro import TWCpiProvider, TWMacroProvider
 
-    # 央行源僅 TW 市場併入（台灣國內利率對美股無關，不污染 US run）。
-    # 無 FRED key + TW → 只剩央行單源（不需金鑰）。
+    # 台灣本土源（央行重貼現率 + 主計總處 CPI）僅 TW 市場併入（對美股無關，不污染 US run）。
+    # 無 FRED key + TW → 兩個本土源（皆不需金鑰）合併。
     monkeypatch.delenv("FRED_API_KEY", raising=False)
     tw_only = make_macro_provider("TW")
-    assert isinstance(tw_only, TWMacroProvider)
-    # 同條件 US → None（央行不併入、FRED 又缺 key）。
+    assert isinstance(tw_only, _MergedMacroProvider)
+    assert {type(p) for p in tw_only._providers} == {TWMacroProvider, TWCpiProvider}
+    # 同條件 US → None（本土源不併入、FRED 又缺 key）。
     assert make_macro_provider("US") is None
-    # 有 FRED key + TW → 合併視圖（FRED + 央行），仍滿足 MacroProvider 協議。
+    # 有 FRED key + TW → 三源合併（FRED + 央行 + CPI），仍滿足 MacroProvider 協議。
     monkeypatch.setenv("FRED_API_KEY", "dummy")
     merged = make_macro_provider("TW")
     assert isinstance(merged, MacroProvider)
     assert not isinstance(merged, (FredMacroProvider, TWMacroProvider))  # 是合併視圖
+    assert {type(p) for p in merged._providers} == {
+        FredMacroProvider, TWMacroProvider, TWCpiProvider}
 
 
 async def test_merged_macro_tolerates_one_source_failing():
