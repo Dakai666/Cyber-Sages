@@ -32,7 +32,8 @@ from cyber_sages.verify.citation_check import Claim, check_claims
 _MAX_REBUT_REPS = 3
 
 # debate 文字內的共享 evidence 引用（debaters 只看得到 store.digest() 的 E### 共享證據）。
-_EVID_RE = re.compile(r"E\d{3}")
+# `\d{3,}`（非 {3}）：evidence 數 > 999 時 id 為 E1000+，{3} 會 silent 截成 E100 引到錯的 id。
+_EVID_RE = re.compile(r"E\d{3,}")
 
 
 def _citecheck_debate(arg: DebateArgument, store: EvidenceStore, cfg) -> list[UnverifiedClaim]:

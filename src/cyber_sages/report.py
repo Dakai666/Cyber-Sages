@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cyber_sages.agents.schemas import PriceLevel
+from cyber_sages.agents.schemas import DebateArgument, PriceLevel
 from cyber_sages.pipeline import AnalysisResult
 from cyber_sages.verify.data_audit import build_health_card
 
@@ -264,7 +264,7 @@ def render_council(result: AnalysisResult) -> str:
     return "\n".join(lines)
 
 
-def _debate_unverified_lines(arg) -> list[str]:
+def _debate_unverified_lines(arg: DebateArgument) -> list[str]:
     """#53-D：某方兩輪文字未過引用驗證的數字——軟揭露區塊（不改判、不 refuse）。"""
     if not arg.unverified:
         return []

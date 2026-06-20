@@ -333,6 +333,12 @@ def test_debate_citecheck_ignores_evidence_id_digits():
     assert _citecheck_debate(arg, store, cfg) == []
 
 
+def test_debate_evid_regex_matches_4plus_digit_ids():
+    # #78 review：evidence > 999 時 id 為 E1000+，regex 不可 silent 截成 E100
+    from cyber_sages.agents.debate import _EVID_RE
+    assert _EVID_RE.findall("見 [E1000] 與 [E007]") == ["E1000", "E007"]
+
+
 # ---------- P7：neutral 三類獨立訊號 ----------
 
 
