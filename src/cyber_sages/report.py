@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cyber_sages.agents.schemas import PriceLevel
+from cyber_sages.agents.schemas import DebateArgument, PriceLevel
 from cyber_sages.pipeline import AnalysisResult
 from cyber_sages.verify.data_audit import build_health_card
 
@@ -194,6 +194,11 @@ def render_brief(result: AnalysisResult) -> str:
         dq = f"✅ 乾淨 · {dim_str}"
     flat = [(r.analyst, u) for r in result.reports for u in r.unverified]
     flat += [("首席 brief", u) for u in v.unverified]  # W7：chief 主體未過驗證的數字
+    # #53-D：辯論兩輪文字未過引用驗證的數字（軟揭露，與分析師/首席同口徑）
+    for arg in (result.bull, result.bear):
+        if arg:
+            side_zh = "辯論多方" if arg.side == "bull" else "辯論空方"
+            flat += [(side_zh, u) for u in arg.unverified]
     uv = f" · {len(flat)} 條 claim 未過引用驗證" if flat else ""
     lines += [
         "",
@@ -259,6 +264,17 @@ def render_council(result: AnalysisResult) -> str:
     return "\n".join(lines)
 
 
+def _debate_unverified_lines(arg: DebateArgument) -> list[str]:
+    """#53-D：某方兩輪文字未過引用驗證的數字——軟揭露區塊（不改判、不 refuse）。"""
+    if not arg.unverified:
+        return []
+    out = ["", "> ⚠️ 未過引用驗證的數字（軟揭露，不改判）："]
+    for u in arg.unverified:
+        rnd = u.text[1:3] if u.text.startswith("[") else ""  # 「開場」/「反駁」
+        out.append(f"> - [{rnd}] {u.tag}：{u.reason}")
+    return out
+
+
 def render_debate(result: AnalysisResult) -> str:
     if not result.debate:
         return "# 多空辯論\n\n（本次執行跳過辯論）"
@@ -269,11 +285,13 @@ def render_debate(result: AnalysisResult) -> str:
         lines += ["## 多方陳詞", "### 開場（盲打）", result.bull.argument]
         if result.bull.rebuttal:
             lines += ["### 反駁（見空方開場後）", result.bull.rebuttal]
+        lines += _debate_unverified_lines(result.bull)
         lines.append("")
     if result.bear:
         lines += ["## 空方陳詞", "### 開場（盲打）", result.bear.argument]
         if result.bear.rebuttal:
             lines += ["### 反駁（見多方開場後）", result.bear.rebuttal]
+        lines += _debate_unverified_lines(result.bear)
         lines.append("")
     lines += [
         f"## 裁判判定：{d.winner}",
@@ -431,6 +449,11 @@ def build_agent_payload(result: AnalysisResult) -> dict:
                 {"analyst": "首席 brief", "text": u.text, "tag": u.tag,
                  "evidence_ids": u.evidence_ids, "reason": u.reason}
                 for u in result.verdict.unverified  # W7
+            ] + [
+                # #53-D：辯論兩輪文字未過引用驗證的數字
+                {"analyst": "辯論多方" if arg.side == "bull" else "辯論空方", "text": u.text,
+                 "tag": u.tag, "evidence_ids": u.evidence_ids, "reason": u.reason}
+                for arg in (result.bull, result.bear) if arg for u in arg.unverified
             ],
         },
         "note_to_judge": (

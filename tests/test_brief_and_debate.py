@@ -6,6 +6,7 @@ import pytest
 
 from cyber_sages.agents.council import load_personas, run_council
 from cyber_sages.agents.debate import (
+    _citecheck_debate,
     _losing_side_reps,
     _merge_rebuttals,
     _outlier_theses_text,
@@ -284,6 +285,59 @@ async def test_run_debate_first_round_is_double_blind():
     assert any("ARGUMENT_TOKEN" in p for p in gw.debater_prompts[2:])
     # 兩方都產出了反駁（對稱）
     assert bull.rebuttal and bear.rebuttal
+
+
+# ---------- #53-D：debate 兩輪文字 cite-check（軟揭露） ----------
+
+
+def _citecheck_store():
+    store = EvidenceStore(ticker="X", market="US")
+    store.add(Evidence(category="fundamentals", field="gross_margin_pct",
+                       value=35.0, unit="%", source="t"))  # → E001
+    return store
+
+
+def test_debate_citecheck_flags_fabricated_number():
+    # 開場引用 E001：35.0% 對得上，但 999.9 對不上 → num_mismatch；反駁無數字 → 過
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    arg = DebateArgument(side="bull",
+                         argument="毛利率 35.0% 穩健 [E001]，但每股賺 999.9 元 [E001]",
+                         rebuttal="趨勢轉強 [E001]")
+    uv = _citecheck_debate(arg, store, cfg)
+    assert len(uv) == 1 and uv[0].kind == "num_mismatch"
+    assert "開場" in uv[0].text  # 標出是哪一輪
+
+
+def test_debate_citecheck_passes_grounded_numbers():
+    # 數字皆對得上 cited evidence → 無 unverified
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    arg = DebateArgument(side="bear", argument="毛利率 35.0% [E001]", rebuttal="")
+    assert _citecheck_debate(arg, store, cfg) == []
+
+
+def test_debate_citecheck_flags_uncited_number():
+    # 有意義數字但整段無 [E0xx] 引用 → no_cite
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    arg = DebateArgument(side="bull", argument="毛利率高達 35.0%（沒給引用）", rebuttal="")
+    uv = _citecheck_debate(arg, store, cfg)
+    assert len(uv) == 1 and uv[0].kind == "no_cite"
+
+
+def test_debate_citecheck_ignores_evidence_id_digits():
+    # 質性 claim（只有 [E001] 引用、無真實數字）→ 通過；E001 的 "001" 不被當數字驗證
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    arg = DebateArgument(side="bull", argument="動能轉強、趨勢完好 [E001]", rebuttal="")
+    assert _citecheck_debate(arg, store, cfg) == []
+
+
+def test_debate_evid_regex_matches_4plus_digit_ids():
+    # #78 review：evidence > 999 時 id 為 E1000+，regex 不可 silent 截成 E100
+    from cyber_sages.agents.debate import _EVID_RE
+    assert _EVID_RE.findall("見 [E1000] 與 [E007]") == ["E1000", "E007"]
 
 
 # ---------- P7：neutral 三類獨立訊號 ----------

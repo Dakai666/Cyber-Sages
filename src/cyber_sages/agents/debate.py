@@ -12,6 +12,7 @@ P6 雙邊（C-5）：裁判判敗的一方，其持敗方 stance 的「代表大
 from __future__ import annotations
 
 import asyncio
+import re
 
 from cyber_sages.agents.schemas import (
     AnalystReport,
@@ -20,13 +21,37 @@ from cyber_sages.agents.schemas import (
     DebateVerdict,
     OutlierRebuttal,
     RebuttalArgument,
+    UnverifiedClaim,
 )
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
+from cyber_sages.verify.citation_check import Claim, check_claims
 
 # 敗方代表上限：敗方是大多數時只反駁信心最高的前幾位核心論點（雙邊對稱、成本可控）。
 _MAX_REBUT_REPS = 3
+
+# debate 文字內的共享 evidence 引用（debaters 只看得到 store.digest() 的 E### 共享證據）。
+# `\d{3,}`（非 {3}）：evidence 數 > 999 時 id 為 E1000+，{3} 會 silent 截成 E100 引到錯的 id。
+_EVID_RE = re.compile(r"E\d{3,}")
+
+
+def _citecheck_debate(arg: DebateArgument, store: EvidenceStore, cfg) -> list[UnverifiedClaim]:
+    """把 debate 兩輪文字（開場 + 反駁）內 [E0xx] 引用的數字走 cite-check（review #53-D）。
+
+    每輪當一條 claim：text＝該輪文字、evidence_ids＝文字內出現的 E### id。check_claims 逐一
+    驗證文字中的數字能否由所引 evidence 推導；對不上者標 unverified 揭露——軟揭露，與 sage
+    sop_trace 同口徑，不 refuse、不改判（語意對抗仍由裁判負責）。"""
+    claims = [
+        Claim(text=f"[{label}] {text}", evidence_ids=sorted(set(_EVID_RE.findall(text))))
+        for label, text in (("開場", arg.argument), ("反駁", arg.rebuttal))
+        if text and text.strip()
+    ]
+    if not claims:
+        return []
+    report = check_claims(claims, store, cfg)
+    return [UnverifiedClaim(text=c.claim.text, evidence_ids=c.claim.evidence_ids,
+                            reason=c.reason, kind=c.kind) for c in report.unverified]
 
 DEBATER_SYSTEM = """\
 You are the {side_name} advocate in an investment debate about {ticker}.
@@ -181,6 +206,13 @@ async def run_debate(
 
     bull.rebuttal, bear.rebuttal = await asyncio.gather(
         _rebut(bull, bear), _rebut(bear, bull))
+
+    # 兩輪文字 cite-check（#53-D）：抽 [E0xx] 引用驗數字，軟揭露對不上者（不改判、不 refuse）。
+    # citation config 缺席（如純結構單元測試傳 settings=None）時優雅略過——production 必有。
+    cfg = getattr(settings, "citation", None)
+    if cfg is not None:
+        bull.unverified = _citecheck_debate(bull, store, cfg)
+        bear.unverified = _citecheck_debate(bear, store, cfg)
 
     # 裁判看雙方完整兩輪 + 兩個方向的大師核心論點（判敗後須逐點反駁敗方核心論點）。
     side_theses = (
