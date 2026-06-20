@@ -172,3 +172,30 @@ def test_tw_multiyear_from_finmind():
     # 毛利率 [40, 42, 44] → slope +2%點/年
     assert evs["gross_margin_trend_5y"].value == 2.0
     assert "FinMind" in evs["roe_5y_avg"].source
+
+
+def test_non_calendar_fy_logs_warning(caplog):
+    # #43 C3：非曆年制公司（Equity 年底結算落在非 12 月，跨 3 年無 12 月快照）→ 記 warning
+    import logging
+    bal = [_q("Equity", f"{y}-{m:02d}-30", 1000.0)
+           for y in (2022, 2023, 2024) for m in (1, 4, 7, 10)]
+    with caplog.at_level(logging.WARNING):
+        TWStockProvider._multiyear_fundamentals(_tw_income(), bal, "http://x", stock_id="9999")
+    assert "非曆年制" in caplog.text and "9999" in caplog.text
+
+
+def test_calendar_fy_no_warning(caplog):
+    # 曆年制公司（有 12 月年底權益）→ 不誤報
+    import logging
+    with caplog.at_level(logging.WARNING):
+        TWStockProvider._multiyear_fundamentals(_tw_income(), _tw_balance(), "http://x", stock_id="2330")
+    assert "非曆年制" not in caplog.text
+
+
+def test_insufficient_history_not_flagged_as_non_calendar(caplog):
+    # 只有單一年度的非 12 月權益（歷史不足）→ 不誤報為非曆年制（需跨 ≥2 年才判定）
+    import logging
+    bal = [_q("Equity", f"2024-{m:02d}-30", 1000.0) for m in (1, 4, 7, 10)]
+    with caplog.at_level(logging.WARNING):
+        TWStockProvider._multiyear_fundamentals(_tw_income(), bal, "http://x", stock_id="0001")
+    assert "非曆年制" not in caplog.text

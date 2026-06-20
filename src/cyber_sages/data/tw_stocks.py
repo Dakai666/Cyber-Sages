@@ -210,7 +210,7 @@ class TWStockProvider:
         evs += self._statement_evidence(balance, BALANCE_FIELDS, base_url,
                                         "FinMind TaiwanStockBalanceSheet")
         evs += self._derived_fundamentals(income, balance, base_url)
-        evs += self._multiyear_fundamentals(income, balance, base_url)
+        evs += self._multiyear_fundamentals(income, balance, base_url, stock_id)
         if not isinstance(month, BaseException):
             evs += self._month_revenue_evidence(month, stock_id)
         return evs
@@ -340,12 +340,36 @@ class TWStockProvider:
                     out[d.year] = (d, float(r["value"]))
         return out
 
+    @staticmethod
+    def _detect_non_calendar_fy(balance, stock_id: str) -> None:
+        """C3/C4（issue #43）：偵測非曆年制（非 12/31 結算）公司並 log——不 fail-loud，只累積素材。
+
+        多年期指標的 `_yearend_equity` 以 month==12 取年底權益、`_annual_sums` 以曆年分組四季，
+        皆假設台股財年＝曆年。少數非曆年制公司會靜默降覆蓋率（roe_5y_avg 等缺年；寧缺勿錯仍
+        成立、不產假值）。最穩健的偵測訊號＝跨 ≥2 年的 Equity 季別資料中完全不見 12 月年底
+        快照（單純歷史不足者只有 1 個年度，不誤報）。同 #25 needs-data 精神：先記 log 累積實際
+        案例，再決定是否值得改用 FinMind 實際季別判定財年歸屬。"""
+        if isinstance(balance, BaseException) or not balance:
+            return
+        eq_dates = [date.fromisoformat(r["date"]) for r in balance
+                    if r.get("type") == "Equity" and r.get("value") is not None]
+        years = {d.year for d in eq_dates}
+        if len(years) >= 2 and not any(d.month == 12 for d in eq_dates):
+            logger.warning(
+                "TW multi-year fundamentals: %s 的 Equity 季別資料跨 %d 個年度卻無任何 12 月"
+                "年底快照（月份=%s）——疑似非曆年制 fiscal year，roe_5y_avg 等多年指標將降"
+                "覆蓋率（不產假值，寧缺勿錯）。累積素材追蹤見 issue #43。",
+                stock_id or "?", len(years), sorted({d.month for d in eq_dates}),
+            )
+
     @classmethod
-    def _multiyear_fundamentals(cls, income, balance, url) -> list[Evidence]:
+    def _multiyear_fundamentals(cls, income, balance, url, stock_id: str = "") -> list[Evidence]:
         """多年期指標（roe_5y_avg / gross_margin_trend_5y / earnings_stability_5y）。
 
         台股財報年度＝曆年；FinMind 損益是單季值，逐年合計四季成年度損益，ROE 以該年底
-        權益為分母（與單期 roe_pct 同口徑：年度淨利 / 年底權益）。"""
+        權益為分母（與單期 roe_pct 同口徑：年度淨利 / 年底權益）。非曆年制公司此假設不成立，
+        會靜默降覆蓋率——先偵測並 log（issue #43），不改值（寧缺勿錯）。"""
+        cls._detect_non_calendar_fy(balance, stock_id)
         rev = cls._annual_sums(income, "Revenue")
         gp = cls._annual_sums(income, "GrossProfit")
         ni = cls._annual_sums(income, "IncomeAfterTaxes")
