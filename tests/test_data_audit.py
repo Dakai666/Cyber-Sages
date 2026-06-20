@@ -429,6 +429,28 @@ def test_pe_sanity_flags_meaningless_magnitude():
     assert pe and all(f.severity == "warning" for f in pe)
 
 
+def test_pe_sanity_covers_trailing_pe_too():
+    # #62-8：pe_sanity 同套 trailing+forward——虧損股 TTM EPS≈0 使 trailing_pe 也爆量，
+    # 鎖住雙向覆蓋（迴圈跑 ("trailing_pe","forward_pe")，這條防未來誤縮成只查 forward）。
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="trailing_pe", value=5300.0,
+                       source="yfinance", as_of=date.today()))
+    pe = [f for f in deterministic_checks(store, CFG) if f.check == "pe_sanity"]
+    assert pe and all(f.severity == "warning" for f in pe)
+    assert any("trailing_pe" in f.message for f in pe)
+
+
+def test_cross_source_mistagged_finnhub_not_treated_as_independent():
+    # #67-4：以 source 驗證真異源，不靠 field 名巧合。若某源誤掛 last_price_finnhub 卻非
+    # 異源（source 非 Finnhub）→ 不當獨立把關用，等同無獨立第二源 → 跳過 warning（非通過）。
+    store = healthy_store()
+    store.add(Evidence(category="quote", field="last_price_finnhub", value=120.0,
+                       unit="USD", source="yfinance fast_info", as_of=date.today()))
+    cs = [f for f in deterministic_checks(store, CFG) if f.check == "cross_source"]
+    assert cs and all(f.severity == "warning" for f in cs)
+    assert "跳過" in cs[0].message  # 未把誤標的同源值當 20% fatal 背離
+
+
 def test_forward_pe_internal_inconsistency_is_error():
     # S6：forward_pe × forward_eps 與 last_price 嚴重偏離 → error（PE 對另一價算，疑 staleness）。
     store = healthy_store()  # last_price=100
