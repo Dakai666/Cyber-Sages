@@ -1,6 +1,6 @@
 # Spec F — 資料源頭強固（Data Source Robustness）
 
-**Status**: draft（2026-06-17 起草，待 DK 定案）
+**Status**: accepted（2026-06-17 D1–D4 定案；P0/P1/P2 全數落地並合併入 main，見驗收條件。延伸完整性項 C6 情緒 / C3 TW 現金流 / TW RS 轉 issue #65 追蹤）
 **Date**: 2026-06-17
 **Dependencies**: Spec A（資料層）、Spec B（管線硬化，W9 失敗降級）——本 spec 是 Pillar 1 的回訪
 **觸發**: SPCX live run（`runs/SPCX-2026-06-17_141040/`）暴露的真實資料污染

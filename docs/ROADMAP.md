@@ -1,5 +1,6 @@
 # Cyber-Sages Roadmap
 
+**Revision**: 2026-06-20（v11 — **Spec F 收官**：P0（#60）/P1（#61）/P2（#63/#64）+ review polish（#66/#67）+ TW 專屬總經源 follow-up（#68→央行重貼現率 #69 / 主計總處 CPI #70 / P3 強化 #71）全數合併、Spec F 標 accepted。剩餘完整性項 C6 情緒 / C3 TW 現金流 / TW RS 轉 issue #65（需設計）。下一步：Phase 5（Spec D 決策結構）。）
 **Revision**: 2026-06-17（v10 — **Spec F 資料源頭強固**插隊於 Phase 5 前：SPCX 幽靈 bar live 事故觸發，P0（#60）+ P1（#61）已合併、P2 進行中。鐵律 1「資料正確」優先於決策結構。見 `docs/specs/2026-06-17-F-data-source-robustness.md`）
 **Revision**: 2026-06-14（v9 — **Phase 3 / Spec E1 全數完成（#38/#42/#44 合併、live 雙市場驗收通過）**。Phase 4 / Spec C **v2 大改寫**：DK 把 P4 擴大為「analyst 降級為數據源 + horizon(trading/value) 分流 + 大師為主體 + 陪審團結構」四條 PR；E2 量產延到「更後面」——先手工擴充大師（按類型）。E2 前置 issue #39/#40/#41/#43/#45）
 
@@ -235,9 +236,16 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 - ✅ **P1**（PR #61）：IPO/短歷史明說承認不降級（S5，依 D1）、forward P/E sanity 確定性閘門
   （S6）、二手 fundamentals 嚴格隔離（C2，DK option 2）、review follow-up #3/#7、
   EvidenceStore id 改單調計數器。
-- 🚧 **P2**（PR 進行中）：Finnhub 真正異源第二價格源（D4，收口 correlated failure）、
-  市值 vs shares×price 矛盾 sanity（S6 延伸）、ROADMAP 更新。
-  待續：C5 台灣總經/匯率、C3 TW 現金流、C6 news 情緒、C7 ATR/RS（issue #62 收 review polish）。
+- ✅ **P2**（PR #63/#64）：Finnhub 真正異源第二價格源（D4，收口 correlated failure）、市值 vs
+  shares×price 矛盾 sanity（S6 延伸）、C5 台灣 TWD/USD FX、C7 ATR/RS（US-only vs ^GSPC）。
+- ✅ **review polish**（PR #66 行為 batch / #67 docs batch，issue #62）。
+- ✅ **TW 專屬總經源 follow-up**（issue #68，已關閉）：央行重貼現率（PR #69）+ 主計總處 CPI 年增率
+  （PR #70）+ P3 強化 `is_independent_source` / `pe_sanity` 雙向覆蓋（PR #71）。台股宏觀從「套美國
+  fed funds」升級為「台灣重貼現率 + 台灣 CPI」在地維度；P2 #64-2 yfinance 效能經評估 decline。
+- 🔜 **剩餘完整性項**（轉 issue #65，需設計）：C6 news 情緒量化（非確定性、與反幻覺鐵律衝突）、
+  C3 TW 現金流量表（FinMind YTD 累計跨期拆季）、TW RS（^TWII，需 async-safe benchmark fetch）。
+
+**Spec F 收官**——Pillar 1 回訪完成，下一步 Phase 5（Spec D 決策結構）。
 
 弱點編號沿用 spec 內 S1-S7（穩定性）/ C1-C8（完整性），不另佔 W 序號（W 系列為 Spec A/B 既有）。
 
