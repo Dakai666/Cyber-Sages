@@ -335,6 +335,18 @@ async def run_council(
         signal = await gateway.structured(
             "sage", system=system, prompt=prompt, schema=SageSignal, cache_prefix=shared_system,
         )
+        # 空 sop_trace 防 bypass（#41）：pack 大師的 SOP pass 若回空 trace，_sop_claims 為空 →
+        # cite-check 0 條 → trivially 通過，整段「逐步作答、每步引用 evidence」紀律被靜默
+        # bypass，degrade 成舊單發 prompt 卻不自知。比照 cite-check 軟揭露：重試一次明確要求
+        # 逐步走 SOP；仍空 → 不 refuse，標記揭露（讓判讀者知道這位大師沒走 SOP）。
+        if not signal.sop_trace:
+            signal = await gateway.structured(
+                "sage", system=system,
+                prompt=(f"{prompt}\n\n# 你上一版未填 sop_trace——SOP 的每一步都必須寫成一筆 "
+                        "SopStepResult（step + 結論 + evidence_ids），不可整段略過。重走你的 SOP。"),
+                schema=SageSignal, cache_prefix=shared_system,
+            )
+        sop_bypassed = not signal.sop_trace
         # sop_trace 過 cite-check（軟揭露：retry 後仍對不上 → 標 unverified，不 refuse）。
         # 空 trace（LLM 未產出步驟）→ 無數字可驗，跳過、不觸 settings.citation。
         report = None
@@ -366,7 +378,12 @@ async def run_council(
         signal.confidence, signal.rule_conflicts = clamp_confidence(
             signal.stance, signal.confidence, outcomes
         )
-        signal.not_evaluable = not_evaluable
+        # SOP pass 仍回空 trace → 揭露（不靜默）：這位大師沒逐步走 SOP，其 thesis 等同舊單發
+        # prompt，判讀者應據此折價。掛在 not_evaluable（brief「本次無法評估」區塊一併呈現）。
+        signal.not_evaluable = not_evaluable + (
+            ["sop-discipline:SOP pass 回空 trace、未逐步作答（已揭露，等同單發 prompt）"]
+            if sop_bypassed else []
+        )
         return signal
 
     async def _finalize(signal: SageSignal, p: Persona, notify: bool) -> SageSignal:

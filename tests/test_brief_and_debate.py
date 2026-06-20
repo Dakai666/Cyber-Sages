@@ -20,6 +20,7 @@ from cyber_sages.agents.schemas import (
     OutlierRebuttal,
     RebuttalArgument,
     SageSignal,
+    SopStepResult,
     UnverifiedClaim,
 )
 from cyber_sages.report import render_analysts, render_debate
@@ -350,8 +351,13 @@ def _fake_gateway(fail_names: set[str], order: list[str] | None = None):
                 order.append(name)
             if name in fail_names:
                 raise RuntimeError("Structured output failed after 3 attempts")
+            extra = {}
+            if schema is SageSignal:
+                # pack 大師走完 SOP（非空 trace）→ 不觸發 #41 空 trace 重試；
+                # 空結論不產 claim、跳過 cite-check（本測試只驗席位/順序，不驗引用）。
+                extra["sop_trace"] = [SopStepResult(step="s", conclusion="", evidence_ids=[])]
             return schema(stance="neutral", confidence=0.5, thesis="t",
-                          what_would_change_my_mind="w")
+                          what_would_change_my_mind="w", **extra)
     return G()
 
 

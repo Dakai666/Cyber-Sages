@@ -16,6 +16,7 @@ from cyber_sages.agents.schemas import (
     RebuttalArgument,
     RiskNote,
     SageSignal,
+    SopStepResult,
 )
 from cyber_sages.config import load_settings
 from cyber_sages.data.evidence import Evidence
@@ -47,6 +48,9 @@ class FakeGateway:
             return SageSignal(
                 stance="bullish", confidence=0.7, thesis="符合我的選股哲學。",
                 key_evidence_ids=["E001"], what_would_change_my_mind="基本面惡化",
+                # 非空 sop_trace：pack 大師走完 SOP（避免觸發 #41 空 trace 重試）
+                sop_trace=[SopStepResult(step="verdict", conclusion="符合哲學，看多。",
+                                         evidence_ids=["E001"])],
             )
         if name == "DebateArgument":
             return DebateArgument(argument="論點如上 [E001]。")

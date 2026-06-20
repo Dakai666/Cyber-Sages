@@ -171,9 +171,12 @@ async def test_minervini_pack_end_to_end_floor_clamps_up(monkeypatch):
     minervini = _pack("minervini")
     monkeypatch.setattr("cyber_sages.agents.council.load_personas",
                         lambda limit=None: [minervini])
-    # 空 sop_trace → 跳過 cite-check；只驗 skill→rule→clamp 在 trading horizon 串起來
+    # 非空 sop_trace（#41 後空 trace 會被標記揭露）；空結論不產 claim → 跳過 cite-check，
+    # 本測試只驗 skill→rule→clamp 在 trading horizon 串起來。
     llm = SageSignal(stance="bullish", confidence=0.3, thesis="Stage-2 領導股",
-                     what_would_change_my_mind="跌破 SMA50")
+                     what_would_change_my_mind="跌破 SMA50",
+                     sop_trace=[SopStepResult(step="trend-template", conclusion="",
+                                              evidence_ids=[])])
     council = await run_council(_uptrend_store(), [], _settings(), _gateway(llm),
                                 n_sages=1, horizon="trading")
     [s] = council.signals

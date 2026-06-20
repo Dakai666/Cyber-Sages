@@ -352,6 +352,48 @@ async def test_buffett_pack_end_to_end_clamp_and_citecheck(monkeypatch):
     assert s.not_evaluable == []  # 寬護城河美股，skill 與 rule 全評得出
 
 
+def _seq_gateway(signals: list[SageSignal]):
+    """依序回傳 signals（每次 structured 取下一個），記錄呼叫次數——測空 trace 重試/恢復。"""
+    class G:
+        def __init__(self):
+            self.calls = 0
+        async def structured(self, role, *, system, prompt, schema, **kw):
+            sig = signals[min(self.calls, len(signals) - 1)]
+            self.calls += 1
+            return sig.model_copy(deep=True)
+    return G()
+
+
+async def test_empty_sop_trace_retried_then_disclosed(monkeypatch):
+    """#41：pack 大師回空 sop_trace → 重試一次仍空 → 揭露於 not_evaluable，不靜默 bypass。"""
+    buffett = _pack("buffett")
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [buffett])
+    empty = SageSignal(stance="bullish", confidence=0.3, thesis="好生意",
+                       what_would_change_my_mind="護城河變窄")  # sop_trace 預設空
+    gw = _seq_gateway([empty])
+    council = await run_council(_wonderful_us_store(), [], _settings(), gw, n_sages=1)
+    [s] = council.signals
+    assert gw.calls == 2  # 首次 + 空 trace 重試一次
+    assert any("sop-discipline" in n for n in s.not_evaluable)  # 揭露而非靜默通過
+
+
+async def test_empty_sop_trace_recovered_on_retry_no_disclosure(monkeypatch):
+    """#41：首次空、重試補上 sop_trace → 不標記（紀律已恢復）。"""
+    buffett = _pack("buffett")
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [buffett])
+    empty = SageSignal(stance="bullish", confidence=0.3, thesis="好生意",
+                       what_would_change_my_mind="護城河變窄")
+    recovered = empty.model_copy(deep=True)
+    # 結論不含數字、引用真實 evidence（E001 存在於 wonderful store）→ cite-check 過、不再重試
+    recovered.sop_trace = [SopStepResult(step="verdict", conclusion="符合哲學", evidence_ids=["E001"])]
+    gw = _seq_gateway([empty, recovered])
+    council = await run_council(_wonderful_us_store(), [], _settings(), gw, n_sages=1)
+    [s] = council.signals
+    assert gw.calls == 2
+    assert not any("sop-discipline" in n for n in s.not_evaluable)  # 已恢復，無揭露
+    assert s.sop_trace and s.sop_trace[0].conclusion == "符合哲學"
+
+
 async def test_lazy_sop_step_ids_canonicalized_to_pack(monkeypatch):
     """#45：LLM 偷懶填 ['1'..'6']（步數相符），框架按序覆寫為 sop.yaml canonical id。"""
     buffett = _pack("buffett")
