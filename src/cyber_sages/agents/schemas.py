@@ -145,6 +145,9 @@ class DebateArgument(BaseModel):
     rebuttal: str = Field(
         default="", description="Round-2 rebuttal after seeing opponent's opening; 繁體中文"
     )
+    # 兩輪文字內 [E0xx] 引用的數字經 cite-check 後對不上者（軟揭露，與 sage sop_trace 一致，
+    # 不 refuse、不改判）。由 debate 程式回填，非 LLM 自填。
+    unverified: list[UnverifiedClaim] = Field(default_factory=list)
 
 
 class RebuttalArgument(BaseModel):
