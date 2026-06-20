@@ -4,7 +4,12 @@
 
 from datetime import date
 
-from cyber_sages.data.tw_macro import TWMacroProvider, _period_to_date
+from cyber_sages.data.tw_macro import (
+    TWCpiProvider,
+    TWMacroProvider,
+    _extract_obs,
+    _period_to_date,
+)
 
 
 def _payload(rows: list[list], columns=("重貼現率", "擔保放款融通利率", "短期融通")) -> dict:
@@ -75,3 +80,57 @@ def test_period_to_date_month_end_and_bad_format():
 def test_available_is_true_no_key_required():
     # 央行 API 公開無需金鑰 → 恆可用（抓取失敗在 get_macro 內降級為 []）。
     assert TWMacroProvider.available() is True
+
+
+# --- 主計總處 CPI（TWCpiProvider）---------------------------------------------
+
+def _obs(item: str, period: str, type_: str, value: str) -> str:
+    """構造一筆 DGBAS PR0101A1M 風格的 <Obs>（含 FREQ，驗證 regex 會跳過它）。"""
+    return (f"<Obs><Item>{item}</Item><TIME_PERIOD>{period}</TIME_PERIOD>"
+            f"<FREQ>M</FREQ><TYPE>{type_}</TYPE><Item_VALUE>{value}</Item_VALUE></Obs>")
+
+
+_TOTAL = "總指數(指數基期：民國110年=100)"
+
+
+def test_extract_obs_parses_fields_and_skips_freq():
+    recs = _extract_obs(_obs(_TOTAL, "2026M05", "年增率(%)", "2.2"))
+    assert recs == [{"item": _TOTAL, "period": "2026M05", "type": "年增率(%)", "value": "2.2"}]
+
+
+def test_parse_cpi_yoy_picks_latest_yoy_only():
+    # 同時有原始值與年增率兩列；取最新月份的「年增率(%)」，不誤取原始值或舊月。
+    obs = _extract_obs("".join([
+        _obs(_TOTAL, "2026M03", "原始值", "110.36"),
+        _obs(_TOTAL, "2026M03", "年增率(%)", "1.2"),
+        _obs(_TOTAL, "2026M05", "原始值", "111.43"),
+        _obs(_TOTAL, "2026M05", "年增率(%)", "2.2"),
+        _obs(_TOTAL, "2026M04", "年增率(%)", "1.73"),
+    ]))
+    ev = TWCpiProvider._parse_cpi_yoy(obs)
+    assert ev is not None
+    assert ev.field == "tw_cpi_yoy_pct" and ev.category == "macro" and ev.unit == "%"
+    assert ev.value == 2.2  # 2026M05 年增率，非 111.43（原始值）也非舊月
+    assert ev.as_of == date(2026, 5, 31)  # 期底
+    assert "DGBAS" in ev.source
+
+
+def test_parse_cpi_yoy_skips_empty_yoy():
+    # 最早年份年增率為空（無前一年基準）→ 跳過，取最新有值者。
+    obs = _extract_obs("".join([
+        _obs(_TOTAL, "1981M01", "年增率(%)", ""),
+        _obs(_TOTAL, "2026M05", "年增率(%)", "2.2"),
+    ]))
+    ev = TWCpiProvider._parse_cpi_yoy(obs)
+    assert ev is not None and ev.value == 2.2 and ev.as_of == date(2026, 5, 31)
+
+
+def test_parse_cpi_yoy_none_when_no_valid_rows():
+    assert TWCpiProvider._parse_cpi_yoy([]) is None
+    # 只有原始值、無年增率列 → 回 None（不拿指數冒充通膨率）。
+    only_raw = _extract_obs(_obs(_TOTAL, "2026M05", "原始值", "111.43"))
+    assert TWCpiProvider._parse_cpi_yoy(only_raw) is None
+
+
+def test_cpi_available_is_true_no_key_required():
+    assert TWCpiProvider.available() is True

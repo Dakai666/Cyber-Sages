@@ -110,7 +110,8 @@ class _MergedMacroProvider:
 
 def make_macro_provider(market: str | None = None) -> MacroProvider | None:
     """總經來源工廠：合併所有可用源——FRED（全市場：利率/殖利率曲線/CPI/就業 + TWD/USD FX）
-    + 台灣專屬央行源（**僅 TW 市場併入**：重貼現率等台灣國內貨幣政策，對美股無關故不污染）。
+    + 台灣專屬本土源（**僅 TW 市場併入**，對美股無關故不污染）：央行重貼現率（政策利率）
+    與主計總處 CPI 年增率（通膨）。
 
     把「可用性」收斂到工廠：無可用源回 None、單一源直接回該 provider、多源回合併視圖。
     呼叫端只需判斷 `is not None` 並呼叫 `get_macro()`，與各能力協議的偵測語意一致。"""
@@ -120,10 +121,12 @@ def make_macro_provider(market: str | None = None) -> MacroProvider | None:
     if FredMacroProvider.available():
         providers.append(FredMacroProvider())
     if market == "TW":
-        from cyber_sages.data.tw_macro import TWMacroProvider
+        from cyber_sages.data.tw_macro import TWCpiProvider, TWMacroProvider
 
         if TWMacroProvider.available():
             providers.append(TWMacroProvider())
+        if TWCpiProvider.available():
+            providers.append(TWCpiProvider())
     if not providers:
         return None
     return providers[0] if len(providers) == 1 else _MergedMacroProvider(providers)

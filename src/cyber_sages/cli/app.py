@@ -261,14 +261,20 @@ def _check_data_sources() -> None:
     else:
         console.print("[yellow]○[/] FRED      key=missing → 總經停用（analyze 會自動跳過總經分析師）")
 
-    # 台灣央行統計 API（無需金鑰，僅 TW 市場併入）：探重貼現率連線
-    from cyber_sages.data.tw_macro import TWMacroProvider
+    # 台灣本土總經源（無需金鑰，僅 TW 市場併入）：探央行重貼現率 + 主計總處 CPI 連線
+    from cyber_sages.data.tw_macro import TWCpiProvider, TWMacroProvider
 
     try:
         evs = asyncio.run(TWMacroProvider().get_macro())
         console.print(f"[green]✓[/] CBC       no-key      → {len(evs)} TW 總經 series（重貼現率）")
     except Exception as e:
         console.print(f"[red]✗[/] CBC       no-key      → {e}")
+
+    try:
+        evs = asyncio.run(TWCpiProvider().get_macro())
+        console.print(f"[green]✓[/] DGBAS     no-key      → {len(evs)} TW 總經 series（CPI 年增率）")
+    except Exception as e:
+        console.print(f"[red]✗[/] DGBAS     no-key      → {e}")
 
 
 if __name__ == "__main__":
