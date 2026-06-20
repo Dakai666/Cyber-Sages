@@ -140,7 +140,7 @@ def render_brief(result: AnalysisResult) -> str:
     if v.horizons:
         lines.append("## 三時間軸")
         for h in v.horizons:
-            lines.append(f"- **{HORIZON_ZH.get(h.horizon, h.horizon)}** "
+            lines.append(f"- **{HORIZON_ZH.get(h.timeframe, h.timeframe)}** "
                          f"{STANCE_ZH[h.stance]}：{h.summary}")
         lines.append("")
 
