@@ -1,0 +1,24 @@
+# #47：repo 原本無 CI，PR 全靠本地/人工跑測試把關（gh pr checks 回 no checks reported）。
+# 測試全程 network-free（patch providers / 純解析計算）、~數秒、零 API 成本，故 CI 便宜可靠。
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一 ref 連推多次時，取消尚在跑的舊 run，只留最新（省 runner 分鐘）。
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true          # 快取 uv 下載/解析，加速後續 run
+      - run: uv sync --extra dev       # requires-python>=3.12，uv 自動備妥 Python
+      - run: uv run pytest -q
