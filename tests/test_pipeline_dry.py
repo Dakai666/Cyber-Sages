@@ -78,9 +78,9 @@ class FakeGateway:
                     invalidation="跌破 SMA200 且 RSI 不止穩",
                 ),
                 horizons=[
-                    HorizonView(horizon="short", stance="neutral", summary="動能偏弱"),
-                    HorizonView(horizon="mid", stance="bullish", summary="趨勢完好"),
-                    HorizonView(horizon="long", stance="bullish", summary="護城河仍在"),
+                    HorizonView(timeframe="short", stance="neutral", summary="動能偏弱"),
+                    HorizonView(timeframe="mid", stance="bullish", summary="趨勢完好"),
+                    HorizonView(timeframe="long", stance="bullish", summary="護城河仍在"),
                 ],
                 supporting_points=["現金流強"], key_risks=["估值"],
                 what_would_change_my_mind="營收連兩季下滑",

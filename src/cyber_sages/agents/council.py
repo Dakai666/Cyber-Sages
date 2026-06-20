@@ -29,7 +29,7 @@ from cyber_sages.agents.schemas import (
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
-from cyber_sages.personas.pack import Persona, load_personas
+from cyber_sages.personas.pack import Persona, SopStep, load_personas
 from cyber_sages.personas.rules import clamp_confidence, evaluate_rules, rule_values
 from cyber_sages.personas.skill import run_skills
 from cyber_sages.verify.citation_check import Claim, check_claims
@@ -103,11 +103,13 @@ Your voice: {voice}"""
 # Pack 專屬：在身分之後加上 SOP 紀律——逐步作答、每步引用 evidence id 或 skill 輸出。
 SAGE_SOP_DISCIPLINE = """\
 
-You follow YOUR OWN decision SOP (below). Work through it step by step. For EACH step,
-record a SopStepResult in `sop_trace`: the step id, your conclusion in your voice (繁體中文),
-and the evidence ids that anchor it (shared E### ids, or your private S-### skill outputs).
-Every number you state in a step must be traceable to a cited evidence id. Your final
-stance/confidence/thesis must follow from this trace, through your philosophy."""
+You follow YOUR OWN decision SOP (below). Work through it IN ORDER, one SopStepResult per
+step, no skipping or reordering. For EACH step record: the step id, your conclusion in your
+voice (繁體中文), and the evidence ids that anchor it (shared E### ids, or your private S-###
+skill outputs). The framework re-aligns step ids to the canonical SOP order, so just keep your
+trace in the SOP's order — focus on the conclusion and its evidence. Every number you state in
+a step must be traceable to a cited evidence id. Your final stance/confidence/thesis must
+follow from this trace, through your philosophy."""
 
 
 # P2 scout（第一輪）共享前綴——刻意精簡（只給 evidence digest、不含分析師報告、不含 SOP
@@ -223,6 +225,23 @@ def _sop_claims(trace: list[SopStepResult]) -> list[Claim]:
         Claim(text=s.conclusion, evidence_ids=s.evidence_ids)
         for s in trace if s.conclusion.strip()
     ]
+
+
+def _canonicalize_sop_steps(
+    trace: list[SopStepResult], sop: list[SopStep]
+) -> None:
+    """把 LLM 自填的 step id 覆寫為 sop.yaml 的 canonical step id（review #45）。
+
+    step id 是「框架已知的契約」（來自 sop.yaml 的有序步驟），不該交給 LLM 自由填寫——
+    實測 2330 Buffett 會偷懶填 `['1'..'6']`，丟失與 sop.yaml 的對應，破壞 E2 同儕驗證
+    與 replay 逐步對齊。LLM 只該生成 conclusion + evidence_ids；step id 由程式按序回填。
+
+    步數相符才按序覆寫（正常路徑，徹底解決偷懶命名）。步數不符屬 sop_trace 不完整
+    （見 #41）——位移對齊會把某步誤標成別步，故保留 LLM 原值不動，交 #41 的非空檢查處理。
+    """
+    if len(trace) == len(sop):
+        for t, s in zip(trace, sop):
+            t.step = s.step
 
 
 async def run_council(
@@ -353,6 +372,8 @@ async def run_council(
                             reason="sop_trace 數字無法由所引 evidence 推導", kind=c.kind)
             for c in report.unverified
         ]
+        # step id 由程式按 sop.yaml canonical id 回填（review #45）——不信任 LLM 自填。
+        _canonicalize_sop_steps(signal.sop_trace, p.pack.sop)
         # 4. clamp（程式）：confidence 受觸發規則的 floor/ceiling 約束；directional 衝突揭露
         signal.confidence, signal.rule_conflicts = clamp_confidence(
             signal.stance, signal.confidence, outcomes

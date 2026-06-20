@@ -204,7 +204,9 @@ class PriceLevel(BaseModel):
 
 
 class HorizonView(BaseModel):
-    horizon: Literal["short", "mid", "long"]  # 1-4週 / 1-6月 / 6月以上
+    # `timeframe`（非 horizon）：brief 內 short/mid/long 三個子時間軸，
+    # 與 run 級 Horizon（trading/value 投資框架）刻意區隔命名（issue #49）。
+    timeframe: Literal["short", "mid", "long"]  # 1-4週 / 1-6月 / 6月以上
     stance: Stance
     summary: str = Field(description="One sentence, Traditional Chinese")
 

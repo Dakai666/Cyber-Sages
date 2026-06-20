@@ -392,3 +392,34 @@ async def test_empty_sop_trace_recovered_on_retry_no_disclosure(monkeypatch):
     assert gw.calls == 2
     assert not any("sop-discipline" in n for n in s.not_evaluable)  # 已恢復，無揭露
     assert s.sop_trace and s.sop_trace[0].conclusion == "符合哲學"
+
+
+async def test_lazy_sop_step_ids_canonicalized_to_pack(monkeypatch):
+    """#45：LLM 偷懶填 ['1'..'6']（步數相符），框架按序覆寫為 sop.yaml canonical id。"""
+    buffett = _pack("buffett")
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [buffett])
+    canonical = [s.step for s in buffett.pack.sop]  # 6 步
+    llm = SageSignal(
+        stance="neutral", confidence=0.4, thesis="觀望", what_would_change_my_mind="估值",
+        neutral_reason="insufficient_signal",
+        # 偷懶的 step id，步數與 sop.yaml 相符；結論不含數字避免觸 cite-check
+        sop_trace=[SopStepResult(step=str(i + 1), conclusion=f"第{i + 1}步結論", evidence_ids=[])
+                   for i in range(len(canonical))],
+    )
+    council = await run_council(_wonderful_us_store(), [], _settings(), _gateway(llm), n_sages=1)
+    [s] = council.signals
+    assert [t.step for t in s.sop_trace] == canonical  # 程式回填，丟棄 '1'..'6'
+
+
+async def test_mismatched_sop_step_count_left_untouched(monkeypatch):
+    """#45：步數不符（不完整 trace）不貿然位移對齊——保留 LLM 原值，交 #41 處理。"""
+    buffett = _pack("buffett")
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [buffett])
+    llm = SageSignal(
+        stance="neutral", confidence=0.4, thesis="觀望", what_would_change_my_mind="估值",
+        neutral_reason="insufficient_signal",
+        sop_trace=[SopStepResult(step="x", conclusion="只走了一步", evidence_ids=[])],  # 1 ≠ 6
+    )
+    council = await run_council(_wonderful_us_store(), [], _settings(), _gateway(llm), n_sages=1)
+    [s] = council.signals
+    assert [t.step for t in s.sop_trace] == ["x"]  # 未覆寫
