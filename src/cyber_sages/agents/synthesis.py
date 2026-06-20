@@ -37,7 +37,7 @@ Duties:
    invalidation conditions, and position_hint sized to conviction. "avoid" and
    "hold" are valid actions but still need the levels that would change them
    (e.g. avoid now, buy_dip zone at X–Y).
-3. Give exactly three horizons: short (1-4週), mid (1-6月), long (6月+). They
+3. Give exactly three timeframes: short (1-4週), mid (1-6月), long (6月+). They
    may disagree with each other — say so plainly.
 4. Synthesize, don't average: if the minority argued better evidence, side with
    it. Be honest about dissent in dissent_summary.
@@ -56,8 +56,8 @@ Write concerns in Traditional Chinese."""
 
 
 # action plan 口徑隨 horizon（Spec C v2 P9）：同一支股，當沖與長持的進出場紀律本質不同。
-# 注意命名撞詞（review A）：`horizons` 三段＝brief 內 short/mid/long 三個子時間軸（HorizonView），
-# 與本 run 的 trading/value 投資框架是不同概念——下方「horizons 三段」指前者。
+# 命名區隔（#49）：brief 內 short/mid/long 三段已改名 HorizonView.timeframe（prompt 用
+# 「three timeframes」），與本 run 的 trading/value 投資框架（run-level Horizon）明確分流。
 _HORIZON_PLAN = {
     "value": "# Action-plan 口徑：VALUE（數年）——分批建倉、較寬的停損（容忍多年波動）、"
              "進場錨在估值/長期支撐，invalidation 是長期論點翻盤（護城河受損 / 成長失速），"
@@ -114,8 +114,8 @@ async def run_synthesis(
         + "\n".join(f"- {s.sage} [{s.stance}]: {s.thesis}" for s in council.signals)
         + f"\n\n# Debate verdict\n{debate_text}\n\n"
         + _HORIZON_PLAN[horizon]
-        + "\nWrite the decision brief: action plan with anchored levels, three horizons, "
-        "thesis, risks, invalidation."
+        + "\nWrite the decision brief: action plan with anchored levels, three timeframes "
+        "(short/mid/long), thesis, risks, invalidation."
     )
 
     # W7 — chief brief 主體過 cite-check：thesis / key_risks / what_would_change_my_mind
