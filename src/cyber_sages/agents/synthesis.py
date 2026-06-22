@@ -170,7 +170,7 @@ async def run_synthesis(
         concerns = "\n".join(f"- {c}" for c in risk.concerns) or "（未列具體條目）"
         rebut_prompt = (
             f"{prompt}\n\n# 風控官對你上一版的重大質疑（信心建議調整 "
-            f"{risk.conviction_adjustment:+.2f}）\n{concerns}\n"
+            f"{risk.clamped_adjustment:+.2f}）\n{concerns}\n"
             f"理由：{risk.adjustment_reason or '（未說明）'}\n\n"
             "重寫 brief：在 thesis（必要時連同 key_risks）直接回應上述風控質疑——"
             "若質疑成立就讓步並調整論點，若有反證就以 evidence 正面反駁；不得忽略或重述原文。"

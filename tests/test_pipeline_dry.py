@@ -193,6 +193,20 @@ async def test_pipeline_horizon_propagates_to_result_and_brief():
     assert "Warren Buffett" in payload["council"]["abstained"]
 
 
+async def test_payload_and_brief_survive_missing_risk():
+    # D-3 micro（review）：非 blocked 但 risk 缺席（防禦性 None）時，payload/brief 結構仍合法、
+    # 不炸——風控揭露行與 risk_officer 區塊靜默略過。
+    settings = load_settings()
+    result = await run_pipeline(
+        "AAPL", settings, FakeGateway(),  # type: ignore[arg-type]
+        n_sages=2, include_macro=False)
+    result.risk = None
+    payload = build_agent_payload(result)
+    assert payload["risk_officer"] is None
+    brief = render_brief(result)
+    assert "決策簡報" in brief and "風控官下調信心" not in brief
+
+
 async def test_pipeline_skip_debate():
     settings = load_settings()
     result = await run_pipeline(
