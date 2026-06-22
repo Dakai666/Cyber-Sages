@@ -12,7 +12,6 @@ P6 雙邊（C-5）：裁判判敗的一方，其持敗方 stance 的「代表大
 from __future__ import annotations
 
 import asyncio
-import re
 
 from cyber_sages.agents.schemas import (
     AnalystReport,
@@ -26,14 +25,18 @@ from cyber_sages.agents.schemas import (
 from cyber_sages.config import Settings
 from cyber_sages.data.evidence import EvidenceStore
 from cyber_sages.llm.gateway import LLMGateway
-from cyber_sages.verify.citation_check import Claim, check_claims
+from cyber_sages.verify.citation_check import (
+    EVIDENCE_ID_RE,
+    Claim,
+    check_claims,
+    extract_meaningful_numbers,
+)
 
 # 敗方代表上限：敗方是大多數時只反駁信心最高的前幾位核心論點（雙邊對稱、成本可控）。
 _MAX_REBUT_REPS = 3
 
-# debate 文字內的共享 evidence 引用（debaters 只看得到 store.digest() 的 E### 共享證據）。
-# `\d{3,}`（非 {3}）：evidence 數 > 999 時 id 為 E1000+，{3} 會 silent 截成 E100 引到錯的 id。
-_EVID_RE = re.compile(r"E\d{3,}")
+# debate / judge 文字內的共享 evidence 引用——複用 citation_check 的單一真相來源（見其註）。
+_EVID_RE = EVIDENCE_ID_RE
 
 
 def _citecheck_debate(arg: DebateArgument, store: EvidenceStore, cfg) -> list[UnverifiedClaim]:
@@ -47,6 +50,27 @@ def _citecheck_debate(arg: DebateArgument, store: EvidenceStore, cfg) -> list[Un
         for label, text in (("開場", arg.argument), ("反駁", arg.rebuttal))
         if text and text.strip()
     ]
+    if not claims:
+        return []
+    report = check_claims(claims, store, cfg)
+    return [UnverifiedClaim(text=c.claim.text, evidence_ids=c.claim.evidence_ids,
+                            reason=c.reason, kind=c.kind) for c in report.unverified]
+
+
+def _citecheck_judge(verdict: DebateVerdict, store: EvidenceStore, cfg) -> list[UnverifiedClaim]:
+    """D-2：裁定 rationale + 每條 outlier_rebuttal 內 [E0xx] 引用的數字走 cite-check。
+
+    rationale 抽文字內行內 id；rebuttal 取「結構欄 evidence_ids ∪ 文字內行內 id」（兩種寫法
+    都算數）。對不上者軟揭露——與 debate 兩輪 / sage sop_trace 同口徑，不改判、不 refuse。"""
+    claims = []
+    if verdict.rationale and verdict.rationale.strip() and extract_meaningful_numbers(verdict.rationale):
+        claims.append(Claim(text=f"[裁定] {verdict.rationale}",
+                            evidence_ids=sorted(set(_EVID_RE.findall(verdict.rationale)))))
+    for rb in verdict.outlier_rebuttals:
+        if not (rb.rebuttal and rb.rebuttal.strip()) or not extract_meaningful_numbers(rb.rebuttal):
+            continue
+        ids = sorted(set(rb.evidence_ids) | set(_EVID_RE.findall(rb.rebuttal)))
+        claims.append(Claim(text=f"[反駁:{rb.sage}] {rb.rebuttal}", evidence_ids=ids))
     if not claims:
         return []
     report = check_claims(claims, store, cfg)
@@ -74,6 +98,11 @@ debate (each side gave a blind opening, then a rebuttal after seeing the opponen
 Decide which side argued better ON THE EVIDENCE (not which side is more popular),
 identify the single strongest point on each side, and list risks neither side
 resolved. A draw is allowed. Write text fields in Traditional Chinese.
+
+D-2 — ANCHOR every quantitative claim: in `rationale` and each `outlier_rebuttals.rebuttal`,
+put an inline evidence id like [E012] right where each number appears; numbers are verified
+against the evidence you cite there. Do not invent ids or numbers — cite only ids from the
+evidence digest below.
 
 When you rule a side lost, you MUST NOT defeat its sages only in the aggregate.
 The losing side's core dissenting sages are listed below by side. For EACH of them,
@@ -249,4 +278,9 @@ async def run_debate(
         # winner/rationale 等以原判為準（避免補打改判）；只合併 rebuttal、揭露仍缺者
         verdict.outlier_rebuttals, verdict.unrebutted_outliers = _merge_rebuttals(
             verdict.outlier_rebuttals, retry.outlier_rebuttals, needed)
+
+    # D-2：裁定 rationale + 反駁的行內引用過 cite-check（軟揭露）。citation config 缺席
+    # （純結構單元測試傳 settings=None）時優雅略過——production 必有。
+    if cfg is not None:
+        verdict.unverified = _citecheck_judge(verdict, store, cfg)
     return bull, bear, verdict

@@ -46,6 +46,11 @@ class CitationReport(BaseModel):
         return not self.unverified
 
 
+# 行內引用 [E012] 的 id 抽取——chief / judge / debater 文字共用同一真相來源。
+# `\d{3,}`（非 {3}）：evidence 數 > 999 時 id 為 E1000+，{3} 會 silent 截成 E100 引到錯 id。
+EVIDENCE_ID_RE = re.compile(r"E\d{3,}")
+
+
 _SUFFIX = {"k": 1e3, "m": 1e6, "b": 1e9, "t": 1e12, "兆": 1e12, "億": 1e8, "萬": 1e4}
 
 # -$416.2B / 35.3x / -5.2% / 7.46 / 416,161,000,000 / 4.283兆 / 1,134.1B
