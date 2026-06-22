@@ -189,14 +189,31 @@ class DebateVerdict(BaseModel):
     )
     # fail-loud：補打後仍未被論點級反駁的敗方代表大師，brief 顯式警告而非假裝完成
     unrebutted_outliers: list[str] = Field(default_factory=list)
+    # D-2：rationale / outlier_rebuttals 內行內 [E0xx] 引用的數字過 cite-check 後對不上者
+    # （軟揭露，與 sage sop_trace / debate 兩輪一致，不 refuse、不改判）。由 debate 程式回填。
+    unverified: list[UnverifiedClaim] = Field(default_factory=list)
 
 
 class RiskNote(BaseModel):
     concerns: list[str] = Field(default_factory=list)
     data_quality_acceptable: bool
+    # D-3：雙向 [-0.3, +0.2]。負向＝chief 過度樂觀/風險未充分揭露；正向＝chief 偏保守且證據強，
+    # risk 願補信心。正向上限 0.2 < 負向下限絕對值 0.3，維持「風控官總體偏保守」的角色定位。
     conviction_adjustment: float = Field(
-        description="-0.3 to 0, subtract from chief's conviction for unpriced risks", default=0.0
+        description="-0.3 to +0.2: negative subtracts from chief's conviction for unpriced "
+        "risks; positive (max +0.2) adds it back when chief is too conservative AND evidence "
+        "is strong. Keep |negative| capacity larger — you are a risk officer, default cautious.",
+        default=0.0,
     )
+    # D-3 決議 3：對稱揭露——下調/上調都須在 brief 標明理由（讀者有權知道 conviction 每一段來歷）。
+    adjustment_reason: str = Field(
+        default="", description="One-sentence reason for the conviction_adjustment (繁體中文)"
+    )
+
+    @property
+    def clamped_adjustment(self) -> float:
+        """[-0.3, +0.2] 夾擠後的實際調整值——synthesis 套用與 brief 揭露的單一真相來源。"""
+        return max(-0.3, min(0.2, self.conviction_adjustment))
 
 
 class PriceLevel(BaseModel):

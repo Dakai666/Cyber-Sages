@@ -88,7 +88,8 @@ class FakeGateway:
             )
         if name == "RiskNote":
             return RiskNote(concerns=["集中度"], data_quality_acceptable=True,
-                            conviction_adjustment=-0.05)
+                            conviction_adjustment=-0.05,
+                            adjustment_reason="論點集中於估值單一假設，略降信心")
         raise AssertionError(f"unexpected schema {name}")
 
 
@@ -159,12 +160,17 @@ async def test_full_pipeline_dry_run():
     # 決策簡報含行動計畫與時間軸
     brief = render_brief(result)
     assert "決策簡報" in brief and "回檔買進" in brief and "三時間軸" in brief
+    # D-3：風控官信心調整對稱揭露（下調也標值與理由）——獨立於 audit 降級，恆顯示
+    assert "風控官下調信心" in brief and "估值單一假設" in brief
 
     # agent payload 結構完整
     payload = build_agent_payload(result)
     assert payload["verdict"]["action_plan"]["action"] == "buy_dip"
     assert payload["council"]["signals"][0]["sage"]
     assert "note_to_judge" in payload
+    # D-3：payload 帶 risk_officer 區塊（agent judge 可見雙向調整與理由）
+    assert payload["risk_officer"]["conviction_adjustment"] == pytest.approx(-0.05)
+    assert "估值單一假設" in payload["risk_officer"]["adjustment_reason"]
 
 
 async def test_pipeline_horizon_propagates_to_result_and_brief():
@@ -185,6 +191,20 @@ async def test_pipeline_horizon_propagates_to_result_and_brief():
     payload = build_agent_payload(result)
     assert payload["horizon"] == "trading"
     assert "Warren Buffett" in payload["council"]["abstained"]
+
+
+async def test_payload_and_brief_survive_missing_risk():
+    # D-3 micro（review）：非 blocked 但 risk 缺席（防禦性 None）時，payload/brief 結構仍合法、
+    # 不炸——風控揭露行與 risk_officer 區塊靜默略過。
+    settings = load_settings()
+    result = await run_pipeline(
+        "AAPL", settings, FakeGateway(),  # type: ignore[arg-type]
+        n_sages=2, include_macro=False)
+    result.risk = None
+    payload = build_agent_payload(result)
+    assert payload["risk_officer"] is None
+    brief = render_brief(result)
+    assert "決策簡報" in brief and "風控官下調信心" not in brief
 
 
 async def test_pipeline_skip_debate():

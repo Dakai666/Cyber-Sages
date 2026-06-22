@@ -122,6 +122,15 @@ def render_brief(result: AnalysisResult) -> str:
         "",
     ]
 
+    # D-3 決議 3：風控官信心調整對稱揭露——下調/上調都標明值與理由（讀者有權知道 conviction
+    # 每一段來歷）。clamped 後 ≈0 不顯示，避免 +0.00 噪音。
+    if result.risk:
+        adj = result.risk.clamped_adjustment
+        if abs(adj) >= 0.005:
+            direction = "上調" if adj > 0 else "下調"
+            reason = result.risk.adjustment_reason or "（風控官未說明理由）"
+            lines += [f"> 🛡 風控官{direction}信心 {adj:+.2f}（{reason}）", ""]
+
     rows = []
     for lv in plan.entry_zone:
         rows.append(_level_row(f"進場（{lv.label}）", lv))
@@ -199,6 +208,9 @@ def render_brief(result: AnalysisResult) -> str:
         if arg:
             side_zh = "辯論多方" if arg.side == "bull" else "辯論空方"
             flat += [(side_zh, u) for u in arg.unverified]
+    # D-2：裁定 rationale + 反駁的行內引用未過驗證者（軟揭露，同口徑）
+    if result.debate:
+        flat += [("辯論裁判", u) for u in result.debate.unverified]
     uv = f" · {len(flat)} 條 claim 未過引用驗證" if flat else ""
     lines += [
         "",
@@ -310,6 +322,11 @@ def render_debate(result: AnalysisResult) -> str:
     if d.unrebutted_outliers:
         lines += ["", f"> ⚠️ 裁判未對 {len(d.unrebutted_outliers)} 位敗方代表完成論點級"
                   f"反駁：{'、'.join(d.unrebutted_outliers)}（其核心論點尚未被正面回應）"]
+    # D-2：裁定/反駁內未過引用驗證的數字——軟揭露（不改判、不 refuse）。
+    if d.unverified:
+        lines += ["", "> ⚠️ 裁定/反駁未過引用驗證的數字（軟揭露，不改判）："]
+        for u in d.unverified:
+            lines.append(f"> - {u.tag}：{u.reason}")
     return "\n".join(lines)
 
 
@@ -454,8 +471,20 @@ def build_agent_payload(result: AnalysisResult) -> dict:
                 {"analyst": "辯論多方" if arg.side == "bull" else "辯論空方", "text": u.text,
                  "tag": u.tag, "evidence_ids": u.evidence_ids, "reason": u.reason}
                 for arg in (result.bull, result.bear) if arg for u in arg.unverified
-            ],
+            ] + ([
+                # D-2：裁定 rationale + 反駁未過引用驗證的數字
+                {"analyst": "辯論裁判", "text": u.text, "tag": u.tag,
+                 "evidence_ids": u.evidence_ids, "reason": u.reason}
+                for u in result.debate.unverified
+            ] if result.debate else []),
         },
+        # D-3：風控官覆核——雙向調整值 + 理由（對稱揭露給 agent judge：上調/下調都留痕）。
+        "risk_officer": {
+            "conviction_adjustment": result.risk.clamped_adjustment,
+            "adjustment_reason": result.risk.adjustment_reason,
+            "concerns": result.risk.concerns,
+            "data_quality_acceptable": result.risk.data_quality_acceptable,
+        } if result.risk else None,
         "note_to_judge": (
             "verdict 是幕僚長建議，council 是陪審團票數與個別論點，"
             "debate 是攻防檢驗結果。最終決策權在你；所有數字可用 evidence_id "

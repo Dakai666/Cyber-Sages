@@ -1,5 +1,6 @@
 # Cyber-Sages Roadmap
 
+**Revision**: 2026-06-22（v12 — **Phase 5 / Spec D 決策結構落地**（branch `feat/spec-d-decision-structure`，353 passed）：D-1 chief 行內 `[E0xx]` 引用 + cite-check 收嚴（`_chief_claims` 引文字內 id 非全 store）、D-2 judge rationale/反駁 cite-check（`_citecheck_judge`、DebateVerdict.unverified）、D-3 risk 雙向 `[-0.3,+0.2]`（`clamped_adjustment` + 對稱揭露）、D-4 chief↔risk 固定 1 輪迭代（≤-0.2 觸發）。決議偏離：「≥3 id」走 prompt 軟引導非硬 schema（守 W7 degrade-don't-refuse）；chief 補全類別 digest。回測驗收延 Phase 6。下一步：Phase 6（Spec E2 蒸餾 + 全員遷移）或剩餘 open issues。）
 **Revision**: 2026-06-20（v11 — **Spec F 收官**：P0（#60）/P1（#61）/P2（#63/#64）+ review polish（#66/#67）+ TW 專屬總經源 follow-up（#68→央行重貼現率 #69 / 主計總處 CPI #70 / P3 強化 #71）全數合併、Spec F 標 accepted。剩餘完整性項 C6 情緒 / C3 TW 現金流 / TW RS 轉 issue #65（需設計）。下一步：Phase 5（Spec D 決策結構）。）
 **Revision**: 2026-06-17（v10 — **Spec F 資料源頭強固**插隊於 Phase 5 前：SPCX 幽靈 bar live 事故觸發，P0（#60）+ P1（#61）已合併、P2 進行中。鐵律 1「資料正確」優先於決策結構。見 `docs/specs/2026-06-17-F-data-source-robustness.md`）
 **Revision**: 2026-06-14（v9 — **Phase 3 / Spec E1 全數完成（#38/#42/#44 合併、live 雙市場驗收通過）**。Phase 4 / Spec C **v2 大改寫**：DK 把 P4 擴大為「analyst 降級為數據源 + horizon(trading/value) 分流 + 大師為主體 + 陪審團結構」四條 PR；E2 量產延到「更後面」——先手工擴充大師（按類型）。E2 前置 issue #39/#40/#41/#43/#45）
@@ -249,10 +250,26 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 
 弱點編號沿用 spec 內 S1-S7（穩定性）/ C1-C8（完整性），不另佔 W 序號（W 系列為 Spec A/B 既有）。
 
-### Phase 5 — Spec D：決策結構
+### Phase 5 — Spec D：決策結構 ✅ **實作完成（2026-06-22，待 PR review）**
 
 Chief / Judge 強制 evidence id 引用（行內 `[E001]`）、risk officer 雙向
-`[-0.3, +0.2]`、chief↔risk 固定 1 輪迭代。
+`[-0.3, +0.2]`、chief↔risk 固定 1 輪迭代。branch `feat/spec-d-decision-structure`（353 passed，
+自 Spec F 的 342 起算 +11）：
+
+1. ✅ **D-1 Chief 行內引用**：CHIEF_SYSTEM 要求 thesis / key_risks / what_would_change_my_mind
+   量化宣稱附行內 `[E0xx]`；`_chief_claims` 由「引全 store」改「引文字內行內 id」——數字須由
+   chief **實際引用**的 evidence 推導，攔截「引對 id 卻寫錯數字」與 no_cite。chief prompt 補全
+   類別 digest（讓任何數字有可引 id）。retry 1 次仍失敗軟揭露（W7 一貫）。
+2. ✅ **D-2 Judge 行內引用**：JUDGE_SYSTEM 同步；`_citecheck_judge` 驗 rationale + outlier_rebuttals
+   （結構欄 ids ∪ 行內 ids），DebateVerdict 加 `unverified` 回填，brief/details/payload 揭露。
+3. ✅ **D-3 Risk 雙向**：`conviction_adjustment` `[-0.3,+0.2]`，`RiskNote.clamped_adjustment` 單一
+   真相來源；決議 3 對稱揭露（brief「風控官上調/下調 ±0.x（理由）」+ payload `risk_officer` 區塊）。
+4. ✅ **D-4 chief↔risk 固定 1 輪**：clamped ≤ -0.2 時 chief 自動回應重寫 thesis 關鍵段
+   （`_RISK_REBUTTAL_THRESHOLD`），重寫版同樣過 cite-check。
+
+**決策偏離留痕**：決議 1「≥3 id / 段落級」**未用硬 schema validator**（草案字面「schema 驗證失敗」）
+——改 prompt 軟引導，避免 retry 耗盡 raise 中止 synthesis 與 W7 degrade-don't-refuse 衝突；量化
+宣稱的硬約束仍由 cite-check no_cite 把關。回測驗收（5 案例）依範圍變更延 Phase 6。詳見 Spec D。
 
 ### Phase 6 — Spec E2：Cyber-Nüwa 蒸餾引擎 + 全員遷移（**延後到手工大師夠多之後**）
 

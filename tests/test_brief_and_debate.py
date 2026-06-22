@@ -340,6 +340,90 @@ def test_debate_evid_regex_matches_4plus_digit_ids():
     assert _EVID_RE.findall("見 [E1000] 與 [E007]") == ["E1000", "E007"]
 
 
+# ---------- D-2：裁定 rationale + 反駁 cite-check（軟揭露） ----------
+
+
+def test_judge_citecheck_flags_fabricated_rationale_number():
+    # rationale 引用 E001（=35.0%）但寫 999.9 → num_mismatch
+    from cyber_sages.agents.debate import _citecheck_judge
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    v = DebateVerdict(winner="bear", rationale="毛利率僅 999.9% [E001]，難撐估值",
+                      strongest_bull_point="b", strongest_bear_point="s")
+    uv = _citecheck_judge(v, store, cfg)
+    assert len(uv) == 1 and uv[0].kind == "num_mismatch"
+    assert "裁定" in uv[0].text
+
+
+def test_judge_citecheck_checks_rebuttal_with_struct_and_inline_ids():
+    # 反駁取「結構欄 evidence_ids ∪ 行內 [E0xx]」；35.0% 對得上 E001 → 過
+    from cyber_sages.agents.debate import _citecheck_judge
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    v = DebateVerdict(
+        winner="bull", rationale="多方紮實", strongest_bull_point="b",
+        strongest_bear_point="s",
+        outlier_rebuttals=[OutlierRebuttal(
+            sage="Buffett", thesis_point="估值貴",
+            rebuttal="毛利率 35.0% 撐得住", evidence_ids=["E001"])],
+    )
+    assert _citecheck_judge(v, store, cfg) == []
+
+
+def test_judge_citecheck_flags_uncited_rebuttal_number():
+    # 反駁有數字但結構欄與行內都無 id → no_cite
+    from cyber_sages.agents.debate import _citecheck_judge
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    v = DebateVerdict(
+        winner="bull", rationale="多方紮實", strongest_bull_point="b",
+        strongest_bear_point="s",
+        outlier_rebuttals=[OutlierRebuttal(
+            sage="Buffett", thesis_point="估值貴", rebuttal="毛利率 35.0% 撐得住")],
+    )
+    uv = _citecheck_judge(v, store, cfg)
+    assert len(uv) == 1 and uv[0].kind == "no_cite" and "Buffett" in uv[0].text
+
+
+def test_judge_citecheck_qualitative_passes():
+    # rationale/反駁皆無有意義數字 → 無 claim → 過
+    from cyber_sages.agents.debate import _citecheck_judge
+    store = _citecheck_store()
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    v = DebateVerdict(winner="draw", rationale="雙方勢均力敵 [E001]",
+                      strongest_bull_point="b", strongest_bear_point="s")
+    assert _citecheck_judge(v, store, cfg) == []
+
+
+async def test_run_debate_backfills_judge_unverified():
+    # run_debate 末端把 _citecheck_judge 結果回填到 verdict.unverified（軟揭露）
+    store, council = _store_council()  # E001 = latest_close 2310.0
+    rb = OutlierRebuttal(sage="Cathie Wood", thesis_point="x", rebuttal="y", evidence_ids=["E001"])
+    bad = DebateVerdict(winner="bear", rationale="收盤僅 99.9 元 [E001] 太貴",
+                        strongest_bull_point="b", strongest_bear_point="s",
+                        outlier_rebuttals=[rb])
+    gw = _FakeDebateGateway([bad])
+    cfg = SimpleNamespace(numeric_tolerance_pct=1.0)
+    _, _, v = await run_debate(store, [], council,
+                              SimpleNamespace(citation=cfg), gw)
+    assert v.unverified and v.unverified[0].kind == "num_mismatch"
+
+
+def test_render_debate_shows_judge_unverified():
+    from cyber_sages.report import render_debate
+    verdict = DebateVerdict(
+        winner="bear", rationale="r", strongest_bull_point="b", strongest_bear_point="s",
+        unverified=[UnverifiedClaim(text="[裁定] x", kind="num_mismatch",
+                                    reason="numbers not found")],
+    )
+    result = SimpleNamespace(
+        ticker="2330", debate=verdict,
+        bull=DebateArgument(side="bull", argument="多"),
+        bear=DebateArgument(side="bear", argument="空"))
+    out = render_debate(result)
+    assert "裁定/反駁未過引用驗證" in out and "NUM_MISMATCH" in out
+
+
 # ---------- P7：neutral 三類獨立訊號 ----------
 
 

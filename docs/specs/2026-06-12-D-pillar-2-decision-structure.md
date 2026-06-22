@@ -1,6 +1,6 @@
 # Spec D — Pillar 2 決策結構
 
-**Status**: accepted（2026-06-13 決議定案，見文末）
+**Status**: implemented（2026-06-22 — Phase 5 落地於 branch `feat/spec-d-decision-structure`：D-1～D-4 全數實作，353 passed。決議定案見文末）
 **Date**: 2026-06-12
 **Dependencies**: A + C
 **範圍變更**: 2026-06-13 — 驗收條件「至少 5 個回測案例」移到 Phase 6（Spec E2 的最小重放工具落地後補驗），不擋本 spec 收口
@@ -58,13 +58,34 @@ JUDGE_SYSTEM 加規則：
 - Pipeline 硬化（Spec B）
 - Brief 模板（Spec 之外，留給未來場景化時）
 
-## 驗收條件（草案）
+## 驗收條件
 
-- [ ] chief.thesis / risks / what_would_change_my_mind 內的數字 100% 過 cite-check（與 Spec B-7 同驗收，可併）
-- [ ] judge.rationale / outlier_rebuttals 100% 過 cite-check
-- [ ] risk.conviction_adjustment 範圍為 `[-0.3, +0.2]`
-- [ ] chief ↔ risk 迭代在 risk 質疑重時（≤ -0.2）觸發
-- [ ] 至少 5 個回測案例：risk 雙向後整體 conviction 預測力提升
+- [x] chief.thesis / risks / what_would_change_my_mind 內的量化宣稱以**行內 `[E0xx]`** 引用，
+      數字對其引用之 evidence 做 cite-check；對不上者**軟揭露**（標 unverified、retry 1 次仍失敗
+      不 refuse，與 W7 一致）。`_chief_claims` 由「引全 store」改為「引文字內行內 id」，攔截
+      「引對 id 卻寫錯數字」與「寫數字卻不引用（no_cite）」。決議 1 的「≥3 id / 段落級」走
+      prompt 軟引導（非硬 schema 閘門，避免 refuse），與 degrade-don't-refuse 哲學一致。
+- [x] judge.rationale / outlier_rebuttals 內行內引用過 cite-check（`_citecheck_judge`，軟揭露）；
+      DebateVerdict 新增 `unverified` 欄回填、brief/details/payload 揭露。
+- [x] risk.conviction_adjustment 範圍 `[-0.3, +0.2]`（`RiskNote.clamped_adjustment` 為單一真相來源，
+      synthesis 套用與 brief 揭露共用）；正向上限 0.2 < 負向 0.3，維持風控官偏保守定位。
+- [x] chief ↔ risk 固定 1 輪迭代：clamped 調整 ≤ -0.2 時 chief 自動回應重寫 thesis 關鍵段
+      （`_RISK_REBUTTAL_THRESHOLD`），重寫版同樣過 cite-check。
+- [x] 決議 3 對稱揭露：brief 顯示「風控官上調/下調信心 ±0.x（理由）」；payload 加 `risk_officer`
+      區塊（雙向值 + 理由）供 agent judge 溯源。
+- [ ] 至少 5 個回測案例：risk 雙向後整體 conviction 預測力提升 → **延後 Phase 6**（依範圍變更，
+      待 Spec E2 最小重放工具落地後補驗）。
+
+**實作偏離 / 決策留痕（2026-06-22）**：
+- 「≥3 id / 段落級」**未用硬 schema validator**（spec 草案字面「schema 驗證失敗」）。理由：
+  structured() retry 耗盡會 raise 中止 synthesis，與 W7「chief 主體寧軟揭露不報廢」設計與兩條鐵律
+  衝突。改走 prompt 引導 + cite-check 軟揭露（DK 2026-06-22 定案）。量化宣稱的硬約束仍在——
+  cite-check 對未錨定數字判 no_cite。
+- chief prompt 補全類別 digest（news/chips/macro/estimate/profile/reference）。理由：改行內驗證後，
+  thesis 若引非價格類數字卻看不到其 id 會被誤判 no_cite；補上後任何數字皆有可引 id（DK 2026-06-22
+  定案，correctness-over-tokens）。
+- 行內 id 抽取統一到 `citation_check.EVIDENCE_ID_RE`（chief/judge/debater 共用單一真相來源），
+  debate.py 舊 `_EVID_RE` 退為其別名（保留既有測試）。
 
 ## 決議（2026-06-13，DK 授權按最優解定案）
 
