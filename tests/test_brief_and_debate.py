@@ -71,6 +71,13 @@ def test_analyst_system_prompt_states_neutrality_rule():
     assert "buy/sell" in low or "bullish/bearish" in low
 
 
+def test_sage_prompt_forbids_restating_neutral_reason():
+    # #53-E prompt 護欄：neutral 大師不得在 thesis 複述中性理由（與 neutral_reason enum 冗餘）。
+    from cyber_sages.agents.council import SAGE_SHARED_SYSTEM
+    assert "neutral_reason` ONLY" in SAGE_SHARED_SYSTEM
+    assert "do NOT restate it in `thesis`" in SAGE_SHARED_SYSTEM
+
+
 # ---------- Issue 3：敗方離群者需論點級反駁 ----------
 
 def _council() -> CouncilVerdict:

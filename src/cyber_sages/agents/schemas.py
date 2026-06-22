@@ -75,7 +75,11 @@ class SageSignal(BaseModel):
     sage: str = ""
     stance: Stance
     confidence: float = Field(description="0 to 1")
-    thesis: str = Field(description="3-5 sentences in Traditional Chinese, in this sage's voice")
+    thesis: str = Field(
+        description="3-5 sentences in Traditional Chinese, in this sage's voice. If neutral, "
+        "carry substance (which forces, what's missing) — do NOT restate the neutral reason "
+        "here; that lives in neutral_reason (#53-E)."
+    )
     key_evidence_ids: list[str] = Field(default_factory=list)
     what_would_change_my_mind: str
     # P7：stance=neutral 時必填，說明「為何中性」（三類見 NeutralReason）；非中性時忽略。
