@@ -243,8 +243,14 @@ DK 2026-06-14 定調：**E2 量產要排到「更後面的後面」——先手�
 - ✅ **TW 專屬總經源 follow-up**（issue #68，已關閉）：央行重貼現率（PR #69）+ 主計總處 CPI 年增率
   （PR #70）+ P3 強化 `is_independent_source` / `pe_sanity` 雙向覆蓋（PR #71）。台股宏觀從「套美國
   fed funds」升級為「台灣重貼現率 + 台灣 CPI」在地維度；P2 #64-2 yfinance 效能經評估 decline。
-- 🔜 **剩餘完整性項**（轉 issue #65，需設計）：C6 news 情緒量化（非確定性、與反幻覺鐵律衝突）、
-  C3 TW 現金流量表（FinMind YTD 累計跨期拆季）、TW RS（^TWII，需 async-safe benchmark fetch）。
+- 🔜 **剩餘完整性項**（issue #65）：
+  - ✅ **C3 TW 現金流量表**（2026-06-22）：FinMind YTD 累計確定性去累計化還原單季 → OCF/capex/FCF/
+    D&A/利息保障（單季 + TTM）。capex 對齊美股正值慣例、FCF=OCF−capex；非曆年制安全降級。實機
+    2330 驗證（四季還原加總=FY）。
+  - ✅ **TW RS**（2026-06-22）：相對強弱 vs 加權指數 ^TWII，同步 yfinance 包 `to_thread_with_timeout`
+    避免阻塞 event loop（best-effort）。實機 2330 驗證（rs_vs_benchmark_3m_pct）。
+  - 🔜 **C6 news 情緒量化**（仍 defer，需設計）：LLM 情緒分數非確定性、非第一手，與反幻覺鐵律衝突
+    ——須確定性詞典法或另立 sentiment phase；先觀察大師是否真需量化情緒、抑或讀 headline 已足。
 
 **Spec F 收官**——Pillar 1 回訪完成，下一步 Phase 5（Spec D 決策結構）。
 
