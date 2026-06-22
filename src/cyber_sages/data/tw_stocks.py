@@ -38,12 +38,26 @@ def to_stock_id(ticker: str) -> str:
     return ticker.upper().split(".")[0]
 
 
+def _benchmark_close(symbol: str):
+    """大盤收盤序列（供 RS 相對強弱）。best-effort：失敗/不足回 None（RS 略過、不致命）。
+    同步 yfinance——TW get_history 是 async inline，呼叫端須以 to_thread_with_timeout 包裝避免
+    阻塞 event loop（C7 TW RS / issue #65）。比照 us_stocks._benchmark_close（per-provider 自含）。"""
+    try:
+        import yfinance as yf
+        s = yf.Ticker(symbol).history(period="1y", auto_adjust=True).dropna(subset=["Close"])
+        return s["Close"] if len(s) >= 64 else None
+    except Exception as e:
+        logger.warning("TW benchmark %s fetch failed: %s", symbol, e)
+        return None
+
+
 # 綜合損益表是「單季」值；估值要用 TTM（近四季合計），單季 EPS×4 會放大成數倍的
 # 本益比誤判，故確定性算出 TTM。模組常數：不需要實例狀態，測試可直接 import。
 TTM_FIELDS: dict[str, tuple[str, str]] = {
     "EPS": ("eps_ttm", "TWD/share"),
     "Revenue": ("revenue_ttm", "TWD"),
     "IncomeAfterTaxes": ("net_income_ttm", "TWD"),  # ROE 用 TTM 淨利，單季會低估 4x
+    "OperatingIncome": ("operating_income_ttm", "TWD"),  # C3 利息保障 TTM 分子
 }
 
 
@@ -180,8 +194,14 @@ class TWStockProvider:
         if all(r.get("max") is not None and r.get("min") is not None for r in rows):
             high = pd.Series([float(r["max"]) for r in rows], index=idx)
             low = pd.Series([float(r["min"]) for r in rows], index=idx)
+        # C7 TW RS（issue #65）：相對強弱 vs 加權指數 ^TWII。同步 yfinance 包 to_thread 避免
+        # 阻塞 event loop；best-effort，抓不到（None）則 RS 略過、不影響其餘指標。
+        benchmark = await to_thread_with_timeout(
+            lambda: _benchmark_close("^TWII"), what="yfinance ^TWII benchmark", default=None)
         return compute_indicator_evidence(
-            close, high=high, low=low, as_of=date.fromisoformat(rows[-1]["date"]),
+            close, high=high, low=low, benchmark_close=benchmark,
+            benchmark_name="加權指數 (^TWII)",
+            as_of=date.fromisoformat(rows[-1]["date"]),
             url=f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/technical-analysis",
             source="computed from FinMind 1y daily OHLC", price_unit="TWD",
             trading_days=245,  # 台股年交易日約 245（W10）
@@ -195,10 +215,12 @@ class TWStockProvider:
             return []  # ETF 無個股損益表/資產負債表/月營收，不發無謂的 FinMind 請求
         # 損益表/資產負債表抓 ~5.5 年（多年期 roe_5y_avg 等需要）：加寬 start_date 仍是
         # 同一個 FinMind 請求、不增配額；TTM/最新季的下游邏輯只取最近資料、不受影響。
-        income, balance, month = await asyncio.gather(
+        income, balance, month, cashflow = await asyncio.gather(
             self._fm("TaiwanStockFinancialStatements", stock_id, days_ago(2000)),
             self._fm("TaiwanStockBalanceSheet", stock_id, days_ago(2000)),
             self._fm("TaiwanStockMonthRevenue", stock_id, days_ago(430)),
+            # C3 現金流量表（issue #65）：~2.2 年覆蓋近四季 TTM 所需的 YTD 點（含去累計化要的同年前一季）。
+            self._fm("TaiwanStockCashFlowsStatement", stock_id, days_ago(800)),
             return_exceptions=True,
         )
         evs: list[Evidence] = []
@@ -210,6 +232,7 @@ class TWStockProvider:
         evs += self._statement_evidence(balance, BALANCE_FIELDS, base_url,
                                         "FinMind TaiwanStockBalanceSheet")
         evs += self._derived_fundamentals(income, balance, base_url)
+        evs += self._cashflow_evidence(cashflow, income, base_url)
         evs += self._multiyear_fundamentals(income, balance, base_url, stock_id)
         if not isinstance(month, BaseException):
             evs += self._month_revenue_evidence(month, stock_id)
@@ -278,8 +301,8 @@ class TWStockProvider:
         return out
 
     # 確定性衍生欄位（與美股 canonical 命名對齊）。資產負債表與單季損益是同口徑的
-    # 時點/單季快照，可直接相除；現金流量表（FCF / 利息保障）因 FinMind 給的是 YTD
-    # 累計值、與單季混算會跨期出錯，留待後續專案處理，這裡不發。
+    # 時點/單季快照，可直接相除。現金流量表（FCF / D&A / 利息保障）因 FinMind 給的是 YTD
+    # 累計值，需先去累計化再算——獨立於本方法處理（見 _cashflow_evidence，issue #65 C3）。
     @classmethod
     def _derived_fundamentals(cls, income, balance, url) -> list[Evidence]:
         inc, inc_as_of = cls._latest_values(income)
@@ -312,6 +335,104 @@ class TWStockProvider:
         if ni_ttm is not None and eq:
             emit("roe_pct", ni_ttm[0] / eq * 100, "%",
                  "近四季 TTM 稅後淨利 / 股東權益 × 100", bal_as_of)
+        return out
+
+    # ---------- 現金流量表（C3，issue #65）：YTD 去累計化 → 單季 / TTM / FCF ----------
+    # FinMind TaiwanStockCashFlowsStatement 是 YTD 累計值（H1=上半年累計、9M=前三季累計、
+    # FY=全年；隔年 Q1 於 3 月重置回單季）。與單季損益混算會跨期出錯，故先確定性去累計化還原
+    # 單季，再合計 TTM。已實機驗證 2330：2025 四季還原後加總 == FY（見 PR 說明）。
+    _CF_OCF = "CashFlowsFromOperatingActivities"      # 營業活動之淨現金流
+    _CF_CAPEX = "PropertyAndPlantAndEquipment"        # 取得不動產廠房設備（FinMind 給負值＝流出）
+    _CF_DEP = "Depreciation"                          # 折舊費用
+    _CF_AMORT = "AmortizationExpense"                 # 攤銷費用
+    _CF_INTEREST = "InterestExpense"                  # 利息費用
+
+    @staticmethod
+    def _decumulate(rows, fm_type: str) -> list[tuple[date, float]]:
+        """YTD 累計 → 單季：Q1（3 月）= YTD 本身；Q2/Q3/Q4 = 本季 YTD − 同年上一季 YTD。
+        升冪回傳 [(季別日, 單季值)]；缺同年上一季而無法還原者跳過（寧缺勿錯）。非曆年制公司
+        （季月非 3/6/9/12）會整批跳過 → 該標的無現金流 evidence（安全降級，見 _detect_non_calendar_fy）。"""
+        if isinstance(rows, BaseException) or not rows:
+            return []
+        ytd: dict[tuple[int, int], tuple[date, float]] = {}
+        for r in rows:
+            if r["type"] == fm_type and r["value"] is not None:
+                dt = date.fromisoformat(r["date"])
+                ytd[(dt.year, dt.month)] = (dt, float(r["value"]))
+        out: list[tuple[date, float]] = []
+        for (y, m), (dt, v) in sorted(ytd.items()):
+            if m == 3:
+                out.append((dt, v))                       # Q1 YTD = 單季
+            elif m in (6, 9, 12) and (y, m - 3) in ytd:
+                out.append((dt, v - ytd[(y, m - 3)][1]))  # 本季 = 本季 YTD − 同年上一季 YTD
+        return out
+
+    @classmethod
+    def _cf_ttm(cls, rows, fm_type: str) -> tuple[float, list[tuple[date, float]]] | None:
+        """近四季單季合計 (total, last4)；不足四季回 None（不硬湊，避免低估 TTM）。"""
+        singles = cls._decumulate(rows, fm_type)
+        if len(singles) < 4:
+            return None
+        last4 = singles[-4:]
+        return sum(v for _, v in last4), last4
+
+    @classmethod
+    def _cashflow_evidence(cls, cashflow, income, url) -> list[Evidence]:
+        if isinstance(cashflow, BaseException) or not cashflow:
+            return []
+        csrc = "computed from FinMind TaiwanStockCashFlowsStatement（YTD 去累計化）"
+        out: list[Evidence] = []
+
+        def emit(field, value, unit, as_of, note):
+            out.append(Evidence(
+                category="fundamentals", field=field, value=round(float(value), 2),
+                unit=unit, source=csrc, url=url, as_of=as_of, note=note))
+
+        ocf_singles = cls._decumulate(cashflow, cls._CF_OCF)
+        if ocf_singles:
+            d, v = ocf_singles[-1]
+            emit("operating_cash_flow_latest_quarter", v, "TWD", d,
+                 f"單季營業現金流（YTD 去累計化，季別 {d}）")
+        ocf_ttm = cls._cf_ttm(cashflow, cls._CF_OCF)
+        if ocf_ttm:
+            total, last4 = ocf_ttm
+            emit("operating_cash_flow_ttm", total, "TWD", last4[-1][0],
+                 f"近四季 TTM 營業現金流（{last4[0][0]}…{last4[-1][0]}）")
+
+        # capex：FinMind 給負值（現金流出）；對齊美股 capex 正值慣例 emit 絕對值（FCF = OCF − capex）。
+        capex_singles = cls._decumulate(cashflow, cls._CF_CAPEX)
+        if capex_singles:
+            d, v = capex_singles[-1]
+            emit("capex_latest_quarter", abs(v), "TWD", d,
+                 f"單季資本支出（取得不動產廠房設備，YTD 去累計化，季別 {d}；正=支出額）")
+        capex_ttm = cls._cf_ttm(cashflow, cls._CF_CAPEX)
+        if capex_ttm:
+            total, last4 = capex_ttm
+            emit("capex_ttm", abs(total), "TWD", last4[-1][0],
+                 f"近四季 TTM 資本支出（{last4[0][0]}…{last4[-1][0]}；正=支出額）")
+
+        # FCF = OCF − capex（皆 TTM）。capex_ttm[0] 為負（流出）→ OCF + 負值 = OCF − |capex|。
+        if ocf_ttm and capex_ttm:
+            emit("free_cash_flow_ttm", ocf_ttm[0] + capex_ttm[0], "TWD", ocf_ttm[1][-1][0],
+                 "近四季 TTM 自由現金流＝營業現金流 − 資本支出")
+
+        # D&A（折舊 + 攤銷）TTM——owner earnings / EBITDA 類分析輸入；以折舊為主，攤銷有才加。
+        dep_ttm = cls._cf_ttm(cashflow, cls._CF_DEP)
+        if dep_ttm:
+            amort_ttm = cls._cf_ttm(cashflow, cls._CF_AMORT)
+            da = dep_ttm[0] + (amort_ttm[0] if amort_ttm else 0.0)
+            emit("depreciation_amortization_ttm", da, "TWD", dep_ttm[1][-1][0],
+                 "近四季 TTM 折舊 + 攤銷")
+
+        # 利息保障：營業利益 TTM / 利息費用 TTM（利息費用取絕對值，比照美股 interest_coverage）。
+        int_ttm = cls._cf_ttm(cashflow, cls._CF_INTEREST)
+        if int_ttm:
+            emit("interest_expense_ttm", abs(int_ttm[0]), "TWD", int_ttm[1][-1][0],
+                 "近四季 TTM 利息費用")
+            op_ttm = cls._ttm_sum(income, "OperatingIncome")
+            if op_ttm and int_ttm[0]:
+                emit("interest_coverage", op_ttm[0] / abs(int_ttm[0]), "x",
+                     int_ttm[1][-1][0], "近四季 TTM 營業利益 / 利息費用")
         return out
 
     # ---------- 多年期指標（季度聚合成年度）----------
