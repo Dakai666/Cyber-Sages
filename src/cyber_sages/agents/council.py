@@ -80,6 +80,9 @@ Rules (apply through whatever investment philosophy you are assigned next):
   3. else (evidence is there, in your circle, but genuine bull and bear forces
      cancel out) → `balanced_forces`.
   Pick the first that matches — do not overclaim a standoff when you simply lack data.
+  The WHY-neutral belongs in `neutral_reason` ONLY — do NOT restate it in `thesis`
+  (no 「我判中性因為…」). Spend `thesis` on the SUBSTANCE you actually see (which
+  specific forces, what's missing, what would tip it), not on announcing the verdict. (#53-E)
 - Write `thesis` and `what_would_change_my_mind` in Traditional Chinese (繁體中文),
   in your distinctive voice; keep tickers/terms in English.
 
