@@ -112,6 +112,10 @@ def _kind(ev) -> str:
         return "price"
     if ev.category == "fundamentals" and not any(h in field for h in _RATIO_FIELD_HINTS):
         return "magnitude"
+    if ev.category == "macro" and isinstance(ev.value, (int, float)):
+        # 利率/殖利率/CPI/失業率等純量——利差、殖利率曲線斜率、通膨缺口都是兩值的
+        # 單純差（diff），是總經分析的本質運算。只開 diff：rate × rate 算比率無語意。
+        return "macro_scalar"
     return "other"
 
 
@@ -138,12 +142,16 @@ _PAIR_OPS: dict[frozenset[str], set[str]] = {
     frozenset({"magnitude"}): {"ratio", "ratio_pct"},   # ROE/負債比 + 利潤率
     frozenset({"price", "per_share"}): {"ratio"},       # P/E
     frozenset({"magnitude", "per_share"}): {"ratio"},   # shares ≈ net_income/eps
+    frozenset({"macro_scalar"}): {"diff"},              # 利差 / 殖利率斜率 / 通膨缺口
 }
 
 
-def _candidate_values(cited) -> list[float]:
-    """可供比對的值：引用 evidence 的原值、字串證據（如新聞）內的數字，以及白名單內
-    配對的正確算術衍生（見上方 _PAIR_OPS）。
+def _candidate_values(cited) -> tuple[list[float], list[float]]:
+    """回傳 (base, derived)：
+    - base — 可直接比對的原值（引用 evidence 的 first-hand 值＋字串證據如新聞內的數字）。
+      原值採「量級比對」（見 check_claim）：中文「賣超 X」措辭把方向寫進詞語、數字寫成
+      正數，故 claim 的 +X 要對得上 store 內帶號的 -X（三大法人籌碼）。
+    - derived — 白名單內配對的正確算術衍生（見上方 _PAIR_OPS），維持嚴格符號比對。
 
     刻意只納入「明確正確且語意成立」的衍生，不做量級容忍、不做跨類亂配——那會把源頭
     的單位/方向錯誤、或無關欄位的巧合組合一起放行。源頭該做的是把數字以可讀量級呈現
@@ -165,7 +173,7 @@ def _candidate_values(cited) -> list[float]:
             ops = _PAIR_OPS.get(frozenset({ka, kb}))
             if ops:
                 derived.extend(_derive(a, b, ops))
-    return base + derived
+    return base, derived
 
 
 def check_claim(claim: Claim, store: EvidenceStore, cfg: CitationConfig) -> ClaimCheck:
@@ -186,11 +194,16 @@ def check_claim(claim: Claim, store: EvidenceStore, cfg: CitationConfig) -> Clai
         # 質性 claim：有引用就算通過（語意正確性由辯論階段對抗）
         return ClaimCheck(claim=claim, verified=True, reason="qualitative claim with citation")
 
-    candidates = _candidate_values(cited)
-    unmatched = [
-        n for n in numbers
-        if not any(_matches(n, v, cfg.numeric_tolerance_pct) for v in candidates)
-    ]
+    base, derived = _candidate_values(cited)
+
+    def _hit(n: float) -> bool:
+        # 衍生值維持嚴格符號（比率/利潤率的符號本身有語意；變動率方向由 _derive 雙向放行）。
+        if any(_matches(n, v, cfg.numeric_tolerance_pct) for v in derived):
+            return True
+        # 原值（first-hand evidence）採量級比對：claim 的 +X 對得上 store 內帶號的 ±X。
+        return any(_matches(abs(n), abs(v), cfg.numeric_tolerance_pct) for v in base)
+
+    unmatched = [n for n in numbers if not _hit(n)]
     if unmatched:
         direct = [float(e.value) for e in cited if isinstance(e.value, (int, float))]
         return ClaimCheck(
