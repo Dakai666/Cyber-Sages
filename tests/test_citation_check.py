@@ -234,6 +234,7 @@ def test_macro_external_constant_still_caught():
     store.add(Evidence(category="macro", field="cpi_yoy_pct", value=4.27,
                        unit="%", source="FRED"))
     claim = Claim(text="CPI 4.27% 與 Fed 隱含 2.0% 目標仍有缺口", evidence_ids=["E001"])
+    # base 只有 4.27（過），2.0 無對應 evidence、單一值也推不出 diff → 整體 fail。
     assert not check_claim(claim, store, CFG).verified
 
 
