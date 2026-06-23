@@ -202,6 +202,63 @@ def test_cartesian_convergence_rejects_cross_kind_fabrication():
     assert not check_claim(claim, store, CFG).verified
 
 
+def test_macro_rate_spread_diff_verified():
+    # #84：央行利差是兩個 macro 純量的單純差。重貼現率 2.0% 與 Fed 3.63% 利差 1.63,
+    # 兩運算元都引用了，必須能由 macro_scalar diff 衍生通過（舊版 macro 不參與衍生而誤殺）。
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="macro", field="tw_discount_rate", value=2.0,
+                       unit="%", source="CBC"))
+    store.add(Evidence(category="macro", field="fed_funds_rate", value=3.63,
+                       unit="%", source="FRED"))
+    claim = Claim(text="台灣央行重貼現率 2.0% 與 Fed Funds Rate 3.63% 利差達 1.63 個百分點",
+                  evidence_ids=["E001", "E002"])
+    assert check_claim(claim, store, CFG).verified
+
+
+def test_macro_cpi_gap_diff_verified():
+    # #84：台美 CPI 缺口 = 4.27 − 2.2 = 2.07，兩值皆引用，macro_scalar diff 應衍生通過。
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="macro", field="cpi_yoy_pct", value=4.27,
+                       unit="%", source="FRED"))
+    store.add(Evidence(category="macro", field="tw_cpi_yoy_pct", value=2.2,
+                       unit="%", source="FRED"))
+    claim = Claim(text="美國 CPI 4.27% 與台灣 CPI 2.2% 差距達 2.07 個百分點",
+                  evidence_ids=["E001", "E002"])
+    assert check_claim(claim, store, CFG).verified
+
+
+def test_macro_external_constant_still_caught():
+    # #84：但分析師注入的外部常數（Fed 隱含 2% 目標）無證據可引——2.0 不在 evidence,
+    # diff 也推不出，必須維持 fail（這條是分析師引用紀律問題，cite-check 判對）。
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="macro", field="cpi_yoy_pct", value=4.27,
+                       unit="%", source="FRED"))
+    claim = Claim(text="CPI 4.27% 與 Fed 隱含 2.0% 目標仍有缺口", evidence_ids=["E001"])
+    assert not check_claim(claim, store, CFG).verified
+
+
+def test_chips_net_sell_magnitude_sign_agnostic():
+    # #84：三大法人淨賣超在 store 內為帶號負值，中文 prose 把方向寫進「賣超」、數字寫正,
+    # claim 的 +2,153,752 必須對得上 evidence 的 -2,153,752（原值量級比對）。
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="chips", field="trust_net_buy", value=-2_153_752.0,
+                       unit="shares", source="FinMind"))
+    store.add(Evidence(category="chips", field="foreign_net_buy_20d", value=-5_420_236.0,
+                       unit="shares", source="FinMind"))
+    claim = Claim(text="投信淨賣超 2,153,752 股、外資 20 日累計賣超 5,420,236 股",
+                  evidence_ids=["E001", "E002"])
+    assert check_claim(claim, store, CFG).verified
+
+
+def test_chips_magnitude_slip_still_caught():
+    # 符號對稱只放寬「正負號」，不放寬量級：賣超 -2,153,752 被誤寫成 2,200,000（差 >1%）仍須 fail。
+    store = EvidenceStore(ticker="2330", market="TW")
+    store.add(Evidence(category="chips", field="trust_net_buy", value=-2_153_752.0,
+                       unit="shares", source="FinMind"))
+    claim = Claim(text="投信淨賣超 2,200,000 股", evidence_ids=["E001"])
+    assert not check_claim(claim, store, CFG).verified
+
+
 def test_report_aggregation():
     store = make_store()
     report = check_claims(
