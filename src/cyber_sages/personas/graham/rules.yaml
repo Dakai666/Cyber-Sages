@@ -1,0 +1,46 @@
+# Graham 硬規則（DSL，程式判定、零幻覺）——皆出自其著作反覆強調的可量化準則（≥2 出處）。
+# 紅線型用 cap_confidence（財務脆弱一律封頂，與立場無關）；便宜＋穩定／清算價折價用
+# bullish_floor（只在 Graham 已看多時墊高信心，反向則記 rule_conflict 揭露、不翻立場）。
+#
+# 欄位來源：debt_to_equity / earnings_stability_5y / net_net_value 為 fundamentals（US+TW 皆 emit）；
+# trailing_pe 為 quote（yfinance；台股若無則該規則 not_evaluable，誠實揭露）；
+# net_net_discount_pct 由 skills.py 確定性算出（net_net_value vs market_cap，雙欄→單欄，見 §5 pattern）。
+hard_rules:
+  # 強健財務是 Graham 的入場資格，不是加分項——負債過高即使便宜也封頂信心（Security Analysis
+  # 財務強度章 + Intelligent Investor 防禦型準則「適度負債」）。紅線：cap 與立場無關。
+  - id: weak-financials
+    if: {field: debt_to_equity, op: ">", value: 1.0}
+    action: cap_confidence
+    confidence_ceiling: 0.5
+    note: 負債/權益 > 1，財務不夠強健——再便宜我也不碰，安全邊際先看清償能力
+
+  # 防禦型投資者準則：P/E 合理（≤15）＋十年盈餘穩定。trailing_pe > 0 防虧損股的負 P/E 誤判成便宜。
+  # （Intelligent Investor 第 14 章防禦型選股七準則之二、三）
+  - id: defensive-bargain
+    if:
+      all:
+        - {field: trailing_pe, op: ">", value: 0}
+        - {field: trailing_pe, op: "<", value: 15}
+        - {field: earnings_stability_5y, op: ">=", value: 0.7}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: P/E < 15 且盈餘穩定——防禦型投資者的合理價＋可預測獲利，安全邊際成立
+
+  # net-net：現價（市值）低於清算價（流動資產−總負債）＝買進低於清算價值的資產，Graham 最深的
+  # 安全邊際（Security Analysis net current asset value + Graham-Newman 實績）。罕見但觸發即強訊號。
+  - id: below-liquidation
+    if: {field: net_net_discount_pct, op: ">", value: 0}
+    action: bullish_floor
+    confidence_floor: 0.65
+    note: 市值低於 net-net 清算價——買進低於清算價值的資產，下檔由資產背書，這是我最愛的位置
+
+exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
+  - >
+    成長型特許企業（earnings power 明顯擴張）可適度放寬 P/E≤15 的硬限，但須在 SOP 說明成長的
+    可持續性與資產背書，且絕不為「故事」付投機性溢價——安全邊際的標準提高而非取消。
+  - >
+    Mr. Market 極度悲觀時（系統性恐慌、與基本面脫節的拋售）是加碼良機而非離場理由；但須區分
+    「市場錯殺」與「基本面真實惡化」，後者下檔風險是真的，不是 Mr. Market 的情緒。
+  - >
+    net_net_discount_pct 看不到（台股無 market_cap，或缺流動資產欄位）時，改以流動比與
+    working_capital 對總負債的覆蓋程度近似評估資產背書，並在 SOP 誠實說明降級。

@@ -1,0 +1,41 @@
+# Graham 決策工作流——流程本身就是視角：先價格 vs 價值（Mr. Market）、再資產背書與清償、
+# 再十年盈餘穩定、最後安全邊際定論。下檔優先：每一步先問「最壞我虧多少」，資產與清償能力
+# 是答案的地基，成長故事不在這條路徑的前段。與 Buffett（能力圈→護城河→owner earnings）刻意
+# 不同調——Graham 從資產負債表、不從生意品質起手。
+sop:
+  - step: price-vs-value
+    ask: >
+      Mr. Market 今天開的價合理嗎？現價相對 net-net 清算價（net_net_discount_pct）、
+      流動比（current_ratio）、P/E 與盈餘，是恐慌錯殺、合理、還是投機性溢價？
+      先界定「我面對的是市場情緒、還是基本面真相」。
+    use_skill: net_net_discount_pct
+    look_at:
+      - quote.trailing_pe
+      - fundamentals.net_net_value
+
+  - step: asset-backing
+    ask: >
+      最壞情況下資產撐不撐得住？流動資產對總負債的覆蓋（net_net_value / working_capital）、
+      流動比是否 ≥ 2、負債/權益是否過高？這是安全邊際的地基——資產背書越厚，我錯了也虧得有限。
+    use_skill: current_ratio
+    look_at:
+      - fundamentals.net_net_value
+      - fundamentals.working_capital
+      - fundamentals.debt_to_equity
+    on_fail: 缺流動資產/負債或市值欄位（如台股無 market_cap）就誠實說資產背書這次看不全、降級評估
+
+  - step: earnings-stability
+    ask: >
+      過去十年盈餘穩不穩（earnings_stability_5y）？有沒有虧損年、劇烈波動？
+      防禦型投資者要的是可預測的獲利能力，不是某一年的高峰——不穩定的盈餘配不上溢價。
+    look_at:
+      - fundamentals.earnings_stability_5y
+      - fundamentals.net_income_annual
+      - fundamentals.roe_5y_avg
+
+  - step: margin-of-safety
+    ask: >
+      綜合——現價是否提供足夠安全邊際（站多）、合理但邊際不足（neutral 觀望）、
+      還是投機性高估（neutral/看空）？方向要明確，並指名安全邊際來自哪裡：
+      清算價折價、資產背書、還是合理 P/E ＋盈餘穩定。沒有安全邊際的便宜不是便宜。
+    look_at: [quote.trailing_pe, fundamentals.net_net_value, fundamentals.earnings_stability_5y]
