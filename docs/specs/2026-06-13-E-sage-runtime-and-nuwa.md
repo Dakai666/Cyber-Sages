@@ -195,13 +195,32 @@ persona，走原本單發 prompt。`load_personas` 同時認得目錄與單檔�
 > owner_earnings not_evaluable 全在 production 兌現。詳見 pilot-pack-handcrafting 附錄。
 > **E1 驗收條件全數達成。**
 
-## E2：Cyber-Nüwa 蒸餾引擎
+## E2：Cyber-Nüwa 蒸餾 —— ⚠️ 2026-06-23 重構：引擎 → SOP/skill
 
-### 定位（issue #2 命名提案決議）
+> **重大範圍變更（DK 2026-06-23 定調）**：原規劃的 `cyber-sages distil` 蒸餾**引擎**
+> 判定為**過度工程**，撤銷。理由：這個專案一半是給 AI agent 用的；**過往 12 位大師
+> 每一位都是 agent（Claude Code）讀文本手工打造的——「蒸餾者」本質上就是讀 SOP 的
+> agent（Claude 自己），而 Claude 也是本專案的消費者**。蓋一台 LLM pipeline 去
+> 自動消費 SOP，是在程式碼裡僵硬複刻「一個 agent 讀好規格、產出一個 Pack」這件事，
+> 且更差：`extract`（附原文出處）/`consolidate`（跨源一致性）本質是 LLM 判斷、不是
+> 確定性程式，包進 prompt 編排 + schema retry 只會降低靈活度。唯一買到的是「量產規模」，
+> 而 doctrine 本就是「quality > scale、量產排到更後面的後面」——為刻意不追求的規模先蓋
+> 基礎建設，正是過度工程。
+>
+> **改為**：把 12 個 Pack 累積的方法論固化成 **forge-sage skill**
+> （`.claude/skills/forge-sage/SKILL.md`，checked-in）。任何 agent（Claude Code 或其他）
+> 讀完就能 forge 一位新大師或遷移舊 yaml。這份附錄（§E2 以下）保留為**該 skill 的設計
+> 來源與決議紀錄**；可驗證性的「重放/品質分數」獨立成 **Phase 7**（見 ROADMAP）。
+>
+> 連帶化簡：沒有機器生成的 `skills.py`，就沒有 `exec_module` 機器產碼的 RCE 面——
+> issue #39（skill 沙盒）從「E2 硬前置」降為一般衛生（skills 仍由 agent 手寫，同現存
+> 6 個手寫 skills.py 的信任模型）。
 
-**兩者都要**：`cyber-sages distil` CLI 子命令（Nüwa 角色的執行入口）+ 蒸餾 SOP
-文件（任何 agent 可手動執行同一流程）。Nüwa 不是常駐 pipeline 角色——它是
-**離線的 persona 工廠**，產出進 git、由人 review 後才上線。
+### 定位（issue #2 命名提案決議）— 已被上方重構取代
+
+~~**兩者都要**：`cyber-sages distil` CLI 子命令 + 蒸餾 SOP 文件。~~ → **只留 SOP，且做成
+agent 原生的 forge-sage skill**。Nüwa 不是引擎、也不是常駐角色——它**就是讀這份 SOP 的
+agent**。產出（Pack 目錄）進 git、由人 review 後上線（這點不變）。
 
 ### Q1 決議：蒸餾來源
 
@@ -249,14 +268,16 @@ validate     見 Q2
   不另造輪子
 - 同 key 多 epoch 並存時，`load_personas` 預設取最新 epoch，CLI 可指定
 
-### E2 驗收條件
+### E2 驗收條件（2026-06-23 重構後）
 
-- [ ] `cyber-sages distil --persona buffett --sources <manifest>` 跑通全管線
-- [ ] 蒸餾產出的每條 rule / SOP step 都有 passage id 出處（抽查 100% 通過）
-- [ ] Nüwa 蒸餾版 Buffett vs E1 手工版 Buffett 對照（同 3 案例辯論，品質分數不顯著低於手工版）
-- [ ] 其餘 8 位完成遷移，舊單檔 yaml 全數退役
-- [ ] `cyber-sages replay` 最小重放可用（同時補 Spec D 的回測驗收）
-- [ ] 蒸餾 SOP 文件化（非 CLI 路徑也能人工執行）
+- [x] ~~`cyber-sages distil` 跑通全管線~~ → **撤銷**（引擎判定過度工程）
+- [x] 蒸餾 SOP 文件化 → 升級為 **forge-sage skill**（`.claude/skills/forge-sage/SKILL.md`，
+      含 Pack 解剖 / DSL 參考 / rule↔skill pattern / 欄位紀律 / 品質 checklist / 遷移 SOP）
+- [ ] 用 forge-sage skill **全員遷移**：7 舊單檔 yaml（burry/damodaran/druckenmiller/graham/
+      lynch/taleb/wood）升級為 Pack 並退役舊檔；6 半 Pack（chanos/icahn/roaringkitty/son/soros/
+      trump）確認「刻意純 SOP」或補齊 rules/skills
+- [ ] 每條新 rule / SOP step 在 `weight_rationale` / `note` 留下出處痕跡（provenance discipline）
+- [ ] **重放/品質分數移至 Phase 7**：`replay --as-of` + persona 品質分數，補 Spec D 回測驗收（見 ROADMAP Phase 7）
 
 ## Out of scope
 

@@ -1,5 +1,12 @@
 # Cyber-Sages Roadmap
 
+**Revision**: 2026-06-23（v13 — **Phase 6 重構：Cyber-Nüwa 引擎 → forge-sage skill**。DK 定調原
+`cyber-sages distil` 蒸餾引擎為過度工程：專案一半給 AI agent 用、過往 12 位大師都是 agent
+（Claude Code）手工打造的，**蒸餾者本質就是讀 SOP 的 agent**——蓋機器消費 SOP 是多餘一層。改為把
+方法論固化成 checked-in 的 **forge-sage skill**（`.claude/skills/forge-sage/SKILL.md`，含 Pack 解剖／
+DSL 參考／rule↔skill pattern／欄位紀律／品質 checklist／遷移 SOP）。Phase 6 重新定義＝forge-sage skill
+＋全員遷移；可驗證性的**重放/品質分數獨立成 Phase 7**（補 Spec D 回測驗收）。連帶：#39 skill 沙盒從
+E2 硬前置降為一般衛生（無機器產碼 RCE 面）。順帶修了 cite-check macro 衍生+籌碼符號對稱誤殺（#84/PR #85）。）
 **Revision**: 2026-06-22（v12 — **Phase 5 / Spec D 決策結構落地**（branch `feat/spec-d-decision-structure`，353 passed）：D-1 chief 行內 `[E0xx]` 引用 + cite-check 收嚴（`_chief_claims` 引文字內 id 非全 store）、D-2 judge rationale/反駁 cite-check（`_citecheck_judge`、DebateVerdict.unverified）、D-3 risk 雙向 `[-0.3,+0.2]`（`clamped_adjustment` + 對稱揭露）、D-4 chief↔risk 固定 1 輪迭代（≤-0.2 觸發）。決議偏離：「≥3 id」走 prompt 軟引導非硬 schema（守 W7 degrade-don't-refuse）；chief 補全類別 digest。回測驗收延 Phase 6。下一步：Phase 6（Spec E2 蒸餾 + 全員遷移）或剩餘 open issues。）
 **Revision**: 2026-06-20（v11 — **Spec F 收官**：P0（#60）/P1（#61）/P2（#63/#64）+ review polish（#66/#67）+ TW 專屬總經源 follow-up（#68→央行重貼現率 #69 / 主計總處 CPI #70 / P3 強化 #71）全數合併、Spec F 標 accepted。剩餘完整性項 C6 情緒 / C3 TW 現金流 / TW RS 轉 issue #65（需設計）。下一步：Phase 5（Spec D 決策結構）。）
 **Revision**: 2026-06-17（v10 — **Spec F 資料源頭強固**插隊於 Phase 5 前：SPCX 幽靈 bar live 事故觸發，P0（#60）+ P1（#61）已合併、P2 進行中。鐵律 1「資料正確」優先於決策結構。見 `docs/specs/2026-06-17-F-data-source-robustness.md`）
@@ -277,14 +284,44 @@ Chief / Judge 強制 evidence id 引用（行內 `[E001]`）、risk officer 雙�
 ——改 prompt 軟引導，避免 retry 耗盡 raise 中止 synthesis 與 W7 degrade-don't-refuse 衝突；量化
 宣稱的硬約束仍由 cite-check no_cite 把關。回測驗收（5 案例）依範圍變更延 Phase 6。詳見 Spec D。
 
-### Phase 6 — Spec E2：Cyber-Nüwa 蒸餾引擎 + 全員遷移（**延後到手工大師夠多之後**）
+### Phase 6 — forge-sage skill + 全員遷移（**原 Spec E2 蒸餾引擎，2026-06-23 重構**）
 
-`cyber-sages distil` 蒸餾管線（ingest → extract（每條附原文出處）→ consolidate
-跨源一致性 → emit pack → validate）。其餘大師遷移為 Persona Pack。
-**最小重放工具**（歷史時點截斷 evidence 重跑）在此 Phase 落地，
-同時補 Spec D 驗收的回測條件與 persona 品質分數。
-前置 issue（E2 開工前須解）：#39（skill 沙盒）/#40（skill 例外）/#41（sop_trace 必填）/
-#43（非曆年制）/#45（sop_trace step id 契約）。
+**重構（DK 2026-06-23）**：原規劃 `cyber-sages distil` 蒸餾**引擎**判定為過度工程並撤銷。
+理由：專案一半給 AI agent 用、過往 12 位大師全是 agent（Claude Code）讀文本手工打造的——
+**「蒸餾者」本質就是讀 SOP 的 agent（Claude 自己），而 Claude 也是本專案消費者**。蓋一台 LLM
+pipeline 自動消費 SOP，是在程式碼裡僵硬複刻「agent 讀規格→產 Pack」、且更差（`extract`/
+`consolidate` 本質是 LLM 判斷非確定性程式）；唯一買到「量產規模」又與「quality > scale」doctrine
+相悖。詳見 Spec E 的 E2 重構段落。
+
+**Phase 6 重新定義 ＝ 兩件事**：
+
+1. ✅ **forge-sage skill**（`.claude/skills/forge-sage/SKILL.md`，checked-in）：把 12 個 Pack
+   累積的方法論固化成 agent 原生 skill——任何 agent 讀完就能 forge 新大師或遷移舊 yaml。涵蓋
+   Pack 解剖（§0 做到哪一層的判斷）、sources/epoch、persona 兩條分席軸、rules DSL 完整參考、
+   **rule↔skill 依賴 pattern**（PTJ）、純 SOP Pack 取捨（Icahn）、skills_lib 共用、**欄位紀律**
+   （`_annual`／百分比單位／台股差異）、品質 checklist、遷移 SOP。README 有指引。
+2. 🔜 **全員遷移**（套用 forge-sage skill，agent 任務非 engine run）：
+   - 7 舊單檔 yaml（burry/damodaran/druckenmiller/graham/lynch/taleb/wood）→ 完整 Pack、退役舊檔。
+   - 6 半 Pack（chanos/icahn/roaringkitty/son/soros/trump）確認「刻意純 SOP」留痕 or 補齊 rules/skills。
+   - 每條新 rule / SOP step 在 `weight_rationale` / `note` 留出處痕跡（provenance discipline）。
+
+**前置 issue 狀態**：#41 ✅ / #45 ✅（已 CLOSED）；#39（skill 沙盒）**降為一般衛生**——無機器
+產碼，skills 仍由 agent 手寫，同現存 6 個手寫 skills.py 信任模型，不再硬阻擋；#40（skill 例外隔離）
++ #43（非曆年制多年欄位）遷移時順手處理或獨立小 PR。
+
+### Phase 7 — 重放/回測 + persona 品質分數（**從原 E2 拆出，先記錄後處理**）
+
+原本綁在 E2 的「可驗證性」獨立成 Phase 7（與 forge-sage 方法論是兩件事：一個是 agent SOP、
+一個是真程式碼）。範圍：
+
+- **最小重放工具** `cyber-sages replay TICKER --as-of DATE`：把 evidence 截斷在歷史時點重跑
+  pipeline。lookahead bias（模型訓練看過事後結果）**無法消除、只強制揭露**（replay 報告固定標注）。
+- **persona 品質分數**：新 Pack 進 council 與既有大師辯論 N 個歷史案例，量 (a) sop_trace 每步有
+  evidence 錨點、(b) 立場與該大師已知公開立場不矛盾、(c) 辯論被指出的矛盾數——給遷移後的 Pack 一把品質尺。
+- **補 Spec D 回測驗收**（Phase 5 延下來的 5 案例回測條件）。
+- 未來可擴建為完整勝率回測器（見下方「未來 Roadmap」）。
+
+狀態：**僅記錄，後續再處理**。不在當前 Phase 6 範圍。
 
 ## 未來 Roadmap（out of current scope，僅作 placeholder）
 

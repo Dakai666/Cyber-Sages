@@ -74,7 +74,9 @@ uv run cyber-sages analyze NVDA --json             # stdout 輸出 verdict.json�
 **大師 = Persona Pack**：每位大師是「可執行的專家」——`personas/<key>/` 目錄帶身分、硬規則
 （DSL，程式判定信心 clamp）、決策 SOP（LLM 逐步推理、每步引用 evidence）、確定性技能
 （如 owner earnings / 趨勢排列分數，程式算不讓 LLM 算）。缺欄位時誠實記 `not_evaluable`，
-不假裝算得出。新增大師：放一個 Pack 目錄，零程式碼。
+不假裝算得出。新增大師：放一個 Pack 目錄，零程式碼——完整打造/遷移方法論見 **forge-sage skill**
+（`.claude/skills/forge-sage/SKILL.md`）：任何 AI agent 讀完就知道怎麼 forge 一位大師或把舊單檔
+yaml 升級成 Pack（Pack 解剖、DSL 參考、rule↔skill pattern、欄位紀律、品質 checklist）。
 
 **Roster（19 人）**：value/quality（Buffett, Munger, Graham, Damodaran, Lynch, Burry, Wood,
 Chanos 鑑識空頭, Icahn 行動派, Son power-law 賭徒）、trading（Livermore, Minervini, Raschke,
@@ -144,9 +146,10 @@ runs/NVDA-2026-06-11_143052/   # 標的-日期_時間（同日重跑不互相覆
 - [x] **大師為主體 + Persona Pack**：analyst 降級為中性數據源；大師帶硬規則/SOP/確定性技能
 - [x] **時間框架分流**：`--horizon value|trading`，大師按 horizon 出席/退場
 - [x] **陪審團結構**：雙盲對稱辯論、敗方核心論點雙邊反駁、中性三類獨立訊號
-- [ ] 手工擴充大師（按類型/原型 curate），累積足夠面向後再談量產蒸餾
+- [ ] 手工擴充大師（按類型/原型 curate）+ 全員遷移為 Pack，方法論固化成 forge-sage skill
+      （原規劃的 `cyber-sages distil` 蒸餾引擎判定為過度工程——蒸餾者本就是讀 SOP 的 agent，改寫成 skill）
 - [ ] Crypto（CoinGecko / 鏈上數據）
-- [ ] 回測器：歷史時點重放管線，驗證陪審團勝率
+- [ ] 回測器（Phase 7）：歷史時點重放管線 + persona 品質分數，補 Spec D 回測驗收、驗證陪審團勝率
 - [ ] 兩階段 council 成本優化（scout 瘦身 + 便宜小模型，N 夠大才划算；見 issue #55）
 
 ## 致敬

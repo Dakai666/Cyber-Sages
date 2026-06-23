@@ -2,9 +2,14 @@
 
 **Date**: 2026-06-14
 **屬於**: Spec E（Sage Runtime + Cyber-Nüwa），E1 PR3
-**用途**: 這份文件記錄「人怎麼把一位大師打造成 Persona Pack」的每一步。**這就是 Phase 6
-Cyber-Nüwa（E2）要自動化的規格**——Nüwa 的蒸餾管線（ingest→extract→consolidate→emit→
-validate）應能重現下列人工判斷，產出品質不顯著低於手工版的 Pack。
+**用途**: 這份文件記錄「人怎麼把一位大師打造成 Persona Pack」的每一步。
+
+> ⚠️ **2026-06-23 更新**：原本設想這份規格餵給一台 `cyber-sages distil` 引擎自動化。
+> 後來判定該引擎是過度工程——**蒸餾者本就是讀 SOP 的 agent（Claude 自己）**，不需要機器
+> 去消費 SOP。本文件的方法論已升級／固化成 **forge-sage skill**
+> （`.claude/skills/forge-sage/SKILL.md`），並補上 E1 之後 10 個 Pack 累積的 pattern
+> （rule↔skill 依賴、aggression 軸、純 SOP Pack、欄位紀律）。本文件保留為該 skill 的
+> Buffett/Munger 逐步打造原始紀錄。詳見 Spec E 的 E2 重構段落。
 
 ## 0. 一句話總結
 
