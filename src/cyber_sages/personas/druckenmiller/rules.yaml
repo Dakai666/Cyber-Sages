@@ -1,0 +1,27 @@
+# Druckenmiller 硬規則（DSL，程式判定、零幻覺）——順勢雙向：別跟強趨勢作對。
+# trend_alignment_score 由 skills.py 確定性算出（複用 skills_lib；+2 完美多頭、−2 完美空頭、
+# 0 糾結）。順勢墊高同向信心、逆勢墊高反向信心，反向則記 rule_conflict 揭露、不翻立場——
+# 「在強趨勢裡我不跟它作對」是他的鐵則，衝突要被看見。US/TW 皆可評（sma_* 兩市場共用）。
+hard_rules:
+  - id: ride-the-trend
+    if: {field: trend_alignment_score, op: ">=", value: 1}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: 均線多頭排列、趨勢與流動性站多方——別用弱信心跟強趨勢作對，對了就該順勢壓
+
+  - id: trend-broken
+    if: {field: trend_alignment_score, op: "<=", value: -1}
+    action: bearish_floor
+    confidence_floor: 0.55
+    note: 均線空頭排列、動能轉空——順勢站空或退場，這不是逆勢接刀的位置
+
+exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
+  - >
+    趨勢分數中性（0，均線糾結）時不靠這條規則——改看流動性背景與催化劑判斷，沒有明確趨勢
+    就不重壓，現金也是部位。
+  - >
+    「對了賺多少」才是 alpha：趨勢確認＋流動性順風＋催化劑齊備時才談集中重壓；任一缺席就
+    降部位。規則只墊高信心方向，部位大小的紀律在 SOP，且須以 ATR/波動率說明風險預算。
+  - >
+    強趨勢末端的背離（價格新高但動能/RS 轉弱）是減碼訊號而非加碼——趨勢分數仍為多頭時，
+    若 SOP 觀察到動能背離，要說明這是「順勢但縮手」，不是無腦追。

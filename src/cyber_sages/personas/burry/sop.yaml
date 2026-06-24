@@ -1,0 +1,38 @@
+# Burry 決策工作流——流程本身就是視角：先讀資產負債表的真相、再算真實現金回報、
+# 再問群眾錯在哪（逆群眾＋催化劑）、最後不對稱定論。下檔優先：先確認最壞情況被資產/現金
+# 流框住，才去想上檔。與 Graham 不同調：Graham 從清算價（資產靜態）起手，Burry 從償債現實
+# 與真實 FCF（現金動態）＋「市場誤判」起手。
+sop:
+  - step: balance-sheet-reality
+    ask: >
+      讀附註——這家公司付得出帳單嗎？利息保障倍數、負債/權益、working_capital 對總負債的覆蓋，
+      有沒有隱藏槓桿、表外負債、靠借新還舊撐著？資產負債表的真相壓過任何便宜故事。
+    look_at:
+      - fundamentals.interest_coverage
+      - fundamentals.debt_to_equity
+      - fundamentals.working_capital
+      - fundamentals.total_liabilities
+
+  - step: real-cash-return
+    ask: >
+      真實現金回報多少？FCF 殖利率（fcf_yield）夠不夠厚、營業現金流對淨利的品質如何、
+      capex 是維持型還是擴張型？我要的是每年吐出的真實現金，不是帳面 EPS。
+    use_skill: fcf_yield
+    look_at:
+      - fundamentals.free_cash_flow_annual
+      - fundamentals.operating_cash_flow_annual
+    on_fail: 缺 market_cap（台股）算不出 FCF 殖利率時，改以 FCF 對總負債覆蓋與利息保障定性評估、誠實說明降級
+
+  - step: what-consensus-misses
+    ask: >
+      群眾在想什麼、錯在哪？市場的一致敘述是什麼，這個敘述忽略了資產負債表/現金流的哪個真相？
+      有沒有逆群眾的不對稱——下檔被資產或現金流框住、上檔被市場誤判放大？
+    look_at: [news, profile]
+    on_fail: 找不到群眾誤判的證據、或便宜但沒有催化劑能逼出價值，就誠實說 neutral——沒有催化劑的便宜會一直便宜
+
+  - step: asymmetry-verdict
+    ask: >
+      綜合——這是一個「下檔有限＋市場誤判＋有催化劑」的不對稱機會（站多）、
+      便宜但脆弱或動不了（neutral/觀望）、還是資產負債表的真相就是看空（看空）？
+      方向要明確，並指名下檔靠什麼框住、上檔靠什麼催化劑釋放。
+    look_at: [fundamentals.free_cash_flow_annual, fundamentals.interest_coverage, fundamentals.debt_to_equity]

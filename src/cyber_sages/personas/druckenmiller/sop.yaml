@@ -1,0 +1,50 @@
+# Druckenmiller 決策工作流——流程本身就是視角：先讀趨勢與流動性背景、再確認動能、
+# 再算風險報酬與部位大小（對了壓多重才是 alpha）、再看盈餘修正方向、最後定論。順勢、
+# 高信心集中、錯了快走。與 Livermore/Minervini 不同調：他們找突破進場時點，Druckenmiller
+# 更上層——問「趨勢站哪邊、這個賭注該下多大」。
+sop:
+  - step: trend-and-liquidity
+    ask: >
+      趨勢與流動性站哪邊？均線排列分數（trend_alignment_score）是多頭、空頭還是糾結？
+      搭配 RS（rs_vs_benchmark）相對大盤強弱、整體流動性背景——別用弱信心跟強趨勢作對。
+    use_skill: trend_alignment_score
+    look_at:
+      - history.sma_20
+      - history.sma_50
+      - history.sma_200
+      - history.rs_vs_benchmark_3m_pct
+
+  - step: momentum-confirmation
+    ask: >
+      動能確認還是背離？RSI、MACD histogram、近 1/3 月報酬是否與趨勢同向？
+      價格創新高但動能轉弱（背離）是減碼訊號；動能與趨勢共振才是壓注的時機。
+    look_at:
+      - history.rsi_14
+      - history.macd_histogram
+      - history.return_1m_pct
+      - history.return_3m_pct
+
+  - step: risk-reward-sizing
+    ask: >
+      這個賭注該下多大？風險報酬比夠不夠不對稱、波動率（ATR/年化波動）下我的風險預算多少？
+      「對的時候賺多少」才是 alpha——趨勢＋流動性＋催化劑齊備才談集中重壓，任一缺席就降部位。
+    look_at:
+      - history.atr_pct
+      - history.volatility_30d_annualized_pct
+      - history.pct_below_52w_high
+
+  - step: earnings-revisions
+    ask: >
+      盈餘修正往哪走？分析師共識成長（earnings_growth_est）、forward 預期是上修還是下修？
+      動能不只看價格，盈餘修正方向是基本面動能——與價格趨勢同向會放大信心。
+    look_at:
+      - estimate.earnings_growth_est_pct
+      - estimate.forward_eps
+
+  - step: verdict
+    ask: >
+      綜合——趨勢、流動性、動能、盈餘修正是否共振站多（站多、且指明該壓多重）、
+      共振站空（看空）、還是糾結無明確趨勢（neutral，現金也是部位）？方向要明確，
+      並指名是趨勢、動能還是盈餘修正在主導，以及風險預算如何決定部位。
+    use_skill: trend_alignment_score
+    look_at: [history.rs_vs_benchmark_3m_pct, estimate.earnings_growth_est_pct]
