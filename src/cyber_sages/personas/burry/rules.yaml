@@ -1,0 +1,41 @@
+# Burry 硬規則（DSL，程式判定、零幻覺）——資產負債表現實 + 深度 FCF 價值。
+# 償債/槓桿紅線用 cap_confidence（脆弱資產負債表一律封頂，與立場無關——他不站多脆弱）；
+# 深度 FCF 殖利率用 bullish_floor（只在 Burry 已看多時墊高，反向記 rule_conflict 揭露）。
+#
+# 欄位：interest_coverage / debt_to_equity 為 fundamentals（US 皆 emit；台股 interest_coverage
+# 常缺 → 該規則 not_evaluable）；fcf_yield 由 skills.py 確定性算出（FCF vs market_cap，雙欄→單欄）。
+hard_rules:
+  # 償債現實紅線：付不出利息＝資產負債表的真相壓過任何便宜故事（Burry 讀附註的第一件事）。
+  - id: cannot-cover-interest
+    if: {field: interest_coverage, op: "<", value: 1.0}
+    action: cap_confidence
+    confidence_ceiling: 0.4
+    note: 營業利益蓋不過利息——再便宜我也不站多，先看它撐不撐得過下一個循環
+
+  # 過度槓桿：隱藏槓桿是 Burry 最警惕的；負債/權益 > 2 即使現金流尚可也封頂。
+  - id: excess-leverage
+    if: {field: debt_to_equity, op: ">", value: 2.0}
+    action: cap_confidence
+    confidence_ceiling: 0.45
+    note: 負債/權益 > 2，脆弱的資產負債表——逆風一來先出事，安全邊際不在這
+
+  # 深度 FCF 價值：高自由現金流殖利率＝同樣市值買到更多真實現金，Burry 的便宜定義。
+  - id: deep-fcf-value
+    if: {field: fcf_yield, op: ">", value: 8.0}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: >
+      FCF 殖利率 > 8%——現金回報厚實的深度價值，下檔由真實現金流撐住。8% 是「現金回報明顯
+      高於長債殖利率」的粗略代理（Scion 致股東信反覆強調以真實 FCF 而非帳面 EPS 衡量便宜），
+      非 Burry 明文門檻；個案仍以折現與催化劑為準。
+
+exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
+  - >
+    群眾一致看壞、但資產負債表/現金流顯示市場誤判時（consensus 錯在極端），是最佳不對稱機會——
+    但須在 SOP 指出「群眾錯在哪、催化劑是什麼」，沒有催化劑的便宜可能一直便宜。
+  - >
+    一次性事件（訴訟、減損、週期低谷）壓低當期 FCF 或利息覆蓋時，要區分「結構性惡化」與
+    「暫時性扭曲」——後者反而是進場點，但須以正常化後的數字在 SOP 說明，規則仍記錄當期事實。
+  - >
+    fcf_yield 看不到（台股無 market_cap）時，改以 FCF 對總負債的覆蓋、利息保障倍數與
+    working_capital 評估現金與償債現實，並在 SOP 誠實說明降級。

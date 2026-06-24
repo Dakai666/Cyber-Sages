@@ -71,6 +71,14 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert len(ps["graham"].pack.hard_rules) == 3 and len(ps["graham"].pack.skills) == 2
     assert ps["lynch"].is_pack and ps["lynch"].epoch is None
     assert len(ps["lynch"].pack.skills) == 1 and len(ps["lynch"].pack.hard_rules) == 1
+    # Phase 6 遷移（續）：Burry（FCF 深度價值，3 rules + 1 skill）、Damodaran（相對估值，
+    # 1 rule + 1 skill，刻意輕規則）、Druckenmiller（順勢，複用 trend_alignment_score，2 rules）
+    assert ps["burry"].is_pack and ps["burry"].epoch is None
+    assert len(ps["burry"].pack.hard_rules) == 3 and len(ps["burry"].pack.skills) == 1
+    assert ps["damodaran"].is_pack and ps["damodaran"].epoch is None
+    assert len(ps["damodaran"].pack.hard_rules) == 1 and len(ps["damodaran"].pack.skills) == 1
+    assert ps["druckenmiller"].is_pack and ps["druckenmiller"].epoch is None
+    assert len(ps["druckenmiller"].pack.hard_rules) == 2 and len(ps["druckenmiller"].pack.skills) == 1
     assert len(load_personas()) >= 19  # 加 persona 不該壞此測試（PR#57 review #4）
     # 必載名單：守住 key 不被 typo 改掉（比脆性總數斷言更耐 roster 成長）
     for k in ("buffett", "munger", "graham", "damodaran", "lynch", "burry", "wood",
@@ -83,6 +91,9 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert names.count("Jesse Livermore") == 1  # livermore.yaml 已刪、不與目錄 Pack 重複
     # Phase 6：graham.yaml / lynch.yaml 退役，不與目錄 Pack 重複
     assert names.count("Benjamin Graham") == 1 and names.count("Peter Lynch") == 1
+    # Phase 6（續）：burry / damodaran / druckenmiller 單檔退役
+    assert names.count("Michael Burry") == 1 and names.count("Aswath Damodaran") == 1
+    assert names.count("Stanley Druckenmiller") == 1
 
 
 def test_sop_only_personas_have_wellformed_sop():
@@ -94,9 +105,9 @@ def test_sop_only_personas_have_wellformed_sop():
     known_categories = {"quote", "fundamentals", "history", "news", "profile", "chips",
                         "macro", "estimate", "reference", "derived"}
     ps = {p.key: p for p in load_personas()}
-    # graham/lynch（Phase 6 遷移）一併納入 SOP 合法性守門
+    # graham/lynch + burry/damodaran/druckenmiller（Phase 6 遷移）一併納入 SOP 合法性守門
     for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty", "ptj",
-                "graham", "lynch"):
+                "graham", "lynch", "burry", "damodaran", "druckenmiller"):
         sop = ps[key].pack.sop
         assert len(sop) >= 3, f"{key} SOP 應至少 3 步"
         assert all(s.step and s.ask for s in sop), f"{key} 每步應有 step 名與 ask"
@@ -585,3 +596,120 @@ def test_lynch_peg_not_evaluable_on_tw_data():
     private, not_eval = run_skills(_pack("lynch").pack.skills, tw, key="lynch")
     assert private == []
     assert any("peg_ratio" in n for n in not_eval)
+
+
+# ---------- Burry / Damodaran / Druckenmiller packs（Phase 6 遷移，續）----------
+
+
+def test_burry_fcf_yield_and_balance_sheet_rules():
+    # 深度 FCF 價值 + 脆弱資產負債表紅線
+    store = EvidenceStore(ticker="DEEP", market="US")
+    store.add_all([_fund("free_cash_flow_annual", 1000.0, unit="USD"),
+                   _fund("market_cap", 10000.0, category="quote", unit="USD"),  # fcf_yield 10%
+                   _fund("interest_coverage", 8.0, unit="x"), _fund("debt_to_equity", 0.5)])
+    burry = _pack("burry")
+    priv, ne = run_skills(burry.pack.skills, store, key="burry")
+    by_id = {e.id: e for e in priv}
+    assert ne == [] and by_id["S-burry-fcf_yield"].value == 10.0   # 1000/10000×100
+    store.items.extend(priv)
+    outcomes = {o.rule_id: o for o in evaluate_rules(burry.pack.hard_rules, rule_values(store))}
+    assert outcomes["deep-fcf-value"].triggered          # 10% > 8%
+    assert not outcomes["cannot-cover-interest"].triggered  # 8 >= 1
+    assert not outcomes["excess-leverage"].triggered     # 0.5 < 2
+
+
+def test_burry_fragile_balance_sheet_caps_confidence():
+    # 付不出利息 → cap 0.4 硬收（即使看多）
+    store = EvidenceStore(ticker="ROT", market="US")
+    store.add_all([_fund("interest_coverage", 0.5, unit="x"), _fund("debt_to_equity", 3.0)])
+    burry = _pack("burry")
+    outcomes = evaluate_rules(burry.pack.hard_rules, rule_values(store))
+    by_id = {o.rule_id: o for o in outcomes}
+    assert by_id["cannot-cover-interest"].triggered and by_id["excess-leverage"].triggered
+    conf, _ = clamp_confidence("bullish", 0.9, outcomes)
+    assert conf == 0.4   # cannot-cover-interest ceiling 0.4 為兩 cap 中較低
+
+
+def test_burry_skills_not_evaluable_on_tw():
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 0.3)])   # 無 market_cap / free_cash_flow_annual
+    priv, ne = run_skills(_pack("burry").pack.skills, tw, key="burry")
+    assert priv == [] and any("fcf_yield" in n for n in ne)
+
+
+def test_burry_tw_rules_cascade_consistently_with_pr_description():
+    # 規則級降級：台股僅有 debt_to_equity 時，excess-leverage 仍可評，cannot-cover-interest
+    # （缺 interest_coverage）與 deep-fcf-value（缺 skill fcf_yield）降 not_evaluable——
+    # 把 PR 描述承諾的三件事釘在測試裡（forge-sage 範本：PR 說的事實要可驗）。
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 0.3)])
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        _pack("burry").pack.hard_rules, rule_values(tw))}
+    assert outcomes["excess-leverage"].not_evaluable is False      # debt_to_equity 在
+    assert outcomes["cannot-cover-interest"].not_evaluable is True
+    assert outcomes["deep-fcf-value"].not_evaluable is True
+
+
+def test_damodaran_relative_discount_fires():
+    # 現價 P/E 遠低於同業 → relative-discount floor
+    store = EvidenceStore(ticker="CHEAP", market="US")
+    store.add_all([_fund("trailing_pe", 10.0, category="quote"),
+                   _fund("industry_pe_trailing", 20.0, category="reference")])  # -50%
+    dam = _pack("damodaran")
+    priv, ne = run_skills(dam.pack.skills, store, key="damodaran")
+    by_id = {e.id: e for e in priv}
+    assert ne == [] and by_id["S-damodaran-pe_vs_industry_pct"].value == -50.0
+    store.items.extend(priv)
+    outcomes = {o.rule_id: o for o in evaluate_rules(dam.pack.hard_rules, rule_values(store))}
+    assert outcomes["relative-discount"].triggered       # -50% < -25%
+
+
+def test_damodaran_negative_pe_not_treated_as_discount():
+    # 虧損股負 P/E → pe_vs_industry 變成大幅「折價」假象，trailing_pe>0 guard 必須擋下
+    store = EvidenceStore(ticker="LOSS", market="US")
+    store.add_all([_fund("trailing_pe", -15.0, category="quote"),
+                   _fund("industry_pe_trailing", 20.0, category="reference")])
+    dam = _pack("damodaran")
+    store.items.extend(run_skills(dam.pack.skills, store, key="damodaran")[0])
+    outcomes = {o.rule_id: o for o in evaluate_rules(dam.pack.hard_rules, rule_values(store))}
+    assert not outcomes["relative-discount"].triggered
+
+
+def test_damodaran_skill_not_evaluable_without_industry_multiple():
+    # 台股無產業 multiple（reference US-only）→ pe_vs_industry not_evaluable
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("trailing_pe", 18.0, category="quote")])  # 無 industry_pe_trailing
+    priv, ne = run_skills(_pack("damodaran").pack.skills, tw, key="damodaran")
+    assert priv == [] and any("pe_vs_industry_pct" in n for n in ne)
+
+
+def test_druckenmiller_trend_floors_both_directions():
+    dru = _pack("druckenmiller")
+    # 多頭排列 → ride-the-trend，bullish floor 0.55
+    up = EvidenceStore(ticker="UP", market="US")
+    up.add_all([_fund("sma_20", 110.0, category="history"), _fund("sma_50", 100.0, category="history"),
+                _fund("sma_200", 90.0, category="history")])
+    up.items.extend(run_skills(dru.pack.skills, up, key="druckenmiller")[0])
+    o_up = {o.rule_id: o for o in evaluate_rules(dru.pack.hard_rules, rule_values(up))}
+    assert o_up["ride-the-trend"].triggered and not o_up["trend-broken"].triggered
+    conf, conflicts = clamp_confidence("bullish", 0.3, list(o_up.values()))
+    assert conf == 0.55 and conflicts == []
+    # 空頭排列 → trend-broken，bearish floor；若大師看多則記 rule_conflict 不翻轉
+    down = EvidenceStore(ticker="DN", market="US")
+    down.add_all([_fund("sma_20", 90.0, category="history"), _fund("sma_50", 100.0, category="history"),
+                  _fund("sma_200", 110.0, category="history")])
+    down.items.extend(run_skills(dru.pack.skills, down, key="druckenmiller")[0])
+    o_dn = {o.rule_id: o for o in evaluate_rules(dru.pack.hard_rules, rule_values(down))}
+    assert o_dn["trend-broken"].triggered
+    _, conflicts2 = clamp_confidence("bullish", 0.6, list(o_dn.values()))
+    assert len(conflicts2) == 1   # 規則 bearish、大師 bullish → 衝突揭露、不翻
+
+
+def test_druckenmiller_trend_evaluable_on_tw():
+    # 跨市場：sma_* 兩市場皆由 indicators 算 → 趨勢規則在台股仍可評（非降級）
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("sma_20", 1100.0, category="history"), _fund("sma_50", 1000.0, category="history"),
+                _fund("sma_200", 900.0, category="history")])
+    priv, ne = run_skills(_pack("druckenmiller").pack.skills, tw, key="druckenmiller")
+    by_id = {e.id: e for e in priv}   # 用 id 比對（不靠 priv[0] 順序，未來加 skill 也穩）
+    assert ne == [] and by_id["S-druckenmiller-trend_alignment_score"].value == 2.0  # 完美多頭排列

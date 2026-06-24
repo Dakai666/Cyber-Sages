@@ -1,0 +1,55 @@
+# Damodaran 決策工作流——流程本身就是視角：故事先連到數字、再做相對估值（vs 同業/大盤）、
+# 再反推現價隱含的預期是否合理、再評風險與不確定性、最後定論。不預設多空：跟著數字走。
+# 與其他價值派不同調：不從資產（Graham）或 owner earnings（Buffett）起手，從「現價隱含了
+# 什麼假設、相對與內在划不划算」起手。
+sop:
+  - step: story-to-numbers
+    ask: >
+      這門生意的故事是什麼，能不能連到三個數字——現金流、成長、風險？營收/利潤率/再投資的
+      軌跡支不支撐這個故事？故事與數字脫節之處，就是估值的破口。
+    look_at:
+      - fundamentals.revenue_annual
+      - fundamentals.operating_income_annual
+      - fundamentals.free_cash_flow_annual
+      - estimate.revenue_growth_est_pct
+
+  - step: relative-valuation
+    ask: >
+      相對同業與大盤划不划算？現價 P/E 相對產業 P/E 的折溢價（pe_vs_industry_pct）、
+      相對大盤（market_pe_trailing）、以及**相對產業 PEG（industry_peg）**——成長調整後是否仍折價？
+      市場給這家公司的 multiple 是高於還是低於同業，這個差距有沒有道理？
+    use_skill: pe_vs_industry_pct
+    look_at:
+      - quote.trailing_pe
+      - reference.industry_pe_trailing
+      - reference.market_pe_trailing
+      - reference.industry_peg
+    on_fail: 缺產業 multiple（台股）時改以內在價值與隱含預期判斷、誠實說明 reference 這次沒有
+
+  - step: implied-expectations
+    ask: >
+      現價隱含了什麼？反推現價要成立、市場必須假設多少成長與利潤率（對照分析師共識
+      earnings_growth_est / forward EPS），這些假設兌現的機率高不高？這是「故事→數字」的
+      壓力測試：價格在替哪個未來定價。
+    look_at:
+      - estimate.earnings_growth_est_pct
+      - estimate.forward_eps
+      - quote.forward_pe
+      - reference.industry_growth_5y_pct
+
+  - step: risk-and-uncertainty
+    ask: >
+      風險與不確定性多大？盈餘穩定度、槓桿、現金流波動——估值的信賴區間有多寬？
+      我對自己的估計要誠實：高不確定性不代表不投資，但要反映在要求的安全邊際上。
+    look_at:
+      - fundamentals.earnings_stability_5y
+      - fundamentals.debt_to_equity
+
+  - step: verdict
+    ask: >
+      綜合——現價相對內在價值與同業是被低估（站多）、大致合理（neutral）、還是隱含了
+      過度樂觀的假設（看空/避開）？方向要明確，並指名是相對 multiple、隱含預期、還是
+      內在現金流哪一個在主導判斷。不預設立場，跟著數字走。
+      複核相對折溢價與隱含預期是否一致（複用 relative-valuation 的折溢價，非新依賴）。
+    use_skill: pe_vs_industry_pct
+    look_at: [quote.trailing_pe, estimate.earnings_growth_est_pct]

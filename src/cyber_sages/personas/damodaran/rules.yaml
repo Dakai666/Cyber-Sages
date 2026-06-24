@@ -1,0 +1,32 @@
+# Damodaran 硬規則（DSL，程式判定、零幻覺）——刻意只有一條。
+# 他的哲學抗拒機械式門檻（每個產業/成長階段的合理 multiple 不同），主體判斷在 SOP 的
+# 「故事→數字→隱含預期→風險」；唯一量化規則來自他自己維護的產業 multiples。
+#
+# trailing_pe > 0 guard 排除虧損股的負 P/E 給出假性折價；pe_vs_industry_pct 由 skills.py
+# 確定性算出（trailing_pe vs industry_pe_trailing，雙欄→單欄）。產業 multiple 為 US-only →
+# 台股該規則 not_evaluable，誠實降級。
+hard_rules:
+  - id: relative-discount
+    if:
+      all:
+        - {field: trailing_pe, op: ">", value: 0}
+        - {field: pe_vs_industry_pct, op: "<", value: -25}
+    action: bullish_floor
+    confidence_floor: 0.55
+    note: >
+      現價 P/E 較同業折價逾 25%——相對估值上市場給的低於同業，值得認真看內在價值是否被低估。
+      25% 是「相對折價大到值得做內在價值複核」的篩選門檻（源自 Damodaran 相對估值/Musings on
+      Markets 一貫「先用 multiple 篩、再用 DCF 驗」的兩步法），非他明文數字；折價仍須以隱含
+      預期排除價值陷阱。
+
+exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
+  - >
+    相對折價只是起點不是結論——若折價是因為公司成長/利潤率結構性低於同業（價值陷阱），
+    則折價是合理的；須在 SOP 用隱含預期（現價隱含的成長 vs 分析師共識成長）說清楚這是
+    「市場誤判」還是「市場對它評價較低有理」。
+  - >
+    相對溢價（pe_vs_industry_pct > 0）不必然看空——高成長/高品質配得上溢價；判斷要看現價
+    隱含的成長假設是否被未來兌現的機率支撐，而非單純「貴」。
+  - >
+    pe_vs_industry_pct 看不到（台股無產業 multiple，或 trailing_pe 缺）時，改以現金流為基礎的
+    內在價值與隱含預期定性判斷，並在 SOP 誠實說明 reference multiple 這次沒有。
