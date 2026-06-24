@@ -469,9 +469,12 @@ def test_graham_skills_compute_net_net_and_current_ratio():
 def test_graham_rules_fire_on_deep_bargain():
     graham = _pack("graham")
     store = _graham_bargain_store()
-    # net_net_discount_pct 是 skill 私有衍生，rules 求值前須先併回 store
+    # net_net_discount_pct 是 skill 私有衍生，rules 求值前須先併回 store。
+    # 用 items.extend 而非 add_all——保留 S-graham-… id（production 走 EvidenceStore(items=[...])，
+    # 而 add_all→add 會把 id 改寫成 E0xx，見 evidence.py:84）。rules 以 field 求值，id 雖不影響觸發，
+    # 但保留 id 才不誤導「skill 輸出真是 S-<key>-<name>」（該事實由 test_lynch_skill_computes_peg pin）。
     private, _ = run_skills(graham.pack.skills, store, key="graham")
-    store.add_all(private)
+    store.items.extend(private)
     outcomes = {o.rule_id: o for o in evaluate_rules(graham.pack.hard_rules, rule_values(store))}
     assert outcomes["defensive-bargain"].triggered    # pe 11(>0,<15) 且 stability 0.85>=0.7
     assert outcomes["below-liquidation"].triggered     # net_net_discount 20 > 0
@@ -494,6 +497,23 @@ def test_graham_weak_financials_caps_even_when_cheap():
     assert conf == 0.5
 
 
+def test_clamp_floor_dominates_cap_when_floor_higher():
+    # 現行 clamp_confidence（rules.py:120-124）行為 pin：cap 0.5 與 bullish_floor 0.6 同觸發、
+    # stance bullish 時，floor 蓋過 cap → 0.6（cap 與 floor 各自獨立套用，淨值看數值）。
+    # 非 Graham pack 引入（首次有 Pack 同時觸發兩者，PR #86 review 觀察）；此測試把現行語意釘住，
+    # 日後若重構 cap/floor 優先序會 fail 提醒（見 issue：clamp_confidence cap vs floor 優先序）。
+    graham = _pack("graham")
+    store = EvidenceStore(ticker="CHEAP_LEVERED", market="US")
+    store.add_all([_fund("trailing_pe", 11.0, category="quote"),    # defensive-bargain floor 0.6
+                   _fund("earnings_stability_5y", 0.85),
+                   _fund("debt_to_equity", 1.8)])                   # weak-financials cap 0.5
+    outcomes = evaluate_rules(graham.pack.hard_rules, rule_values(store))
+    by_id = {o.rule_id: o for o in outcomes}
+    assert by_id["weak-financials"].triggered and by_id["defensive-bargain"].triggered
+    conf, _ = clamp_confidence("bullish", 0.9, outcomes)
+    assert conf == 0.6   # floor 0.6 蓋過 cap 0.5（現行行為，待 issue 決定是否反轉）
+
+
 def test_graham_negative_pe_not_treated_as_cheap():
     # trailing_pe < 0（虧損股）不該被 defensive-bargain 誤判成便宜（pe>0 guard）
     graham = _pack("graham")
@@ -505,13 +525,19 @@ def test_graham_negative_pe_not_treated_as_cheap():
 
 
 def test_graham_skills_not_evaluable_on_tw_data():
-    # 台股無 market_cap / 年度流動資產欄位 → net-net 與流動比降 not_evaluable（誠實）
+    # 台股的流動資產欄位是 current_assets / current_liabilities（**無** _annual 後綴，
+    # 見 data/tw_stocks.py:81-82）、且無 market_cap。Graham 的 skill require *_annual 與 market_cap，
+    # 故落到「欄位名後綴錯位 / 缺欄」而降 not_evaluable（誠實，非靜默通過）——這正是台股真實缺的。
     tw = EvidenceStore(ticker="2330", market="TW")
-    tw.add_all([_fund("debt_to_equity", 0.2)])
+    tw.add_all([_fund("debt_to_equity", 0.2),
+                _fund("current_assets", 8.0e11, unit="TWD"),       # 台股口徑：無 _annual
+                _fund("current_liabilities", 2.0e11, unit="TWD"),
+                _fund("net_net_value", 6.0e11, unit="TWD")])       # net_net_value 有、但缺 market_cap
     private, not_eval = run_skills(_pack("graham").pack.skills, tw, key="graham")
     assert private == []
-    assert any("net_net_discount_pct" in n for n in not_eval)
-    assert any("current_ratio" in n for n in not_eval)
+    # net_net_discount 缺的是 market_cap（net_net_value 在）；current_ratio 缺的是 *_annual（後綴錯位）
+    assert any("net_net_discount_pct" in n and "market_cap" in n for n in not_eval)
+    assert any("current_ratio" in n and "current_assets_annual" in n for n in not_eval)
 
 
 def test_lynch_skill_computes_peg():
@@ -529,7 +555,7 @@ def test_lynch_garp_rule_fires_when_growth_cheap():
     store = EvidenceStore(ticker="GARP", market="US")
     store.add_all([_fund("trailing_pe", 20.0, category="quote"),
                    _fund("earnings_growth_est_pct", 25.0, category="estimate")])
-    store.add_all(run_skills(lynch.pack.skills, store, key="lynch")[0])
+    store.items.extend(run_skills(lynch.pack.skills, store, key="lynch")[0])  # 保留 S- id（同上）
     outcomes = evaluate_rules(lynch.pack.hard_rules, rule_values(store))
     by_id = {o.rule_id: o for o in outcomes}
     assert by_id["garp-bargain"].triggered               # peg 0.8 < 1 且成長 25>0
@@ -547,7 +573,7 @@ def test_lynch_negative_growth_not_treated_as_cheap():
     store = EvidenceStore(ticker="DECLINE", market="US")
     store.add_all([_fund("trailing_pe", 20.0, category="quote"),
                    _fund("earnings_growth_est_pct", -10.0, category="estimate")])
-    store.add_all(run_skills(lynch.pack.skills, store, key="lynch")[0])
+    store.items.extend(run_skills(lynch.pack.skills, store, key="lynch")[0])  # 保留 S- id（同上）
     outcomes = {o.rule_id: o for o in evaluate_rules(lynch.pack.hard_rules, rule_values(store))}
     assert not outcomes["garp-bargain"].triggered
 

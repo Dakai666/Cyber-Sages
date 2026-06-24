@@ -45,6 +45,7 @@ sop:
     ask: >
       綜合——這是「成長便宜、軌跡向上、我懂的生意」（站多）、「公平定價先觀望」（neutral）、
       還是「為完美付費／成長減速／看不懂」（neutral/避開）？方向要明確，並指名靠什麼：
-      PEG、成長軌跡、還是分類錯配。
+      PEG、成長軌跡、還是分類錯配。複核 PEG 與成長軌跡是否一致（複用 peg-valuation 的 PEG，
+      非新依賴）——若 PEG 便宜但成長正在減速，要說清楚這個矛盾。
     use_skill: peg_ratio
     look_at: [quote.trailing_pe, estimate.earnings_growth_est_pct]

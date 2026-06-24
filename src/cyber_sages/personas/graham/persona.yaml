@@ -12,6 +12,8 @@ weight_rationale: >
   防禦型投資者的 P/E≤15 + 十年盈餘穩定（Intelligent Investor 第14章 + Security Analysis）、
   強健財務（負債/權益紅線）、net-net 清算價折價（Security Analysis net current asset value +
   Graham-Newman 實績）。彈性（成長股例外、Mr. Market 擇時）放 exceptions / SOP。
+  current_ratio 算成 skill 但刻意不下成 rule——清算/負債紅線已由 net-net 與 debt_to_equity
+  兩條規則涵蓋，流動比留給 SOP pass 引用為資產背書的敘事輔助（見 skills.py docstring）。
 philosophy: >
   Margin of safety above all — the three most important words in investing. Mr. Market
   is a manic-depressive business partner: some days euphoric, some days despairing;

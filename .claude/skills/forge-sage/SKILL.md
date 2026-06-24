@@ -208,7 +208,10 @@ rules / skills 引用的欄位名**必須**對上 provider 真實 emit 的 canon
 - [ ] SOP 順序反映**這位大師獨有的思維結構**，與既有大師不同調；末步是 `verdict`、方向明確；關鍵步有 `on_fail` 誠實退場話術。
 - [ ] skill 是**確定性計算**、宣告了 `requires`、共用邏輯走 `skills_lib`。
 - [ ] `horizons` / `aggression` 分席正確；`weight_rationale` 寫明補了 roster 什麼空缺 + rule 出處痕跡。
-- [ ] 跑一次 live 驗收：`uv run cyber-sages analyze <US標的> --sages N --depth quick` 確認本 Pack 上場，sop_trace **每步有 evidence 錨點**、rule_conflict 不翻 stance、缺欄位的 skill/rule 正確 not_evaluable。台股標的再跑一次驗 not_evaluable 與跨市場。
+- [ ] 跑一次 live 驗收，確認本 Pack **真的入席**、其 skill 私有 evidence（`S-<key>-<name>`）出現在 council.md 的「關鍵證據」錨點、rule 與 stance 同向（不翻 stance）、缺欄位的 skill/rule 正確 not_evaluable。台股標的驗 not_evaluable 與跨市場（或用真實 evidence.json 確定性重放，見下）。
+  - ⚠️ **`--depth quick` 會把席數 cap 到 5**（`cli/app.py:144-147`，僅當未顯式給 `--sages` 時）——新加的 **weight 1.0 大師會被 top-5 weight 截掉、既不入席也不在 `abstained`**。驗收要嘛挑會納入該大師的象限（如 graham/lynch 用 `--horizon value --aggression conservative`）並**顯式 `--sages N`**（N≥該象限人數）保留 quick 省 token，要嘛跑 full depth。例：`analyze NVDA --horizon value --aggression conservative --depth quick --no-debate --no-macro --sages 8`。
+  - ⚠️ **結構化 `sop_trace` 陣列常為空**（MiniMax sage 模型回傳 thesis 散文而非 per-step struct，sop_trace 是 Spec E1「軟揭露」選配欄位）——驗收看 council.md 的 thesis + 「關鍵證據」行有沒有引用 `S-<key>-…` 與招牌欄位即可，別卡在 sop_trace array 是否填滿。
+  - TW 降級不必每次都燒 live run：載入既有 `runs/<TW標的>/evidence.json` 跑 `run_skills`+`evaluate_rules` 確定性重放，看缺欄位的 skill/rule 標 not_evaluable 即可（更快更省）。
 - [ ] 加進 `tests/test_pilot_packs.py` 風格的整合測試（真實 Pack 檔 + mock gateway，觸發 ceiling/floor 的 evidence 下 clamp 生效）。
 
 ---
