@@ -1,0 +1,51 @@
+# Lynch 決策工作流——流程本身就是視角：先分類（know what you own）、再看盈餘軌跡（驅動股價的
+# 唯一引擎）、再用 PEG 判成長便不便宜、再做資產負債表健全度的常識檢查、最後定論。與 Graham
+# 刻意不同調：Graham 從資產與清算起手（下檔優先），Lynch 從「這是哪一類公司、盈餘往哪走」起手
+# （成長軌跡優先）——同一支股、不同路徑。
+sop:
+  - step: categorize
+    ask: >
+      先搞清楚我擁有的是什麼——這是 slow grower、stalwart、fast grower、cyclical、turnaround
+      還是 asset play？能不能用一句話講清楚這門生意？分類決定我該期待什麼、用什麼標準判它
+      （fast grower 看成長跑道、cyclical 看景氣位置、stalwart 看別付溢價）。
+    look_at:
+      - profile
+      - fundamentals.revenue_annual
+      - estimate.revenue_growth_est_pct
+
+  - step: earnings-trajectory
+    ask: >
+      盈餘往哪走？近年 EPS / 營收年增、預估成長（earnings_growth_est_pct）是加速還是減速？
+      盈餘是長期驅動股價的唯一引擎——成長軌跡比這一季的數字重要。
+    look_at:
+      - fundamentals.eps_diluted_annual
+      - fundamentals.net_income_annual
+      - estimate.earnings_growth_est_pct
+
+  - step: peg-valuation
+    ask: >
+      成長便不便宜？PEG（peg_ratio = P/E ÷ 成長率）< 1 是便宜、≈1 公平、> 2 為完美付費。
+      對照公司分類：fast grower 容許較高 PEG、stalwart 不該付溢價、cyclical 的 PEG 會反向誤導
+      （獲利高峰時 P/E 最低）——觸發時要說清楚這是哪一類。
+    use_skill: peg_ratio
+    look_at:
+      - quote.trailing_pe
+      - reference.industry_peg
+    on_fail: PEG 算不出（缺共識成長或 P/E，台股常見）就誠實說、改以盈餘軌跡與分類定性判斷
+
+  - step: balance-sheet-sanity
+    ask: >
+      常識檢查——資產負債表撐不撐得起這個成長？負債/權益是否過高、現金流是否跟得上盈餘？
+      再好的成長故事，槓桿過高或燒錢都會出事。不需要 Graham 那麼嚴，但不能無視。
+    look_at:
+      - fundamentals.debt_to_equity
+      - fundamentals.free_cash_flow_annual
+
+  - step: verdict
+    ask: >
+      綜合——這是「成長便宜、軌跡向上、我懂的生意」（站多）、「公平定價先觀望」（neutral）、
+      還是「為完美付費／成長減速／看不懂」（neutral/避開）？方向要明確，並指名靠什麼：
+      PEG、成長軌跡、還是分類錯配。複核 PEG 與成長軌跡是否一致（複用 peg-valuation 的 PEG，
+      非新依賴）——若 PEG 便宜但成長正在減速，要說清楚這個矛盾。
+    use_skill: peg_ratio
+    look_at: [quote.trailing_pe, estimate.earnings_growth_est_pct]

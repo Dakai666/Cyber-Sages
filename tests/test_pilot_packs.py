@@ -65,6 +65,12 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert ps["ptj"].is_pack and ps["ptj"].horizons == ["trading"]
     assert ps["ptj"].aggression == ["conservative"]
     assert len(ps["ptj"].pack.skills) == 1 and len(ps["ptj"].pack.hard_rules) == 1
+    # Phase 6 遷移（舊單檔 → 完整 Pack，epoch-less）：Graham（資產/net-net，3 rules + 2 skills）、
+    # Lynch（GARP，PEG skill 走 rule↔skill pattern，1 rule）
+    assert ps["graham"].is_pack and ps["graham"].epoch is None
+    assert len(ps["graham"].pack.hard_rules) == 3 and len(ps["graham"].pack.skills) == 2
+    assert ps["lynch"].is_pack and ps["lynch"].epoch is None
+    assert len(ps["lynch"].pack.skills) == 1 and len(ps["lynch"].pack.hard_rules) == 1
     assert len(load_personas()) >= 19  # 加 persona 不該壞此測試（PR#57 review #4）
     # 必載名單：守住 key 不被 typo 改掉（比脆性總數斷言更耐 roster 成長）
     for k in ("buffett", "munger", "graham", "damodaran", "lynch", "burry", "wood",
@@ -75,15 +81,22 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     names = [p.name for p in load_personas()]
     assert names.count("Warren Buffett") == 1 and names.count("Charlie Munger") == 1
     assert names.count("Jesse Livermore") == 1  # livermore.yaml 已刪、不與目錄 Pack 重複
+    # Phase 6：graham.yaml / lynch.yaml 退役，不與目錄 Pack 重複
+    assert names.count("Benjamin Graham") == 1 and names.count("Peter Lynch") == 1
 
 
 def test_sop_only_personas_have_wellformed_sop():
     # Trump / Icahn 純靠 sop.yaml（無 rules/skills）；Chanos 亦有 SOP。驗 SOP 載入成形、
     # 每步有 step+ask、look_at 引用的 evidence 類別合法——contract 守門：防 SOP step 引用
     # 不存在的 category 溜進 production（look_at 在 council 僅 render 成 prompt 提示字串）。
-    known_categories = {"quote", "fundamentals", "history", "news", "profile", "chips", "macro"}
+    # estimate（forward 共識）/ reference（Damodaran 產業 multiples）/ derived（skill 私有衍生）
+    # 為 Spec A/F 後新增的合法類別。
+    known_categories = {"quote", "fundamentals", "history", "news", "profile", "chips",
+                        "macro", "estimate", "reference", "derived"}
     ps = {p.key: p for p in load_personas()}
-    for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty", "ptj"):
+    # graham/lynch（Phase 6 遷移）一併納入 SOP 合法性守門
+    for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty", "ptj",
+                "graham", "lynch"):
         sop = ps[key].pack.sop
         assert len(sop) >= 3, f"{key} SOP 應至少 3 步"
         assert all(s.step and s.ask for s in sop), f"{key} 每步應有 step 名與 ask"
@@ -423,3 +436,152 @@ async def test_mismatched_sop_step_count_left_untouched(monkeypatch):
     council = await run_council(_wonderful_us_store(), [], _settings(), _gateway(llm), n_sages=1)
     [s] = council.signals
     assert [t.step for t in s.sop_trace] == ["x"]  # 未覆寫
+
+
+# ---------- Graham / Lynch packs（Phase 6 遷移：舊單檔 → 完整 Pack）----------
+
+
+def _graham_bargain_store() -> EvidenceStore:
+    """便宜＋盈餘穩定＋財務強健、且市值低於 net-net 清算價——Graham 的夢幻便宜貨。"""
+    store = EvidenceStore(ticker="CIGAR", market="US")
+    store.add_all([
+        _fund("trailing_pe", 11.0, category="quote"),
+        _fund("earnings_stability_5y", 0.85),
+        _fund("debt_to_equity", 0.3),
+        _fund("net_net_value", 1200.0, unit="USD"),
+        _fund("market_cap", 1000.0, category="quote", unit="USD"),  # 市值 < 清算價
+        _fund("current_assets_annual", 800.0, unit="USD"),
+        _fund("current_liabilities_annual", 200.0, unit="USD"),
+    ])
+    return store
+
+
+def test_graham_skills_compute_net_net_and_current_ratio():
+    private, not_eval = run_skills(_pack("graham").pack.skills, _graham_bargain_store(), key="graham")
+    by_id = {e.id: e for e in private}
+    assert not_eval == []
+    # (1200 − 1000) / 1000 × 100 = 20.0%（市值低於清算價 20%）
+    assert by_id["S-graham-net_net_discount_pct"].value == 20.0
+    # 800 / 200 = 4.0x
+    assert by_id["S-graham-current_ratio"].value == 4.0
+
+
+def test_graham_rules_fire_on_deep_bargain():
+    graham = _pack("graham")
+    store = _graham_bargain_store()
+    # net_net_discount_pct 是 skill 私有衍生，rules 求值前須先併回 store。
+    # 用 items.extend 而非 add_all——保留 S-graham-… id（production 走 EvidenceStore(items=[...])，
+    # 而 add_all→add 會把 id 改寫成 E0xx，見 evidence.py:84）。rules 以 field 求值，id 雖不影響觸發，
+    # 但保留 id 才不誤導「skill 輸出真是 S-<key>-<name>」（該事實由 test_lynch_skill_computes_peg pin）。
+    private, _ = run_skills(graham.pack.skills, store, key="graham")
+    store.items.extend(private)
+    outcomes = {o.rule_id: o for o in evaluate_rules(graham.pack.hard_rules, rule_values(store))}
+    assert outcomes["defensive-bargain"].triggered    # pe 11(>0,<15) 且 stability 0.85>=0.7
+    assert outcomes["below-liquidation"].triggered     # net_net_discount 20 > 0
+    assert not outcomes["weak-financials"].triggered   # d/e 0.3 < 1.0
+
+
+def test_graham_weak_financials_caps_even_when_cheap():
+    # 紅線：負債過高即使便宜也封頂——cap_confidence 與立場無關。
+    # stability 0.5（< 0.7）刻意讓 defensive-bargain 不觸發，單獨驗 cap：cheap-but-unstable
+    # 的高槓桿股，Graham 的財務紅線把信心硬收到 0.5（非靠盈餘穩定的 floor 拉抬）。
+    graham = _pack("graham")
+    store = EvidenceStore(ticker="LEVERED", market="US")
+    store.add_all([_fund("trailing_pe", 9.0, category="quote"),
+                   _fund("earnings_stability_5y", 0.5), _fund("debt_to_equity", 1.8)])
+    outcomes = {o.rule_id: o for o in evaluate_rules(graham.pack.hard_rules, rule_values(store))}
+    assert outcomes["weak-financials"].triggered
+    assert not outcomes["defensive-bargain"].triggered     # stability 0.5 < 0.7
+    # 即使看多、信心 0.9，weak-financials cap 0.5 硬收
+    conf, _ = clamp_confidence("bullish", 0.9, list(outcomes.values()))
+    assert conf == 0.5
+
+
+def test_clamp_floor_dominates_cap_when_floor_higher():
+    # 現行 clamp_confidence（rules.py:120-124）行為 pin：cap 0.5 與 bullish_floor 0.6 同觸發、
+    # stance bullish 時，floor 蓋過 cap → 0.6（cap 與 floor 各自獨立套用，淨值看數值）。
+    # 非 Graham pack 引入（首次有 Pack 同時觸發兩者，PR #86 review 觀察）；此測試把現行語意釘住，
+    # 日後若重構 cap/floor 優先序會 fail 提醒（見 issue：clamp_confidence cap vs floor 優先序）。
+    graham = _pack("graham")
+    store = EvidenceStore(ticker="CHEAP_LEVERED", market="US")
+    store.add_all([_fund("trailing_pe", 11.0, category="quote"),    # defensive-bargain floor 0.6
+                   _fund("earnings_stability_5y", 0.85),
+                   _fund("debt_to_equity", 1.8)])                   # weak-financials cap 0.5
+    outcomes = evaluate_rules(graham.pack.hard_rules, rule_values(store))
+    by_id = {o.rule_id: o for o in outcomes}
+    assert by_id["weak-financials"].triggered and by_id["defensive-bargain"].triggered
+    conf, _ = clamp_confidence("bullish", 0.9, outcomes)
+    assert conf == 0.6   # floor 0.6 蓋過 cap 0.5（現行行為，待 issue 決定是否反轉）
+
+
+def test_graham_negative_pe_not_treated_as_cheap():
+    # trailing_pe < 0（虧損股）不該被 defensive-bargain 誤判成便宜（pe>0 guard）
+    graham = _pack("graham")
+    store = EvidenceStore(ticker="LOSS", market="US")
+    store.add_all([_fund("trailing_pe", -8.0, category="quote"),
+                   _fund("earnings_stability_5y", 0.9), _fund("debt_to_equity", 0.3)])
+    outcomes = {o.rule_id: o for o in evaluate_rules(graham.pack.hard_rules, rule_values(store))}
+    assert not outcomes["defensive-bargain"].triggered
+
+
+def test_graham_skills_not_evaluable_on_tw_data():
+    # 台股的流動資產欄位是 current_assets / current_liabilities（**無** _annual 後綴，
+    # 見 data/tw_stocks.py:81-82）、且無 market_cap。Graham 的 skill require *_annual 與 market_cap，
+    # 故落到「欄位名後綴錯位 / 缺欄」而降 not_evaluable（誠實，非靜默通過）——這正是台股真實缺的。
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 0.2),
+                _fund("current_assets", 8.0e11, unit="TWD"),       # 台股口徑：無 _annual
+                _fund("current_liabilities", 2.0e11, unit="TWD"),
+                _fund("net_net_value", 6.0e11, unit="TWD")])       # net_net_value 有、但缺 market_cap
+    private, not_eval = run_skills(_pack("graham").pack.skills, tw, key="graham")
+    assert private == []
+    # net_net_discount 缺的是 market_cap（net_net_value 在）；current_ratio 缺的是 *_annual（後綴錯位）
+    assert any("net_net_discount_pct" in n and "market_cap" in n for n in not_eval)
+    assert any("current_ratio" in n and "current_assets_annual" in n for n in not_eval)
+
+
+def test_lynch_skill_computes_peg():
+    store = EvidenceStore(ticker="GARP", market="US")
+    store.add_all([_fund("trailing_pe", 20.0, category="quote"),
+                   _fund("earnings_growth_est_pct", 25.0, category="estimate")])
+    private, not_eval = run_skills(_pack("lynch").pack.skills, store, key="lynch")
+    by_id = {e.id: e for e in private}
+    assert not_eval == []
+    assert by_id["S-lynch-peg_ratio"].value == 0.8       # 20 / 25 = 0.8（PEG<1 便宜）
+
+
+def test_lynch_garp_rule_fires_when_growth_cheap():
+    lynch = _pack("lynch")
+    store = EvidenceStore(ticker="GARP", market="US")
+    store.add_all([_fund("trailing_pe", 20.0, category="quote"),
+                   _fund("earnings_growth_est_pct", 25.0, category="estimate")])
+    store.items.extend(run_skills(lynch.pack.skills, store, key="lynch")[0])  # 保留 S- id（同上）
+    outcomes = evaluate_rules(lynch.pack.hard_rules, rule_values(store))
+    by_id = {o.rule_id: o for o in outcomes}
+    assert by_id["garp-bargain"].triggered               # peg 0.8 < 1 且成長 25>0
+    # 同向（bullish）floor 0.6 把信心從 0.4 抬升
+    conf, conflicts = clamp_confidence("bullish", 0.4, outcomes)
+    assert conf == 0.6 and conflicts == []
+    # 反向（bearish）不翻轉、記 rule_conflict 揭露
+    conf2, conflicts2 = clamp_confidence("bearish", 0.7, outcomes)
+    assert conf2 == 0.7 and len(conflicts2) == 1
+
+
+def test_lynch_negative_growth_not_treated_as_cheap():
+    # 衰退股（成長 < 0）得負 PEG，三重 guard（growth>0、peg>0、peg<1）必須擋下假便宜
+    lynch = _pack("lynch")
+    store = EvidenceStore(ticker="DECLINE", market="US")
+    store.add_all([_fund("trailing_pe", 20.0, category="quote"),
+                   _fund("earnings_growth_est_pct", -10.0, category="estimate")])
+    store.items.extend(run_skills(lynch.pack.skills, store, key="lynch")[0])  # 保留 S- id（同上）
+    outcomes = {o.rule_id: o for o in evaluate_rules(lynch.pack.hard_rules, rule_values(store))}
+    assert not outcomes["garp-bargain"].triggered
+
+
+def test_lynch_peg_not_evaluable_on_tw_data():
+    # 台股常缺 forward 共識成長與 trailing_pe → peg 降 not_evaluable（誠實，改定性判斷）
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 0.2)])
+    private, not_eval = run_skills(_pack("lynch").pack.skills, tw, key="lynch")
+    assert private == []
+    assert any("peg_ratio" in n for n in not_eval)

@@ -301,7 +301,11 @@ pipeline 自動消費 SOP，是在程式碼裡僵硬複刻「agent 讀規格→�
    **rule↔skill 依賴 pattern**（PTJ）、純 SOP Pack 取捨（Icahn）、skills_lib 共用、**欄位紀律**
    （`_annual`／百分比單位／台股差異）、品質 checklist、遷移 SOP。README 有指引。
 2. 🔜 **全員遷移**（套用 forge-sage skill，agent 任務非 engine run）：
-   - 7 舊單檔 yaml（burry/damodaran/druckenmiller/graham/lynch/taleb/wood）→ 完整 Pack、退役舊檔。
+   - 7 舊單檔 yaml → 完整 Pack、退役舊檔。**進度 2/7**：
+     - ✅ **Graham**（2026-06-24）：資產/net-net 原型，3 rules（weak-financials cap、defensive-bargain
+       floor、below-liquidation floor）+ 2 skills（net_net_discount_pct、current_ratio）。
+     - ✅ **Lynch**（2026-06-24）：GARP 原型，PEG skill（rule↔skill pattern）+ 1 rule（garp-bargain floor）。
+     - 🔜 剩 burry / damodaran / druckenmiller / taleb / wood。
    - 6 半 Pack（chanos/icahn/roaringkitty/son/soros/trump）確認「刻意純 SOP」留痕 or 補齊 rules/skills。
    - 每條新 rule / SOP step 在 `weight_rationale` / `note` 留出處痕跡（provenance discipline）。
 

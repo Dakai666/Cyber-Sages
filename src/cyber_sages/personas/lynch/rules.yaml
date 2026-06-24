@@ -1,0 +1,26 @@
+# Lynch 硬規則（DSL，程式判定、零幻覺）——只有招牌的一條：PEG < 1 ＝成長便宜。
+# 其餘 Lynch 判斷（公司分類、know what you own）本質定性，留在 SOP / exceptions，不硬塞 DSL。
+#
+# peg_ratio 由 skills.py 確定性算出（trailing_pe ÷ earnings_growth_est_pct，雙欄→單欄，見 §5）。
+# 三重條件防誤判：earnings_growth > 0 排除衰退股、peg > 0 排除「虧損＋衰退」的假便宜、peg < 1 才是便宜。
+hard_rules:
+  - id: garp-bargain
+    if:
+      all:
+        - {field: earnings_growth_est_pct, op: ">", value: 0}
+        - {field: peg_ratio, op: ">", value: 0}
+        - {field: peg_ratio, op: "<", value: 1.0}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: PEG < 1 且成長為正——成長相對價格划算（GARP 的核心），這是我要的位置
+
+exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
+  - >
+    PEG 在 1~2 之間是「公平定價」、> 2 是「為完美付費」——不是硬性賣出訊號，但要求成長的
+    可持續性與分類（fast grower 容許較高 PEG、stalwart 不該付溢價）在 SOP 說清楚才考慮。
+  - >
+    cyclical（景氣循環股）的 P/E 會在獲利高峰時最低、低谷時最高，PEG 會給出反向誤導訊號——
+    這類公司改看景氣位置與盈餘軌跡，PEG 規則的觸發要在 SOP 標明「這是循環股、PEG 不可盡信」。
+  - >
+    peg_ratio 看不到（台股常缺 forward 共識成長或 P/E）時，改以盈餘成長軌跡（近年 EPS/營收
+    年增）與分類定性判斷，並在 SOP 誠實說明 PEG 這次算不出。
