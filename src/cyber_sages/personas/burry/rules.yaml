@@ -24,7 +24,10 @@ hard_rules:
     if: {field: fcf_yield, op: ">", value: 8.0}
     action: bullish_floor
     confidence_floor: 0.6
-    note: FCF 殖利率 > 8%——現金回報厚實的深度價值，下檔由真實現金流撐住
+    note: >
+      FCF 殖利率 > 8%——現金回報厚實的深度價值，下檔由真實現金流撐住。8% 是「現金回報明顯
+      高於長債殖利率」的粗略代理（Scion 致股東信反覆強調以真實 FCF 而非帳面 EPS 衡量便宜），
+      非 Burry 明文門檻；個案仍以折現與催化劑為準。
 
 exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
   - >

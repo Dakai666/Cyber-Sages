@@ -13,7 +13,11 @@ hard_rules:
         - {field: pe_vs_industry_pct, op: "<", value: -25}
     action: bullish_floor
     confidence_floor: 0.55
-    note: 現價 P/E 較同業折價逾 25%——相對估值上市場給的低於同業，值得認真看內在價值是否被低估
+    note: >
+      現價 P/E 較同業折價逾 25%——相對估值上市場給的低於同業，值得認真看內在價值是否被低估。
+      25% 是「相對折價大到值得做內在價值複核」的篩選門檻（源自 Damodaran 相對估值/Musings on
+      Markets 一貫「先用 multiple 篩、再用 DCF 驗」的兩步法），非他明文數字；折價仍須以隱含
+      預期排除價值陷阱。
 
 exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
   - >

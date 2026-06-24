@@ -167,6 +167,8 @@ sop:
 
 **流程要刻意「不同調」**：Munger 把「invert（什麼會摧毀它）」與「避免愚蠢」獨立成步、且**先於估值**；Buffett 走「能力圈→護城河→owner earnings→安全邊際」。兩人即使用同一份資料、同一個 owner earnings，也走出**不同推理路徑**——這是對抗 P1（mode collapse）的核心。最後一步固定是 `verdict`，要求方向明確。`on_fail` 給 LLM 一條誠實退場的話術。
 
+**`verdict` 步若複用前面步驟的 `use_skill`**（綜合時再看一次同一個 skill 輸出，很常見），`ask` 內要明示這是**「複核」而非「首次使用」**（例：「複核 PEG 與成長軌跡是否一致（複用 peg-valuation 的 PEG，非新依賴）」）——否則讀 SOP 的人/agent 會誤以為 verdict 引入了新依賴。
+
 ---
 
 ## 7. skills.py — 確定性技能（絕不讓 LLM 算數）

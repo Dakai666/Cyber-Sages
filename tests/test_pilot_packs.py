@@ -637,6 +637,19 @@ def test_burry_skills_not_evaluable_on_tw():
     assert priv == [] and any("fcf_yield" in n for n in ne)
 
 
+def test_burry_tw_rules_cascade_consistently_with_pr_description():
+    # 規則級降級：台股僅有 debt_to_equity 時，excess-leverage 仍可評，cannot-cover-interest
+    # （缺 interest_coverage）與 deep-fcf-value（缺 skill fcf_yield）降 not_evaluable——
+    # 把 PR 描述承諾的三件事釘在測試裡（forge-sage 範本：PR 說的事實要可驗）。
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("debt_to_equity", 0.3)])
+    outcomes = {o.rule_id: o for o in evaluate_rules(
+        _pack("burry").pack.hard_rules, rule_values(tw))}
+    assert outcomes["excess-leverage"].not_evaluable is False      # debt_to_equity 在
+    assert outcomes["cannot-cover-interest"].not_evaluable is True
+    assert outcomes["deep-fcf-value"].not_evaluable is True
+
+
 def test_damodaran_relative_discount_fires():
     # 現價 P/E 遠低於同業 → relative-discount floor
     store = EvidenceStore(ticker="CHEAP", market="US")
@@ -698,4 +711,5 @@ def test_druckenmiller_trend_evaluable_on_tw():
     tw.add_all([_fund("sma_20", 1100.0, category="history"), _fund("sma_50", 1000.0, category="history"),
                 _fund("sma_200", 900.0, category="history")])
     priv, ne = run_skills(_pack("druckenmiller").pack.skills, tw, key="druckenmiller")
-    assert ne == [] and priv[0].value == 2.0   # 完美多頭排列
+    by_id = {e.id: e for e in priv}   # 用 id 比對（不靠 priv[0] 順序，未來加 skill 也穩）
+    assert ne == [] and by_id["S-druckenmiller-trend_alignment_score"].value == 2.0  # 完美多頭排列

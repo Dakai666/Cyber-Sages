@@ -46,5 +46,6 @@ sop:
       綜合——趨勢、流動性、動能、盈餘修正是否共振站多（站多、且指明該壓多重）、
       共振站空（看空）、還是糾結無明確趨勢（neutral，現金也是部位）？方向要明確，
       並指名是趨勢、動能還是盈餘修正在主導，以及風險預算如何決定部位。
+      複核趨勢與動能/盈餘修正是否共振（複用 trend-and-liquidity 的趨勢分數，非新依賴）。
     use_skill: trend_alignment_score
     look_at: [history.rs_vs_benchmark_3m_pct, estimate.earnings_growth_est_pct]
