@@ -1,0 +1,26 @@
+# Wood 硬規則（DSL，程式判定、零幻覺）——只有招牌的一條：高 forward 營收成長。
+# 顛覆性創新的核心可量化代理＝指數型營收成長；Wright's Law/TAM/S 曲線無法由財報確定性算出，
+# 留 SOP 定性。刻意不下估值上限紅線——她以五年維度看、容忍當期高 P/E 與不獲利（見 weight_rationale）。
+#
+# revenue_growth_est_pct 為 estimate（分析師共識 forward 營收年成長）；台股常缺 forward 共識 →
+# 該規則 not_evaluable，Wood 改以近年營收成長軌跡與主題定性判斷。
+hard_rules:
+  - id: hypergrowth
+    if: {field: revenue_growth_est_pct, op: ">", value: 25}
+    action: bullish_floor
+    confidence_floor: 0.6
+    note: >
+      forward 營收成長 > 25%——指數型營收是顛覆性創新的可量化代理；25% 是「明顯高於成熟產業、
+      值得以五年維度看 TAM 與成本曲線」的粗略門檻（ARK Big Ideas 慣以高雙位數~三位數成長為標的），
+      非明文數字。當期估值不在此規則考量內（她以五年成長跑道而非當期 P/E 定價）。
+
+exceptions:                    # 自然語言，SOP pass 由 LLM 裁量但強制引用 evidence
+  - >
+    成長減速或 S 曲線見頂的訊號（成長率連續下修、TAM 飽和、單位經濟未改善）會推翻高成長 floor——
+    指數型故事的前提是斜率仍在加速，須在 SOP 用成長軌跡與單位經濟說明，而非只看單一成長數字。
+  - >
+    當期不獲利/高 P/E 不是看空理由（她明確容忍）——但「燒錢且無清楚收斂路徑」與「投資期燒錢但
+    Wright's Law 成本下降可見」要在 SOP 區分，後者才是她要的，前者是價值陷阱的反面（成長陷阱）。
+  - >
+    revenue_growth_est_pct 看不到（台股常缺 forward 共識）時，改以近年實際營收年增軌跡與
+    主題/TAM 定性判斷，並在 SOP 誠實說明 forward 共識這次沒有。

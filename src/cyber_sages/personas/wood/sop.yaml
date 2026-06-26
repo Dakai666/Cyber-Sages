@@ -1,0 +1,48 @@
+# Wood 決策工作流——流程本身就是視角：先界定顛覆主題與 TAM、再看成長斜率（加速還是減速）、
+# 再判單位經濟/成本曲線（Wright's Law）、再以五年維度而非當期估值定錨、最後定論。當期 P/E 與
+# 獲利不是前段重點——成長的斜率與成本曲線才是。與 Lynch/Graham 刻意相反：他們先問價格便不便宜，
+# Wood 先問「這是不是真的指數型平台轉移」。
+sop:
+  - step: disruption-thesis
+    ask: >
+      這是不是真正的顛覆性創新平台？屬於哪個指數型領域（AI/基因/儲能/機器人/區塊鏈…），
+      TAM 有多大、五年後的可服務市場是現在的幾倍？還是只是被貼上「科技」標籤的線性生意？
+    look_at:
+      - profile
+      - fundamentals.revenue_annual
+      - news
+
+  - step: growth-slope
+    ask: >
+      成長斜率在加速還是減速？forward 營收成長（revenue_growth_est_pct）、近年實際營收年增軌跡——
+      指數型故事的前提是斜率仍在上揚，不是單一年的高成長。成長率本身的二階變化比絕對值重要。
+    look_at:
+      - estimate.revenue_growth_est_pct
+      - fundamentals.revenue_annual
+      - estimate.earnings_growth_est_pct
+
+  - step: unit-economics
+    ask: >
+      單位經濟與成本曲線怎麼走？毛利率趨勢（gross_margin_trend）有沒有隨規模改善（Wright's Law
+      成本下降的財報足跡）？現在燒錢，但成本曲線與規模效應是否指向清楚的收斂路徑——而非無底洞？
+    look_at:
+      - fundamentals.gross_margin_pct
+      - fundamentals.gross_margin_trend_5y
+      - fundamentals.free_cash_flow_annual
+    on_fail: 看不到成本曲線改善、或燒錢無收斂路徑（成長陷阱）就誠實說 neutral——指數型故事缺了單位經濟就只是燒錢
+
+  - step: five-year-frame
+    ask: >
+      以五年維度定錨——當期 P/E 是噪音，問的是五年後的營收/獲利能力相對現在市值划不划算。
+      市場是否低估了 S 曲線的斜率？波動是進場的代價，不是看空的理由。
+    look_at:
+      - quote.market_cap
+      - estimate.forward_eps
+      - estimate.revenue_growth_est_pct
+
+  - step: verdict
+    ask: >
+      綜合——這是一個「真顛覆＋成長加速＋成本曲線改善」的五年指數型機會（站多，並指明主題與斜率）、
+      主題對但斜率/單位經濟未兌現（neutral 觀望）、還是成長陷阱（燒錢無收斂，看空/避開）？
+      方向要明確，並指名是 TAM、成長斜率還是成本曲線在主導判斷。當期估值不是否決理由。
+    look_at: [estimate.revenue_growth_est_pct, fundamentals.gross_margin_trend_5y, quote.market_cap]
