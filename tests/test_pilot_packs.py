@@ -53,8 +53,10 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert ps["livermore"].is_pack and ps["livermore"].epoch is None
     assert ps["minervini"].is_pack and ps["raschke"].is_pack
     assert ps["trump"].is_pack and ps["trump"].epoch == 2025  # 催化劑型 Pack（無 rules，純 SOP）
-    # Phase 4.5 Batch 1：Chanos（鑑識空頭，有 rules）+ Icahn（行動派，純 SOP）
-    assert ps["chanos"].is_pack and len(ps["chanos"].pack.hard_rules) == 2
+    # Phase 4.5 Batch 1：Chanos（鑑識空頭）+ Icahn（行動派，純 SOP）
+    # Phase 6 收官：Chanos 補招牌 OCF/NI 應計背離 skill+rule（2→3 rules、+1 skill）
+    assert ps["chanos"].is_pack and len(ps["chanos"].pack.hard_rules) == 3
+    assert len(ps["chanos"].pack.skills) == 1
     assert ps["icahn"].is_pack and ps["icahn"].epoch is None
     # Phase 4.5 Batch 2：Soros（反身性宏觀）/ Roaring Kitty（散戶情緒，有軋空 rules）/ Son（賭徒）
     assert ps["soros"].is_pack and ps["soros"].epoch is None
@@ -764,3 +766,78 @@ def test_wood_hypergrowth_not_evaluable_without_forward_growth():
     tw.add_all([_fund("revenue_annual", 1.0e12, unit="TWD")])  # 無 revenue_growth_est_pct
     outcomes = {o.rule_id: o for o in evaluate_rules(_pack("wood").pack.hard_rules, rule_values(tw))}
     assert outcomes["hypergrowth"].not_evaluable
+
+
+# ---------- Chanos 盈餘品質（Phase 6 收官：補招牌 OCF/NI 應計背離 skill+rule）----------
+
+
+def test_chanos_ocf_to_ni_flags_accruals_divergence():
+    # 帳面獲利但現金跟不上（OCF/NI < 0.8）＝應計灌水紅旗
+    store = EvidenceStore(ticker="FUDGE", market="US")
+    store.add_all([_fund("net_income_annual", 1000.0, unit="USD"),
+                   _fund("operating_cash_flow_annual", 600.0, unit="USD"),  # OCF/NI = 0.6
+                   _fund("interest_coverage", 8.0, unit="x"), _fund("debt_to_equity", 0.5)])
+    chanos = _pack("chanos")
+    priv, ne = run_skills(chanos.pack.skills, store, key="chanos")
+    by_id = {e.id: e for e in priv}
+    assert ne == [] and by_id["S-chanos-ocf_to_ni_ratio"].value == 0.6
+    store.items.extend(priv)
+    outcomes = {o.rule_id: o for o in evaluate_rules(chanos.pack.hard_rules, rule_values(store))}
+    assert outcomes["earnings-not-backed-by-cash"].triggered
+    assert outcomes["earnings-not-backed-by-cash"].action == "bearish_floor"
+    # 同向（bearish）floor 0.55 把信心從 0.3 抬升
+    conf, conflicts = clamp_confidence("bearish", 0.3, list(outcomes.values()))
+    assert conf == 0.55 and conflicts == []
+
+
+def test_chanos_ocf_to_ni_silent_on_healthy_cash_conversion():
+    # OCF ≥ NI（健康，含 NVDA 0.8555 這種高成長時間差）不該觸發——門檻 0.8 保守避免誤傷
+    store = EvidenceStore(ticker="OK", market="US")
+    store.add_all([_fund("net_income_annual", 1000.0, unit="USD"),
+                   _fund("operating_cash_flow_annual", 900.0, unit="USD")])  # 0.9 > 0.8
+    chanos = _pack("chanos")
+    store.items.extend(run_skills(chanos.pack.skills, store, key="chanos")[0])
+    outcomes = {o.rule_id: o for o in evaluate_rules(chanos.pack.hard_rules, rule_values(store))}
+    assert not outcomes["earnings-not-backed-by-cash"].triggered
+
+
+def test_chanos_ocf_to_ni_guard_excludes_loss_makers():
+    # NI ≤ 0（虧損股）→ 比值無意義，NI>0 guard 必須擋下（虧損是另一種訊號、不是應計灌水）
+    store = EvidenceStore(ticker="LOSS", market="US")
+    store.add_all([_fund("net_income_annual", -500.0, unit="USD"),
+                   _fund("operating_cash_flow_annual", -300.0, unit="USD")])
+    chanos = _pack("chanos")
+    store.items.extend(run_skills(chanos.pack.skills, store, key="chanos")[0])
+    outcomes = {o.rule_id: o for o in evaluate_rules(chanos.pack.hard_rules, rule_values(store))}
+    assert not outcomes["earnings-not-backed-by-cash"].triggered
+
+
+def test_chanos_ocf_to_ni_not_evaluable_without_cash_flow():
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("net_income_annual", 1000.0, unit="TWD")])  # 無 operating_cash_flow_annual
+    priv, ne = run_skills(_pack("chanos").pack.skills, tw, key="chanos")
+    assert priv == [] and any("ocf_to_ni_ratio" in n for n in ne)
+
+
+# ---------- Taleb 純 SOP 端到端（Phase 6 收官：純 SOP Pack 的 SOP pass contract 範本）----------
+
+
+async def test_taleb_pure_sop_end_to_end_no_shortcircuit(monkeypatch):
+    # 純 SOP Pack（無 rules/skills）不該因「沒有 rule 觸發」而 short-circuit——SOP pass 仍須跑、
+    # 產出 signal。立此 contract 範本供後續純 SOP 確認（6 半 Pack）沿用。
+    taleb = _pack("taleb")
+    assert taleb.pack.hard_rules == [] and taleb.pack.skills == []
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [taleb])
+    llm = SageSignal(
+        stance="neutral", confidence=0.6,
+        thesis="我不預測方向，只拒絕這個共識密集、尾部肥厚的曝險——脆弱的 concavity。",
+        what_would_change_my_mind="地緣單點故障消除 + 共識降溫 + 波動率收斂",
+        neutral_reason="balanced_forces",
+        sop_trace=[SopStepResult(step="fragility-scan", conclusion="單點故障：地緣集中", evidence_ids=[]),
+                   SopStepResult(step="verdict", conclusion="拒絕曝險", evidence_ids=[])])
+    council = await run_council(_wonderful_us_store(), [], _settings(), _gateway(llm), n_sages=1)
+    [s] = council.signals
+    assert s.sage == "Nassim Taleb"
+    assert s.confidence == 0.6        # 無 rule → clamp 不動信心（純 SOP 不 short-circuit）
+    assert s.not_evaluable == []      # 無 skill → 無 not_evaluable 噪音
+    assert s.stance == "neutral" and s.thesis                # SOP pass 真的產出

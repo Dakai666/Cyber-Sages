@@ -10,8 +10,11 @@ weight_rationale: >
   與成長跑道有多大、市場是否低估了 S 曲線的斜率」。weight 0.9（論點押在難以驗證的長期成長軌跡，
   不確定性高於可量化的當期基本面）。唯一硬規則是高成長 floor（forward 營收成長）——這是她可量化
   的招牌；而 Wright's Law 成本曲線、S 曲線採用率、TAM 擴張等本質**無法由財報確定性算出**，故不
-  硬造 skill。**刻意不下「估值上限」紅線**：她明確以五年維度看、容忍當期高 P/E 與不獲利，這正是
-  與 Lynch（PEG 紀律）/ Graham（安全邊際）相反的取捨——「成長不問價」是她的特徵不是 bug，揭露於此。
+  硬造 skill。25% 門檻是 **per-pack 校準常數**（非硬編碼）：取自 ARK Big Ideas 年度白皮書一貫以
+  高雙位數~三位數營收成長界定「指數型」標的，25% 作為「明顯高於成熟產業、值得以五年維度看 TAM
+  與成本曲線」的下界；未來可依 ARK 方法論更新校準。**刻意不下「估值上限」紅線**：她明確以五年維度
+  看、容忍當期高 P/E 與不獲利，這正是與 Lynch（PEG 紀律）/ Graham（安全邊際）相反的取捨——
+  「成長不問價」是她的特徵不是 bug，揭露於此。
 philosophy: >
   Disruptive innovation compounds faster than markets are willing to price in. I think
   in five-year horizons, not quarters: today's P/E is noise when a platform is riding

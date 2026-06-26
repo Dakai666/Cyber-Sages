@@ -196,6 +196,7 @@ rules / skills 引用的欄位名**必須**對上 provider 真實 emit 的 canon
 
 - **年度欄位帶 `_annual` 後綴**：`net_income_annual` / `depreciation_amortization_annual` / `capex_annual`（**不是** `capex` / `depreciation_amortization`）。
 - **多年欄位單位是百分比的整數位**：`roe_5y_avg = 28.5`（＝28.5%）→ 門檻寫 `> 20` **不是** `> 0.20`。`gross_margin_trend_5y` 單位 `%/yr`、`earnings_stability_5y` 值域 [0,1]。
+- **`_5y` vs `_5y_avg` 後綴別搞混**（新人最常踩）：`gross_margin_trend_5y` 是**趨勢斜率**（%/yr，每年變化）、`roe_5y_avg` 是**多年平均**（%）、`earnings_stability_5y` 是**穩定度分數**（[0,1]）——三個語意/單位都不同，引錯欄位名規則會永遠 not_evaluable（靜默失效）。動手前 grep `data/longterm.py` 確認實際 emit 名。
 - **台股欄位差異**：TW 無 `capex`/`D&A`/`market_cap`（owner earnings 系列降級），但多年 `roe_5y_avg` 等已支援台股（moat 類規則對 2330 仍可評）。⚠️ 非曆年制（非 12/31 財年）公司的多年欄位覆蓋率會下降——見 issue #43。
 - 字串證據（新聞）**不參與 DSL**；`rule_values` 只收數值型欄位，同名取最新（最後加入者）。
 
@@ -220,13 +221,19 @@ rules / skills 引用的欄位名**必須**對上 provider 真實 emit 的 canon
 
 ## 10. 遷移舊單檔 yaml → 完整 Pack
 
-舊 `personas/<key>.yaml`（burry/damodaran/druckenmiller/graham/lynch/taleb/wood）只有 philosophy/focus/voice，走 degraded 單發 prompt。升級步驟：
+舊 `personas/<key>.yaml` 只有 philosophy/focus/voice，走 degraded 單發 prompt。升級步驟：
 1. 建 `personas/<key>/`（或 `<key>-<epoch>/`）目錄，把舊 yaml 內容搬進 `persona.yaml`，補 `horizons`/`aggression`/`weight_rationale`/`sources`。
 2. 照 §0 判斷該做到哪一層（純 SOP？帶 rules？帶 skills？）。
 3. 刪掉舊單檔 `<key>.yaml`（loader 認目錄即可；留著會重複載入）。
 4. 跑 §9 checklist。
+5. **收官 contract**：全員遷移到某階段時，加一條結構性斷言鎖住「不再有單檔殘留」——
+   `assert glob.glob(str(PERSONA_DIR / "*.yaml")) == []`（防未來有人不小心 commit 回舊單檔）。
 
-半 Pack（chanos/icahn/roaringkitty/son/soros/trump 目前缺 skills/部分缺 rules）：先確認缺的是「刻意不做」（純 SOP 取捨，如 Icahn）還是「待補」——前者在 `weight_rationale` 留痕即可，後者照 §4/§5/§7 補。
+**純 SOP Pack 的端到端 contract（範本見 `test_taleb_pure_sop_end_to_end_no_shortcircuit`）**：純 SOP（無 rules/skills）除了靜態斷言（0 rules/0 skills、SOP 步成形），**必須有一條真實 gateway 的 SOP pass 測試**——驗證「沒有 rule 觸發」不會讓 council short-circuit、SOP pass 仍產出 signal、`clamp` 不動信心。靜態 contract 抓不到「SOP prompt 壞掉但結構正確」。
+
+半 Pack 確認：先確認缺的是「刻意不做」（純 SOP 取捨）還是「待補」——
+- **刻意純 SOP**：核心變數無對應 evidence 欄位（Icahn 治理/分部、Son TAM/願景、Soros 反身性、Trump 政策 tag）→ 在 `weight_rationale` 留痕「為何不硬寫 DSL」即可。
+- **待補**：rules.yaml 裡若有「留待後續 PR」這類 TODO（如 Chanos 招牌 OCF/NI 應計背離曾延後），就是該補 skill+rule 的訊號——別讓 deferred 變 forgotten。
 
 ---
 
