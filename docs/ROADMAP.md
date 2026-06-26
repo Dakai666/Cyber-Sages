@@ -308,8 +308,19 @@ pipeline 自動消費 SOP，是在程式碼裡僵硬複刻「agent 讀規格→�
    - ✅ **Druckenmiller**（PR #88）：順勢/動能，複用 skills_lib trend_alignment_score + 雙向 trend floor（跨市場可評）。
    - ✅ **Taleb**（PR #89）：尾部/脆弱性，**純 SOP**（哲學使然——反機械化點預測；槓桿紅線已由 Chanos/Burry 覆蓋，Taleb 疊尾部+凸性視角）。
    - ✅ **Wood**（PR #89）：顛覆性創新成長，1 hypergrowth floor（forward 營收成長）、無 skill（Wright's Law/TAM 無法確定性算）；刻意不下估值上限（成長不問價，與 Lynch/Graham 相反）。
-3. 🔜 **6 半 Pack 確認**（chanos/icahn/roaringkitty/son/soros/trump）：確認「刻意純 SOP」留痕 or 補齊 rules/skills。
-   - 每條新 rule / SOP step 在 `weight_rationale` / `note` 留出處痕跡（provenance discipline）。
+3. ✅ **6 半 Pack 確認完成（2026-06-27，PR #90）**：
+   - **5 位確認「刻意純 SOP / 已完整」**（核心變數無對應 evidence 欄位，`weight_rationale` 留痕充分）：
+     Icahn（治理/分部）、Son（TAM/願景）、Soros（反身性）、Trump（政策 tag）為刻意純 SOP；
+     Roaring Kitty 的招牌軋空訊號（short% / days-to-cover）已機械化、社群集結留 SOP——皆無缺漏。
+   - **Chanos 補回延遲的招牌 skill**：rules.yaml 原註「OCF/NI 應計背離比留待後續 PR」——交付
+     `ocf_to_ni_ratio` skill + `earnings-not-backed-by-cash` rule（OCF/NI < 0.8 ＝帳面獲利但現金跟不上，
+     他的 voice「信現金流量表不信損益表」落地）；門檻 0.8 保守避免誤傷高成長（NVDA 0.856 不觸發）。
+   - 順帶收 PR #89 review：Taleb 純 SOP 端到端 contract test（範本）、Wood 25% 校準 provenance、
+     forge-sage §8（`_5y` vs `_5y_avg`）/§9（glob 收官斷言）/§10（純 SOP 端到端 contract + deferred 別變 forgotten）。
+
+**🎉 Phase 6 完全收官**：19 位 roster 全為完整 Persona Pack（依各自原型決定 rules/skills/純 SOP 層級），
+`personas/` 下無單檔 yaml、無 degraded persona。forge-sage skill「驅動遷移、遷移反哺 skill」閉環兌現。
+下一步：**Phase 7**（重放/回測 + persona 品質分數，見上）或其他 frontier。
 
 **前置 issue 狀態**：#41 ✅ / #45 ✅（已 CLOSED）；#39（skill 沙盒）**降為一般衛生**——無機器
 產碼，skills 仍由 agent 手寫，同現存 6 個手寫 skills.py 信任模型，不再硬阻擋；#40（skill 例外隔離）

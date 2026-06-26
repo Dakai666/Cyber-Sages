@@ -6,10 +6,10 @@ aggression: [conservative]   # 獵殺數字造假的懷疑者，保守派
 weight_rationale: >
   鑑識型空頭——roster 唯一主動獵殺數字造假/盈餘灌水的對抗性視角，與 anti-hallucination
   脊椎同源（「每個數字都要第一手、可追溯」的反面就是「主動找出哪個數字在說謊」）。
-  weight 1.0 與 Graham/Taleb 同級。硬規則只收最不會誤傷成長股的兩條結構性窘迫訊號
-  （利息保障 <1、極端槓桿 >3）；其招牌的「OCF/NI 應計背離比」需 derived 欄位（DSL 只比
-  單欄對常數、表達不了雙欄比值），留待後續 skills.py PR——現階段在 SOP pass 由 LLM 帶
-  context 比對現金流 vs 淨利。epoch-less：鑑識「方法論」不隨年代漂移（雖然他的獵物有時代
+  weight 1.0 與 Graham/Taleb 同級。硬規則收三條最不會誤傷成長股的鑑識訊號：兩條結構性
+  窘迫（利息保障 <1、極端槓桿 >3）+ 招牌的「OCF/NI 應計背離比」（盈餘現金含量 < 0.8＝帳面
+  獲利但現金跟不上，靠 skills.py 的 ocf_to_ni_ratio 把雙欄比值算成單欄再判定）——他的 voice
+  「信現金流量表、不信損益表」現以硬規則落地。epoch-less：鑑識「方法論」不隨年代漂移（雖然他的獵物有時代
   漂移：2000s 財報造假 Enron/Tyco → 2010s 中概空頭 → 2020s 電動車/長債泡沫）；若未來要做
   「中概空頭年代 vs 當代」的 Chanos 對決，加一個 chanos-<epoch>/ 目錄即可（同 buffett-2019 邏輯）。
 philosophy: >

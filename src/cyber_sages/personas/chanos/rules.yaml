@@ -7,7 +7,8 @@
 # cannot-cover-interest 對台股不觸發、Chanos 在 SOP 誠實列「看不到」。debt_to_equity 兩市皆可。
 #
 # 招牌的「OCF/NI 應計背離比」需 derived 欄位（skills.py）——DSL 只比單欄對常數、表達不了雙欄
-# 比值——留待後續 PR；現階段在 SOP pass 由 LLM 帶 context 比對現金流 vs 淨利。
+# 比值——由 skills.py 的 ocf_to_ni_ratio 確定性算出（雙欄比值→單欄，見 §5 rule↔skill pattern），
+# 他的 voice 就是「信現金流量表、不信損益表」，這條把它落地成硬規則（原「留待後續 PR」已交付）。
 hard_rules:
   - id: cannot-cover-interest
     if: {field: interest_coverage, op: "<", value: 1}
@@ -20,6 +21,17 @@ hard_rules:
     action: bearish_floor
     confidence_floor: 0.5
     note: 債務/權益 >3，槓桿在掩蓋商業模式的問題；利率或景氣一回檔就見光
+
+  # 盈餘品質紅旗：帳面獲利但現金跟不上＝應計灌水。NI>0 guard 排除虧損股（比值無意義）；
+  # 門檻 0.8 刻意保守（OCF 比 NI 低逾 20% 才算明顯背離），避免誤傷高成長股的應收帳款時間差。
+  - id: earnings-not-backed-by-cash
+    if:
+      all:
+        - {field: net_income_annual, op: ">", value: 0}
+        - {field: ocf_to_ni_ratio, op: "<", value: 0.8}
+    action: bearish_floor
+    confidence_floor: 0.55
+    note: 帳面獲利但營業現金流跟不上（OCF/NI < 0.8）——應計項目灌水的鑑識紅旗，我信現金流量表不信損益表
 
 # 注意：DSL 無 industry 欄位，以下 exceptions 是「給 SOP pass 的 LLM 降權指引」，不是規則本身
 # 的自動修正——硬規則觸發時不看業別，金融業豁免由 SOP pass 帶 context 實作（語意在此、執行在 SOP）。

@@ -4,8 +4,9 @@
 sop:
   - step: cash-vs-earnings
     ask: >
-      淨利有沒有變成現金？operating cash flow 與 net income、free cash flow 是否背離？
-      利潤是賺來的，還是用應計項目「做」出來的？現金才是事實，盈餘只是意見。
+      淨利有沒有變成現金？盈餘的現金含量（ocf_to_ni_ratio = OCF/NI）有沒有明顯 < 1、
+      free cash flow 是否背離？利潤是賺來的，還是用應計項目「做」出來的？現金才是事實，盈餘只是意見。
+    use_skill: ocf_to_ni_ratio
     look_at:
       - fundamentals.net_income_annual
       - fundamentals.operating_cash_flow_annual
