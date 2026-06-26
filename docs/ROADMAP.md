@@ -300,15 +300,15 @@ pipeline 自動消費 SOP，是在程式碼裡僵硬複刻「agent 讀規格→�
    Pack 解剖（§0 做到哪一層的判斷）、sources/epoch、persona 兩條分席軸、rules DSL 完整參考、
    **rule↔skill 依賴 pattern**（PTJ）、純 SOP Pack 取捨（Icahn）、skills_lib 共用、**欄位紀律**
    （`_annual`／百分比單位／台股差異）、品質 checklist、遷移 SOP。README 有指引。
-2. 🔜 **全員遷移**（套用 forge-sage skill，agent 任務非 engine run）：
-   - 7 舊單檔 yaml → 完整 Pack、退役舊檔。**進度 5/7**：
-     - ✅ **Graham**（2026-06-24，PR #86）：資產/net-net 原型，3 rules + 2 skills（net_net_discount_pct、current_ratio）。
-     - ✅ **Lynch**（2026-06-24，PR #86）：GARP 原型，PEG skill（rule↔skill pattern）+ 1 rule。
-     - ✅ **Burry**（2026-06-24）：深度價值/資產負債表現實，fcf_yield skill + 3 rules（cannot-cover-interest cap、excess-leverage cap、deep-fcf-value floor）。
-     - ✅ **Damodaran**（2026-06-24）：相對估值，pe_vs_industry_pct skill（用 reference 產業 multiples）+ 1 floor（刻意輕規則，哲學抗拒機械門檻）。
-     - ✅ **Druckenmiller**（2026-06-24）：順勢/動能，複用 skills_lib 的 trend_alignment_score + 雙向 trend floor（跨市場可評）。
-     - 🔜 剩 taleb / wood。
-   - 6 半 Pack（chanos/icahn/roaringkitty/son/soros/trump）確認「刻意純 SOP」留痕 or 補齊 rules/skills。
+2. ✅ **7 舊單檔 yaml → 完整 Pack 全數遷移完成（7/7，2026-06-24~26）**，`personas/` 下已無單檔 yaml：
+   - ✅ **Graham**（PR #86）：資產/net-net，3 rules + 2 skills（net_net_discount_pct、current_ratio）。
+   - ✅ **Lynch**（PR #86）：GARP，PEG skill（rule↔skill pattern）+ 1 rule。
+   - ✅ **Burry**（PR #88）：深度價值/資產負債表現實，fcf_yield skill + 3 rules（償債/槓桿 cap + 深度 FCF floor）。
+   - ✅ **Damodaran**（PR #88）：相對估值，pe_vs_industry_pct skill（用 reference 產業 multiples）+ 1 floor（刻意輕規則）。
+   - ✅ **Druckenmiller**（PR #88）：順勢/動能，複用 skills_lib trend_alignment_score + 雙向 trend floor（跨市場可評）。
+   - ✅ **Taleb**（PR #89）：尾部/脆弱性，**純 SOP**（哲學使然——反機械化點預測；槓桿紅線已由 Chanos/Burry 覆蓋，Taleb 疊尾部+凸性視角）。
+   - ✅ **Wood**（PR #89）：顛覆性創新成長，1 hypergrowth floor（forward 營收成長）、無 skill（Wright's Law/TAM 無法確定性算）；刻意不下估值上限（成長不問價，與 Lynch/Graham 相反）。
+3. 🔜 **6 半 Pack 確認**（chanos/icahn/roaringkitty/son/soros/trump）：確認「刻意純 SOP」留痕 or 補齊 rules/skills。
    - 每條新 rule / SOP step 在 `weight_rationale` / `note` 留出處痕跡（provenance discipline）。
 
 **前置 issue 狀態**：#41 ✅ / #45 ✅（已 CLOSED）；#39（skill 沙盒）**降為一般衛生**——無機器

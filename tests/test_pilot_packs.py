@@ -79,6 +79,13 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     assert len(ps["damodaran"].pack.hard_rules) == 1 and len(ps["damodaran"].pack.skills) == 1
     assert ps["druckenmiller"].is_pack and ps["druckenmiller"].epoch is None
     assert len(ps["druckenmiller"].pack.hard_rules) == 2 and len(ps["druckenmiller"].pack.skills) == 1
+    # Phase 6 遷移（收官 7/7）：Taleb（純 SOP，哲學使然——無 rules/skills，類比 Icahn）、
+    # Wood（顛覆成長，1 floor rule、無 skill——Wright's Law/TAM 無法確定性算）
+    assert ps["taleb"].is_pack and ps["taleb"].epoch is None
+    assert ps["taleb"].pack.hard_rules == [] and ps["taleb"].pack.skills == []
+    assert len(ps["taleb"].pack.sop) >= 3
+    assert ps["wood"].is_pack and ps["wood"].epoch is None
+    assert len(ps["wood"].pack.hard_rules) == 1 and ps["wood"].pack.skills == []
     assert len(load_personas()) >= 19  # 加 persona 不該壞此測試（PR#57 review #4）
     # 必載名單：守住 key 不被 typo 改掉（比脆性總數斷言更耐 roster 成長）
     for k in ("buffett", "munger", "graham", "damodaran", "lynch", "burry", "wood",
@@ -94,6 +101,11 @@ def test_both_pilots_loaded_as_packs_no_legacy_duplicate():
     # Phase 6（續）：burry / damodaran / druckenmiller 單檔退役
     assert names.count("Michael Burry") == 1 and names.count("Aswath Damodaran") == 1
     assert names.count("Stanley Druckenmiller") == 1
+    # Phase 6（收官 7/7）：taleb / wood 單檔退役——全 7 舊單檔遷移完成、personas/ 下無 .yaml
+    assert names.count("Nassim Taleb") == 1 and names.count("Cathie Wood") == 1
+    import glob as _glob
+    from cyber_sages.personas.pack import PERSONA_DIR
+    assert _glob.glob(str(PERSONA_DIR / "*.yaml")) == [], "全員遷移後 personas/ 下不應再有單檔 yaml"
 
 
 def test_sop_only_personas_have_wellformed_sop():
@@ -107,7 +119,7 @@ def test_sop_only_personas_have_wellformed_sop():
     ps = {p.key: p for p in load_personas()}
     # graham/lynch + burry/damodaran/druckenmiller（Phase 6 遷移）一併納入 SOP 合法性守門
     for key in ("trump", "icahn", "chanos", "soros", "son", "roaringkitty", "ptj",
-                "graham", "lynch", "burry", "damodaran", "druckenmiller"):
+                "graham", "lynch", "burry", "damodaran", "druckenmiller", "taleb", "wood"):
         sop = ps[key].pack.sop
         assert len(sop) >= 3, f"{key} SOP 應至少 3 步"
         assert all(s.step and s.ask for s in sop), f"{key} 每步應有 step 名與 ask"
@@ -713,3 +725,42 @@ def test_druckenmiller_trend_evaluable_on_tw():
     priv, ne = run_skills(_pack("druckenmiller").pack.skills, tw, key="druckenmiller")
     by_id = {e.id: e for e in priv}   # 用 id 比對（不靠 priv[0] 順序，未來加 skill 也穩）
     assert ne == [] and by_id["S-druckenmiller-trend_alignment_score"].value == 2.0  # 完美多頭排列
+
+
+# ---------- Taleb（純 SOP）/ Wood（高成長 floor）packs（Phase 6 收官 7/7）----------
+
+
+def test_taleb_is_pure_sop_no_rules_no_skills():
+    # Taleb 純 SOP：哲學使然（反機械化點預測），非資料缺——驗無 rules/skills、SOP 成形
+    taleb = _pack("taleb")
+    assert taleb.pack.hard_rules == [] and taleb.pack.skills == []
+    assert len(taleb.pack.sop) >= 4
+    assert taleb.pack.sop[-1].step == "verdict"   # 末步定論
+
+
+def test_wood_hypergrowth_floor_fires():
+    wood = _pack("wood")
+    store = EvidenceStore(ticker="DISRUPT", market="US")
+    store.add_all([_fund("revenue_growth_est_pct", 40.0, category="estimate")])
+    outcomes = evaluate_rules(wood.pack.hard_rules, rule_values(store))
+    by_id = {o.rule_id: o for o in outcomes}
+    assert by_id["hypergrowth"].triggered                 # 40% > 25%
+    # 同向（bullish）floor 0.6 把信心從 0.4 抬升
+    conf, conflicts = clamp_confidence("bullish", 0.4, outcomes)
+    assert conf == 0.6 and conflicts == []
+
+
+def test_wood_hypergrowth_silent_on_slow_grower():
+    wood = _pack("wood")
+    store = EvidenceStore(ticker="SLOW", market="US")
+    store.add_all([_fund("revenue_growth_est_pct", 8.0, category="estimate")])
+    outcomes = {o.rule_id: o for o in evaluate_rules(wood.pack.hard_rules, rule_values(store))}
+    assert not outcomes["hypergrowth"].triggered          # 8% 不 > 25%
+
+
+def test_wood_hypergrowth_not_evaluable_without_forward_growth():
+    # 缺 forward 共識成長（台股常見）→ hypergrowth not_evaluable（誠實，改定性軌跡判斷）
+    tw = EvidenceStore(ticker="2330", market="TW")
+    tw.add_all([_fund("revenue_annual", 1.0e12, unit="TWD")])  # 無 revenue_growth_est_pct
+    outcomes = {o.rule_id: o for o in evaluate_rules(_pack("wood").pack.hard_rules, rule_values(tw))}
+    assert outcomes["hypergrowth"].not_evaluable

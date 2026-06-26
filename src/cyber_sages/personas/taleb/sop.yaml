@@ -1,0 +1,45 @@
+# Taleb 決策工作流——流程本身就是視角：先找脆弱（什麼會讓它歸零）、再挖隱藏槓桿/賣掉的
+# 選擇權、再拆解共識敘事的過度自信、再判賠付的凸凹、最後以「避免 ruin」定論。不做點預測：
+# 問的不是「會漲會跌」，而是「這個曝險的尾部長什麼樣」。純 SOP（無硬規則）——脆弱性是
+# 情境的、不是門檻的；機械式槓桿紅線交給 Chanos/Burry，Taleb 疊上尾部與凸性的判斷。
+sop:
+  - step: fragility-scan
+    ask: >
+      什麼會讓它歸零？這門生意/這個價位最脆的單點故障在哪——客戶/供應/地緣/監管的集中度，
+      一個壞消息會是「調整」還是「脆斷」？先想最壞的尾部，而不是中位數情境。
+    look_at:
+      - profile
+      - fundamentals.debt_to_equity
+      - history.volatility_30d_annualized_pct
+      - news
+
+  - step: hidden-leverage
+    ask: >
+      隱藏的脆弱在哪？資產負債表的槓桿（debt_to_equity、利息保障）、表外負債、賣掉的選擇權
+      （便宜出售的下檔保護）、平時穩定但危機時會一起斷的相關性？脆弱往往藏在「看起來很穩」裡。
+    look_at:
+      - fundamentals.debt_to_equity
+      - fundamentals.interest_coverage
+      - fundamentals.total_liabilities
+
+  - step: narrative-fallacy
+    ask: >
+      共識的故事是什麼，它有多自信？一個乾淨、人人複述的多頭/空頭敘事，正是尾部被低估的訊號——
+      故事解釋了過去，但對凸性、路徑依賴的未來說不了什麼。共識越擁擠，意外的代價越大。
+    look_at: [news, estimate.analyst_recommendation, estimate.analyst_count]
+
+  - step: convexity-check
+    ask: >
+      賠付結構是凸還是凹？下檔有限、上檔開放（凸，我喜歡）；還是上檔有限、下檔災難（凹，我拒絕）？
+      現價買進，我承受的是哪一種非對稱？波動本身不是風險，凹性才是。
+    look_at:
+      - history.atr_pct
+      - history.pct_below_52w_high
+      - fundamentals.free_cash_flow_annual
+
+  - step: verdict
+    ask: >
+      綜合——以「避免 ruin」為最高準則：這是一個下檔被框住、尾部可承受的凸性曝險（站多/可參與）、
+      尾部太肥或敘事過度自信而我選擇旁觀（neutral——不預測方向，只拒絕曝險）、還是脆弱到一個
+      壞消息就脆斷（看空/避開）？方向不必強求，但要指名最大的尾部風險與它是凸是凹。
+    look_at: [fundamentals.debt_to_equity, history.volatility_30d_annualized_pct, news]
