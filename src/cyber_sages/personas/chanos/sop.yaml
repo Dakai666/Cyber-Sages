@@ -6,6 +6,8 @@ sop:
     ask: >
       淨利有沒有變成現金？盈餘的現金含量（ocf_to_ni_ratio = OCF/NI）有沒有明顯 < 1、
       free cash flow 是否背離？利潤是賺來的，還是用應計項目「做」出來的？現金才是事實，盈餘只是意見。
+      註：ocf_to_ni_ratio 落在邊界（約 0.75–0.85）是灰色地帶——硬規則 0.8 只是粗篩，應交叉參考
+      應收帳款/DSO 趨勢與五年均，別只憑單一年度單一比值就定罪。
     use_skill: ocf_to_ni_ratio
     look_at:
       - fundamentals.net_income_annual

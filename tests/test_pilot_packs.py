@@ -791,7 +791,7 @@ def test_chanos_ocf_to_ni_flags_accruals_divergence():
 
 
 def test_chanos_ocf_to_ni_silent_on_healthy_cash_conversion():
-    # OCF ≥ NI（健康，含 NVDA 0.855 這種高成長時間差）不該觸發——門檻 0.8 保守避免誤傷
+    # OCF ≥ NI（健康，含 NVDA 0.8555 這種高成長時間差）不該觸發——門檻 0.8 保守避免誤傷
     store = EvidenceStore(ticker="OK", market="US")
     store.add_all([_fund("net_income_annual", 1000.0, unit="USD"),
                    _fund("operating_cash_flow_annual", 900.0, unit="USD")])  # 0.9 > 0.8
