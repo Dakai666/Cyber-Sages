@@ -278,6 +278,12 @@ def render_council(result: AnalysisResult) -> str:
         if s.rule_conflicts:
             lines.append("- ⚠️ 規則收口衝突：")
             lines += [f"  - {rc}" for rc in s.rule_conflicts]
+        # #40：skill 拋非預期例外（coding bug）以 unexpected 標記列入 not_evaluable——
+        # 把它從一般誠實降級（缺欄位等，常見、不顯示以免雜訊）拉出來浮上報告，需修正才看得見。
+        skill_errors = [n for n in s.not_evaluable if "unexpected" in n]
+        if skill_errors:
+            lines.append("- ⚠️ skill 程式錯誤（需修正）：")
+            lines += [f"  - {e}" for e in skill_errors]
     return "\n".join(lines)
 
 

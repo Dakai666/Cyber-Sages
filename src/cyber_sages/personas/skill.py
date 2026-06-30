@@ -76,7 +76,10 @@ def run_skills(
     回傳 (private_evidence, not_evaluable)：
     - private_evidence：每個成功 skill 一筆 Evidence，id = `S-<key>-NNN`、category="derived"、
       note 帶公式與輸入 ids，可被 cite-check 當一般 evidence 比對。
-    - not_evaluable：缺 requires 欄位（或算出非有限值）而未執行的 skill 名清單。
+    - not_evaluable：未產出值的 skill 標記清單，三類：缺 requires 欄位 / 算出非有限值（誠實降級）；
+      預期資料形狀例外（KeyError/ZeroDivisionError/ValueError）；以及 #40 新增的**非預期例外**
+      （skill coding bug，帶 `⚠ unexpected` 醒目標記區隔）。任一 skill 失敗都只影響該 skill，
+      不上拋、不波及整位 sage。
     """
     private: list[Evidence] = []
     not_evaluable: list[str] = []
@@ -89,7 +92,14 @@ def run_skills(
         try:
             result = sk.fn(accessor)
         except (KeyError, ZeroDivisionError, ValueError) as exc:
+            # 預期的「資料形狀」失敗（缺欄位/除零/數值不合理）→ 誠實降級。
             not_evaluable.append(f"skill:{sk.name} ({type(exc).__name__})")
+            continue
+        except Exception as exc:  # noqa: BLE001  — 不含 BaseException（不吞 KeyboardInterrupt/CancelledError）
+            # #40：非預期例外（skill coding bug，如 TypeError/AttributeError）以**醒目標記**
+            # 與上面的誠實降級區隔，讓判讀者與 telemetry 知道這是「程式壞了」而非「資料沒到」。
+            # 一個壞 skill 只降該 skill、不再讓整位 sage 在 run_council 變 absent（韌性）。
+            not_evaluable.append(f"skill:{sk.name} (⚠ unexpected {type(exc).__name__}: {exc})")
             continue
         val = result.value
         if not isinstance(val, (int, float)) or val != val or val in (float("inf"), float("-inf")):

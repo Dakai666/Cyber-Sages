@@ -129,6 +129,17 @@ def needs_missing(ev) -> SkillResult:
     return SkillResult(value=ev["net_income_annual"] / ev["shares"], formula="NI / shares")
 
 
+@skill(requires=["net_income_annual"])
+def buggy_typeerror(ev) -> SkillResult:
+    # coding bug：對 float 做字串切片 → TypeError（非預期例外，非資料形狀）
+    return SkillResult(value=ev["net_income_annual"]["oops"], formula="bug")
+
+
+@skill(requires=["net_income_annual"])
+def raises_valueerror(ev) -> SkillResult:
+    raise ValueError("預期的資料形狀失敗")
+
+
 def _fund(field: str, value: float) -> Evidence:
     return Evidence(category="fundamentals", field=field, value=value, source="test")
 
@@ -182,6 +193,30 @@ def test_skill_missing_requires_is_not_evaluable():
     store.add(_fund("net_income_annual", 1000.0))  # 缺 shares
     private, not_eval = run_skills([needs_missing], store, key="lynch")
     assert private == [] and len(not_eval) == 1 and "shares" in not_eval[0]
+
+
+def test_skill_unexpected_exception_isolated_with_marker():
+    # #40：非預期例外（TypeError 等 coding bug）不上拋、不波及整位 sage；以 unexpected 醒目標記
+    # 與誠實降級區隔，且不影響同 Pack 其他 skill（owner_earnings 仍算得出）。
+    store = EvidenceStore(ticker="X")
+    store.add_all([_fund("net_income_annual", 1000.0),
+                   _fund("depreciation_amortization", 600.0),
+                   _fund("capex", 100.0)])
+    private, not_eval = run_skills([buggy_typeerror, owner_earnings], store, key="buffett")
+    # 壞 skill 只降自己、帶 unexpected 標記；好 skill 不受波及仍產出 private evidence
+    assert [e.id for e in private] == ["S-buffett-owner_earnings"]
+    assert len(not_eval) == 1
+    assert "buggy_typeerror" in not_eval[0] and "unexpected" in not_eval[0]
+    assert "TypeError" in not_eval[0]
+
+
+def test_skill_expected_dataerror_keeps_plain_marker():
+    # 預期的資料形狀例外（ValueError）維持原本不帶 unexpected 的誠實降級標記。
+    store = EvidenceStore(ticker="X")
+    store.add(_fund("net_income_annual", 1000.0))
+    private, not_eval = run_skills([raises_valueerror], store, key="x")
+    assert private == [] and len(not_eval) == 1
+    assert "ValueError" in not_eval[0] and "unexpected" not in not_eval[0]
 
 
 # ---------- Pack loader（目錄 + 舊單檔共存） ----------
@@ -392,3 +427,22 @@ async def test_runtime_lists_not_evaluable_when_skill_inputs_missing(monkeypatch
     [s] = council.signals
     joined = " ".join(s.not_evaluable)
     assert "skill:owner_earnings" in joined and "rule:needs-data" in joined
+
+
+async def test_runtime_buggy_skill_does_not_absent_the_sage(monkeypatch):
+    # #40：一位大師的某 skill 拋非預期例外（coding bug）→ 該 sage 仍出席投票，
+    # 不再因例外上拋而在 run_council 變 absent；壞 skill 以 unexpected 標記列入 not_evaluable。
+    pack = PersonaPack(
+        sop=[SopStep(step="verdict", ask="下結論")],
+        skills=[buggy_typeerror],
+    )
+    persona = Persona(key="buffett", name="Warren Buffett", weight=1.0, epoch=2019,
+                      philosophy="p", focus="f", voice="v", pack=pack)
+    monkeypatch.setattr("cyber_sages.agents.council.load_personas", lambda limit=None: [persona])
+    store = EvidenceStore(ticker="Z", market="US")
+    store.add(_fund("net_income_annual", 1000.0))  # buggy_skill 會 TypeError
+    llm = SageSignal(stance="bullish", confidence=0.4, thesis="t", what_would_change_my_mind="w")
+    council = await run_council(store, [], _runtime_settings(), _gateway_returning(llm), n_sages=1)
+    assert len(council.signals) == 1                    # sage 出席、非 absent
+    [s] = council.signals
+    assert any("buggy_typeerror" in n and "unexpected" in n for n in s.not_evaluable)
