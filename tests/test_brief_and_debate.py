@@ -76,6 +76,22 @@ def test_render_council_no_conflict_block_when_clean():
     assert "規則收口衝突" not in out
 
 
+def test_render_council_surfaces_unexpected_skill_errors_only():
+    # #40：skill 的 unexpected 例外（coding bug）浮上報告；一般誠實降級（缺欄位）不顯示（避雜訊）。
+    sig = SageSignal(
+        sage="Warren Buffett", stance="bullish", confidence=0.4, thesis="t",
+        key_evidence_ids=["E001"], what_would_change_my_mind="w",
+        not_evaluable=["skill:owner_earnings (缺 market_cap)",
+                       "skill:buggy [UNEXPECTED_EXCEPTION] TypeError: 'float' object is not subscriptable"],
+    )
+    council = SimpleNamespace(signals=[sig], bullish=1, neutral=0, bearish=0,
+                             weighted_score=0.4, consensus="bullish")
+    out = render_council(SimpleNamespace(ticker="X", council=council))
+    assert "skill 程式錯誤" in out
+    assert "buggy" in out and "TypeError" in out
+    assert "缺 market_cap" not in out   # 誠實降級不上報告
+
+
 def test_analyst_is_neutral_data_layer_no_outlook():
     # P8（Spec C v2）：analyst 是數據層、不下方向性立場——schema 無 outlook、render 無 stance 標。
     report = AnalystReport(analyst="Fundamentals Analyst", summary="ROE 35%",

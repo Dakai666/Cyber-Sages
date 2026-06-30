@@ -10,6 +10,9 @@
 - 缺 `requires` 欄位 → skill 記 `not_evaluable`（不觸發、不假裝算出值），同 rules 處理。
 - skill 函式用 `ev["field"]` 取值，accessor 自動記錄碰到的 evidence id，省得手寫 E-id
   （E-id 不穩定、手寫易錯）；`SkillResult.inputs` 留空時由 Runtime 以實際讀取的 id 回填。
+- skill 拋非預期例外（coding bug）：廣攔 Exception（不含 BaseException）帶
+  `UNEXPECTED_EXC_MARKER` 標記記入 not_evaluable，避免上拋讓 sage 在 council 變 absent
+  （#40 韌性決議）。not_evaluable 共三類：缺 requires / 非有限值 / 例外（含預期資料形狀與非預期）。
 """
 
 from __future__ import annotations
@@ -18,6 +21,12 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from cyber_sages.data.evidence import Evidence, EvidenceStore
+
+# #40：非預期例外（skill coding bug）在 not_evaluable 的哨兵標記。用括號 sentinel 而非
+# 自然字眼（如 "unexpected"），render/telemetry 以此可靠分類，不會被例外訊息裡的同字誤觸；
+# 未來把 not_evaluable 升級成結構化 NotEvaluable.kind 時也容易 grep 出舊 marker 遷移（見 issue）。
+UNEXPECTED_EXC_MARKER = "[UNEXPECTED_EXCEPTION]"
+_EXC_MSG_MAX = 200  # render 進 brief 的例外訊息上限，避免自訂 __str__ 印整包 response body 撐爆版面
 
 
 @dataclass
@@ -76,7 +85,10 @@ def run_skills(
     回傳 (private_evidence, not_evaluable)：
     - private_evidence：每個成功 skill 一筆 Evidence，id = `S-<key>-NNN`、category="derived"、
       note 帶公式與輸入 ids，可被 cite-check 當一般 evidence 比對。
-    - not_evaluable：缺 requires 欄位（或算出非有限值）而未執行的 skill 名清單。
+    - not_evaluable：未產出值的 skill 標記清單，三類：缺 requires 欄位 / 算出非有限值（誠實降級）；
+      預期資料形狀例外（KeyError/ZeroDivisionError/ValueError）；以及 #40 新增的**非預期例外**
+      （skill coding bug，帶 `⚠ unexpected` 醒目標記區隔）。任一 skill 失敗都只影響該 skill，
+      不上拋、不波及整位 sage。
     """
     private: list[Evidence] = []
     not_evaluable: list[str] = []
@@ -89,7 +101,19 @@ def run_skills(
         try:
             result = sk.fn(accessor)
         except (KeyError, ZeroDivisionError, ValueError) as exc:
+            # 預期的「資料形狀」失敗（缺欄位/除零/數值不合理）→ 誠實降級。
             not_evaluable.append(f"skill:{sk.name} ({type(exc).__name__})")
+            continue
+        except Exception as exc:  # noqa: BLE001  — 不含 BaseException（不吞 KeyboardInterrupt/CancelledError）
+            # #40：非預期例外（skill coding bug，如 TypeError/AttributeError）以哨兵標記
+            # 與上面的誠實降級區隔，讓判讀者與 telemetry 知道這是「程式壞了」而非「資料沒到」。
+            # 一個壞 skill 只降該 skill、不再讓整位 sage 在 run_council 變 absent（韌性）。
+            msg = str(exc)
+            if len(msg) > _EXC_MSG_MAX:
+                msg = msg[:_EXC_MSG_MAX] + "…"
+            not_evaluable.append(
+                f"skill:{sk.name} {UNEXPECTED_EXC_MARKER} {type(exc).__name__}: {msg}"
+            )
             continue
         val = result.value
         if not isinstance(val, (int, float)) or val != val or val in (float("inf"), float("-inf")):
