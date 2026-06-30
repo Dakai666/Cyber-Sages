@@ -86,6 +86,35 @@ def test_clamp_floor_applies_only_when_stance_aligned():
     assert conf == 0.4 and len(conflicts) == 1 and "moat" in conflicts[0]
 
 
+def test_clamp_cap_hard_ceiling_dominates_floor_order_invariant():
+    # issue #87：cap 兩階段最後套，壓過任何同向 floor，淨值與規則順序無關。
+    floor = _rule({"id": "cheap", "if": {"field": "trailing_pe", "op": "<", "value": 15},
+                   "action": "bullish_floor", "confidence_floor": 0.6, "note": "便宜"})
+    cap = _rule({"id": "levered", "if": {"field": "debt_to_equity", "op": ">", "value": 1.0},
+                 "action": "cap_confidence", "confidence_ceiling": 0.5, "note": "財務脆弱"})
+    vals = {"trailing_pe": 11.0, "debt_to_equity": 1.8}
+    # floor 先列：cap 仍壓過 → 0.5，並揭露衝突
+    conf, conflicts = clamp_confidence("bullish", 0.9, evaluate_rules([floor, cap], vals))
+    assert conf == 0.5 and any("levered" in c and "cheap" in c for c in conflicts)
+    # cap 先列：順序顛倒結果不變（兩階段確定性）
+    conf2, conflicts2 = clamp_confidence("bullish", 0.9, evaluate_rules([cap, floor], vals))
+    assert conf2 == 0.5 and conflicts2 == conflicts
+
+
+def test_clamp_cap_above_floor_no_conflict():
+    # cap ceiling 高於同向 floor → cap 不咬 floor、不算衝突（只在 ceiling < floor 時揭露）。
+    floor = _rule({"id": "cheap", "if": {"field": "trailing_pe", "op": "<", "value": 15},
+                   "action": "bullish_floor", "confidence_floor": 0.4, "note": "便宜"})
+    cap = _rule({"id": "levered", "if": {"field": "debt_to_equity", "op": ">", "value": 1.0},
+                 "action": "cap_confidence", "confidence_ceiling": 0.7, "note": "略高槓桿"})
+    vals = {"trailing_pe": 11.0, "debt_to_equity": 1.8}
+    conf, conflicts = clamp_confidence("bullish", 0.2, evaluate_rules([floor, cap], vals))
+    assert conf == 0.4 and conflicts == []   # floor 抬到 0.4、cap 0.7 不咬
+    # cap 先列也一樣不誤報（兩屬性綁同一測試）
+    conf2, conflicts2 = clamp_confidence("bullish", 0.2, evaluate_rules([cap, floor], vals))
+    assert conf2 == 0.4 and conflicts2 == []
+
+
 # ---------- skill 框架 ----------
 
 

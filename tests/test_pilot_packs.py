@@ -522,11 +522,11 @@ def test_graham_weak_financials_caps_even_when_cheap():
     assert conf == 0.5
 
 
-def test_clamp_floor_dominates_cap_when_floor_higher():
-    # 現行 clamp_confidence（rules.py:120-124）行為 pin：cap 0.5 與 bullish_floor 0.6 同觸發、
-    # stance bullish 時，floor 蓋過 cap → 0.6（cap 與 floor 各自獨立套用，淨值看數值）。
-    # 非 Graham pack 引入（首次有 Pack 同時觸發兩者，PR #86 review 觀察）；此測試把現行語意釘住，
-    # 日後若重構 cap/floor 優先序會 fail 提醒（見 issue：clamp_confidence cap vs floor 優先序）。
+def test_cap_hard_ceiling_dominates_same_direction_floor():
+    # issue #87 決議：cap 是真正的硬上限（兩階段：floor 先、cap 最後）。cap 0.5 與
+    # bullish_floor 0.6 同觸發、stance bullish 時，cap 壓過 floor → 0.5，並揭露衝突。
+    # Graham 是首個同時觸發兩者的 Pack（PR #86 review 觀察）；語意：紅線「我不碰」勝過
+    # floor「我有興趣」。此測試把新語意釘住（原 pin 斷言 0.6 已反轉為 0.5）。
     graham = _pack("graham")
     store = EvidenceStore(ticker="CHEAP_LEVERED", market="US")
     store.add_all([_fund("trailing_pe", 11.0, category="quote"),    # defensive-bargain floor 0.6
@@ -535,8 +535,9 @@ def test_clamp_floor_dominates_cap_when_floor_higher():
     outcomes = evaluate_rules(graham.pack.hard_rules, rule_values(store))
     by_id = {o.rule_id: o for o in outcomes}
     assert by_id["weak-financials"].triggered and by_id["defensive-bargain"].triggered
-    conf, _ = clamp_confidence("bullish", 0.9, outcomes)
-    assert conf == 0.6   # floor 0.6 蓋過 cap 0.5（現行行為，待 issue 決定是否反轉）
+    conf, conflicts = clamp_confidence("bullish", 0.9, outcomes)
+    assert conf == 0.5   # cap 0.5 壓過同向 floor 0.6（issue #87 反轉後行為）
+    assert any("weak-financials" in c and "defensive-bargain" in c for c in conflicts)
 
 
 def test_graham_negative_pe_not_treated_as_cheap():

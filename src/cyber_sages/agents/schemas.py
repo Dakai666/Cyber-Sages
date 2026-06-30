@@ -99,7 +99,11 @@ class SageSignal(BaseModel):
     )
     rule_conflicts: list[str] = Field(
         default_factory=list,
-        description="Hard-rule directional floors that disagreed with the LLM's stance",
+        description=(
+            "Hard-rule clamp conflicts surfaced for the reader: "
+            "(a) directional floor triggered against opposite stance, or "
+            "(b) cap ceiling lower than an already-applied same-direction floor (issue #87)."
+        ),
     )
     unverified: list[UnverifiedClaim] = Field(
         default_factory=list, description="sop_trace steps whose numbers failed cite-check"

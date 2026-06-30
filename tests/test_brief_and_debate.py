@@ -24,7 +24,7 @@ from cyber_sages.agents.schemas import (
     SopStepResult,
     UnverifiedClaim,
 )
-from cyber_sages.report import render_analysts, render_debate
+from cyber_sages.report import render_analysts, render_council, render_debate
 from cyber_sages.verify.citation_check import Claim
 
 
@@ -50,6 +50,30 @@ def test_render_analysts_shows_unverified_with_ids_and_tag():
     assert "[NUM_MISMATCH]" in out          # tag 有呈現
     assert "E001 E023" in out               # evidence id 有列出
     assert "not found" in out               # 失敗原因有列出
+
+
+def test_render_council_surfaces_rule_conflicts():
+    # #87：硬規則收口衝突（cap 壓過同向 floor）浮上 details/council.md，不再只藏在 verdict.json。
+    sig = SageSignal(
+        sage="Benjamin Graham", stance="bullish", confidence=0.5,
+        thesis="便宜但財務脆弱", key_evidence_ids=["E001"],
+        what_would_change_my_mind="降槓桿",
+        rule_conflicts=["weak-financials: 紅線上限 0.5（財務脆弱）壓過同向 defensive-bargain floor 0.6"],
+    )
+    council = SimpleNamespace(signals=[sig], bullish=1, neutral=0, bearish=0,
+                             weighted_score=0.5, consensus="bullish")
+    out = render_council(SimpleNamespace(ticker="CHEAP", council=council))
+    assert "規則收口衝突" in out
+    assert "壓過同向 defensive-bargain floor 0.6" in out
+
+
+def test_render_council_no_conflict_block_when_clean():
+    sig = SageSignal(sage="Buffett", stance="bullish", confidence=0.7, thesis="寬護城河",
+                     key_evidence_ids=["E001"], what_would_change_my_mind="護城河變窄")
+    council = SimpleNamespace(signals=[sig], bullish=1, neutral=0, bearish=0,
+                             weighted_score=0.7, consensus="bullish")
+    out = render_council(SimpleNamespace(ticker="MOAT", council=council))
+    assert "規則收口衝突" not in out
 
 
 def test_analyst_is_neutral_data_layer_no_outlook():
