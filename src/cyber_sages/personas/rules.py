@@ -111,17 +111,22 @@ def clamp_confidence(
 ) -> tuple[float, list[str]]:
     """clamp（第 4 段）：以觸發的硬規則收口 confidence，回傳 (clamped, rule_conflicts)。
 
-    cap_confidence 一律硬收上限；directional floor 只在 stance 同向時套下限，反向記衝突。
+    兩階段（issue #87）：先套所有同向 directional floor，再套所有 cap_confidence——
+    cap 是**真正的硬上限**，最後套用、壓過任何同向 floor，淨值與 yaml 規則順序無關
+    （語意：cap=「我不碰」的紅線勝過 floor=「我有興趣」的下限）。directional floor
+    只在 stance 同向時套下限，反向記衝突；cap 壓過一條同向已觸發 floor 時也記衝突揭露。
     """
     conflicts: list[str] = []
+
+    # 第 1 階段：directional floor（同向抬下限；反向不翻 stance，記衝突）
+    applied_floors: list[RuleOutcome] = []
     for o in outcomes:
         if not o.triggered:
             continue
-        if o.action == "cap_confidence" and o.confidence_ceiling is not None:
-            confidence = min(confidence, o.confidence_ceiling)
-        elif o.action == "bullish_floor" and o.confidence_floor is not None:
+        if o.action == "bullish_floor" and o.confidence_floor is not None:
             if stance == "bullish":
                 confidence = max(confidence, o.confidence_floor)
+                applied_floors.append(o)
             else:
                 conflicts.append(
                     f"{o.rule_id}: 規則傾向 bullish（{o.note or 'floor'}）但大師判 {stance}"
@@ -129,10 +134,25 @@ def clamp_confidence(
         elif o.action == "bearish_floor" and o.confidence_floor is not None:
             if stance == "bearish":
                 confidence = max(confidence, o.confidence_floor)
+                applied_floors.append(o)
             else:
                 conflicts.append(
                     f"{o.rule_id}: 規則傾向 bearish（{o.note or 'floor'}）但大師判 {stance}"
                 )
+
+    # 第 2 階段：cap_confidence 硬收上限（最後套；壓過同向 floor 時揭露衝突）
+    for o in outcomes:
+        if not o.triggered:
+            continue
+        if o.action == "cap_confidence" and o.confidence_ceiling is not None:
+            for f in applied_floors:
+                if o.confidence_ceiling < f.confidence_floor:
+                    conflicts.append(
+                        f"{o.rule_id}: 紅線上限 {o.confidence_ceiling}"
+                        f"（{o.note or 'cap'}）壓過同向 {f.rule_id} floor {f.confidence_floor}"
+                    )
+            confidence = min(confidence, o.confidence_ceiling)
+
     return max(0.0, min(1.0, confidence)), conflicts
 
 

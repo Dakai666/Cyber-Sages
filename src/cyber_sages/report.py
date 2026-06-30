@@ -273,6 +273,11 @@ def render_council(result: AnalysisResult) -> str:
             f"- 關鍵證據：{', '.join(s.key_evidence_ids) or '—'}",
             f"- 什麼會讓他改變看法：{s.what_would_change_my_mind}",
         ]
+        # #87：硬規則收口時的衝突（cap 壓過同向 floor、或 floor 反向被擋）浮上報告，
+        # 讓判讀者看見 confidence 不只是 LLM 自評、也被規則調整過。
+        if s.rule_conflicts:
+            lines.append("- ⚠️ 規則收口衝突：")
+            lines += [f"  - {rc}" for rc in s.rule_conflicts]
     return "\n".join(lines)
 
 
