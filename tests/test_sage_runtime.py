@@ -23,7 +23,12 @@ from cyber_sages.personas.rules import (
     evaluate_rules,
     rule_values,
 )
-from cyber_sages.personas.skill import SkillResult, run_skills, skill
+from cyber_sages.personas.skill import (
+    UNEXPECTED_EXC_MARKER,
+    SkillResult,
+    run_skills,
+    skill,
+)
 
 
 # ---------- rules DSL evaluator ----------
@@ -203,20 +208,20 @@ def test_skill_unexpected_exception_isolated_with_marker():
                    _fund("depreciation_amortization", 600.0),
                    _fund("capex", 100.0)])
     private, not_eval = run_skills([buggy_typeerror, owner_earnings], store, key="buffett")
-    # 壞 skill 只降自己、帶 unexpected 標記；好 skill 不受波及仍產出 private evidence
+    # 壞 skill 只降自己、帶哨兵標記；好 skill 不受波及仍產出 private evidence
     assert [e.id for e in private] == ["S-buffett-owner_earnings"]
     assert len(not_eval) == 1
-    assert "buggy_typeerror" in not_eval[0] and "unexpected" in not_eval[0]
+    assert "buggy_typeerror" in not_eval[0] and UNEXPECTED_EXC_MARKER in not_eval[0]
     assert "TypeError" in not_eval[0]
 
 
 def test_skill_expected_dataerror_keeps_plain_marker():
-    # 預期的資料形狀例外（ValueError）維持原本不帶 unexpected 的誠實降級標記。
+    # 預期的資料形狀例外（ValueError）維持原本不帶哨兵標記的誠實降級。
     store = EvidenceStore(ticker="X")
     store.add(_fund("net_income_annual", 1000.0))
     private, not_eval = run_skills([raises_valueerror], store, key="x")
     assert private == [] and len(not_eval) == 1
-    assert "ValueError" in not_eval[0] and "unexpected" not in not_eval[0]
+    assert "ValueError" in not_eval[0] and UNEXPECTED_EXC_MARKER not in not_eval[0]
 
 
 # ---------- Pack loader（目錄 + 舊單檔共存） ----------
@@ -445,4 +450,5 @@ async def test_runtime_buggy_skill_does_not_absent_the_sage(monkeypatch):
     council = await run_council(store, [], _runtime_settings(), _gateway_returning(llm), n_sages=1)
     assert len(council.signals) == 1                    # sage 出席、非 absent
     [s] = council.signals
-    assert any("buggy_typeerror" in n and "unexpected" in n for n in s.not_evaluable)
+    assert any("buggy_typeerror" in n and UNEXPECTED_EXC_MARKER in n for n in s.not_evaluable)
+    assert s.stance == "bullish" and s.confidence == 0.4  # LLM 訊號未被例外污染

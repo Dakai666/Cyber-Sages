@@ -82,7 +82,7 @@ def test_render_council_surfaces_unexpected_skill_errors_only():
         sage="Warren Buffett", stance="bullish", confidence=0.4, thesis="t",
         key_evidence_ids=["E001"], what_would_change_my_mind="w",
         not_evaluable=["skill:owner_earnings (缺 market_cap)",
-                       "skill:buggy (⚠ unexpected TypeError: 'float' object is not subscriptable)"],
+                       "skill:buggy [UNEXPECTED_EXCEPTION] TypeError: 'float' object is not subscriptable"],
     )
     council = SimpleNamespace(signals=[sig], bullish=1, neutral=0, bearish=0,
                              weighted_score=0.4, consensus="bullish")

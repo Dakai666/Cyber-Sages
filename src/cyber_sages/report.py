@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 from cyber_sages.agents.schemas import DebateArgument, PriceLevel
+from cyber_sages.personas.skill import UNEXPECTED_EXC_MARKER
 from cyber_sages.pipeline import AnalysisResult
 from cyber_sages.verify.data_audit import build_health_card
 
@@ -280,7 +281,7 @@ def render_council(result: AnalysisResult) -> str:
             lines += [f"  - {rc}" for rc in s.rule_conflicts]
         # #40：skill 拋非預期例外（coding bug）以 unexpected 標記列入 not_evaluable——
         # 把它從一般誠實降級（缺欄位等，常見、不顯示以免雜訊）拉出來浮上報告，需修正才看得見。
-        skill_errors = [n for n in s.not_evaluable if "unexpected" in n]
+        skill_errors = [n for n in s.not_evaluable if UNEXPECTED_EXC_MARKER in n]
         if skill_errors:
             lines.append("- ⚠️ skill 程式錯誤（需修正）：")
             lines += [f"  - {e}" for e in skill_errors]
