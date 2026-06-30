@@ -110,6 +110,9 @@ def test_clamp_cap_above_floor_no_conflict():
     vals = {"trailing_pe": 11.0, "debt_to_equity": 1.8}
     conf, conflicts = clamp_confidence("bullish", 0.2, evaluate_rules([floor, cap], vals))
     assert conf == 0.4 and conflicts == []   # floor 抬到 0.4、cap 0.7 不咬
+    # cap 先列也一樣不誤報（兩屬性綁同一測試）
+    conf2, conflicts2 = clamp_confidence("bullish", 0.2, evaluate_rules([cap, floor], vals))
+    assert conf2 == 0.4 and conflicts2 == []
 
 
 # ---------- skill 框架 ----------

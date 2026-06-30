@@ -149,7 +149,8 @@ def clamp_confidence(
                 if o.confidence_ceiling < f.confidence_floor:
                     conflicts.append(
                         f"{o.rule_id}: 紅線上限 {o.confidence_ceiling}"
-                        f"（{o.note or 'cap'}）壓過同向 {f.rule_id} floor {f.confidence_floor}"
+                        f"（{o.note or 'cap'}）壓過同向 {f.rule_id} floor "
+                        f"{f.confidence_floor}（{f.note or 'floor'}）"
                     )
             confidence = min(confidence, o.confidence_ceiling)
 
